@@ -8,7 +8,22 @@ from datetime import datetime
 class SleeperService:
     def __init__(self):
         self.base_url = settings.SLEEPER_API_URL
-        self.client = httpx.AsyncClient()
+        self._client: Optional[httpx.AsyncClient] = None
+        self._client_loop: Optional[asyncio.AbstractEventLoop] = None
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        # A single AsyncClient created eagerly (e.g. at module import time) binds
+        # its connection pool to whichever event loop is running when it's first
+        # used. Reusing it from a *different* loop later (e.g. successive
+        # TestClient requests, each running their own loop) raises
+        # "Event loop is closed". Recreate the client whenever the running loop
+        # changes so it always matches the loop making the request.
+        loop = asyncio.get_event_loop()
+        if self._client is None or self._client_loop is not loop:
+            self._client = httpx.AsyncClient()
+            self._client_loop = loop
+        return self._client
 
     async def get_nfl_state(self) -> Dict[str, Any]:
         """Get current NFL season state"""
@@ -16,7 +31,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/state/nfl")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
     async def get_all_players(self) -> Dict[str, Any]:
@@ -25,7 +40,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/players/nfl")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
     async def get_player_stats(self, player_id: str, season: str = "2024") -> Dict[str, Any]:
@@ -48,7 +63,7 @@ class SleeperService:
                     if player_id in week_data:
                         weekly_stats[str(week)] = week_data[player_id]
                         
-                except httpx.RequestError:
+                except (httpx.RequestError, httpx.HTTPStatusError):
                     # Week might not exist yet or player didn't play
                     continue
                     
@@ -58,7 +73,7 @@ class SleeperService:
                 "weekly": weekly_stats
             }
             
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
     async def get_trending_players(self, 
@@ -76,7 +91,7 @@ class SleeperService:
             )
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_player_projections(self, week: int, season: str = "2024") -> Dict[str, Any]:
@@ -85,7 +100,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/projections/nfl/{season}/{week}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
     async def get_user_leagues(self, user_id: str, season: str = "2024") -> List[Dict[str, Any]]:
@@ -94,7 +109,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/user/{user_id}/leagues/nfl/{season}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_league_info(self, league_id: str) -> Dict[str, Any]:
@@ -103,7 +118,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/league/{league_id}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
     async def get_league_rosters(self, league_id: str) -> List[Dict[str, Any]]:
@@ -112,7 +127,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/league/{league_id}/rosters")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_league_users(self, league_id: str) -> List[Dict[str, Any]]:
@@ -121,7 +136,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/league/{league_id}/users")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_matchups(self, league_id: str, week: int) -> List[Dict[str, Any]]:
@@ -130,7 +145,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/league/{league_id}/matchups/{week}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_transactions(self, league_id: str, week: int) -> List[Dict[str, Any]]:
@@ -139,7 +154,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/league/{league_id}/transactions/{week}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_waiver_candidates(self, league_id: str) -> List[Dict[str, Any]]:
@@ -175,7 +190,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/league/{league_id}/drafts")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_draft_info(self, draft_id: str) -> Dict[str, Any]:
@@ -184,7 +199,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/draft/{draft_id}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
     async def get_draft_picks(self, draft_id: str) -> List[Dict[str, Any]]:
@@ -193,7 +208,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/draft/{draft_id}/picks")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_user_drafts(self, user_id: str, sport: str = "nfl", season: str = "2024") -> List[Dict[str, Any]]:
@@ -202,7 +217,7 @@ class SleeperService:
             response = await self.client.get(f"{self.base_url}/user/{user_id}/drafts/{sport}/{season}")
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Request failed: {str(e)}"}]
 
     async def get_draft_state(self, league_id: str) -> Dict[str, Any]:

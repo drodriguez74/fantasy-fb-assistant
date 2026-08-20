@@ -21,11 +21,11 @@ def test_get_players(client):
 def test_search_players(client):
     """Test player search functionality"""
     # Test with a common name
-    response = client.get("/api/v1/players/search?query=allen")
+    response = client.get("/api/v1/players/search/allen")
     assert response.status_code == 200
     data = response.json()
-    assert "results" in data
-    assert isinstance(data["results"], list)
+    assert "matches" in data
+    assert isinstance(data["matches"], list)
 
 def test_get_player_by_id(client):
     """Test getting specific player by ID"""

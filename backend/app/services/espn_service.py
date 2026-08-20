@@ -7,14 +7,25 @@ from app.core.config import settings
 
 class ESPNFantasyService:
     def __init__(self):
-        self.client = httpx.AsyncClient()
+        self._client: Optional[httpx.AsyncClient] = None
+        self._client_loop: Optional[asyncio.AbstractEventLoop] = None
         self.base_url = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl"
-        
+
         # ESPN Fantasy requires these headers
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'application/json'
         }
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        # See SleeperService.client for why this is lazy/loop-aware rather than
+        # a single client created once in __init__.
+        loop = asyncio.get_event_loop()
+        if self._client is None or self._client_loop is not loop:
+            self._client = httpx.AsyncClient()
+            self._client_loop = loop
+        return self._client
 
     async def get_league_info(self, league_id: str, season: int = 2024) -> Dict[str, Any]:
         """Get ESPN league information"""
@@ -23,7 +34,7 @@ class ESPNFantasyService:
             response = await self.client.get(url, headers=self.headers)
             response.raise_for_status()
             return response.json()
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Failed to get league info: {str(e)}"}
 
     async def get_league_teams(self, league_id: str, season: int = 2024) -> List[Dict[str, Any]]:
@@ -37,7 +48,7 @@ class ESPNFantasyService:
             data = response.json()
             
             return data.get("teams", [])
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get teams: {str(e)}"}]
 
     async def get_league_rosters(self, league_id: str, season: int = 2024, week: int = None) -> List[Dict[str, Any]]:
@@ -75,7 +86,7 @@ class ESPNFantasyService:
                 rosters.append(roster)
             
             return rosters
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get rosters: {str(e)}"}]
 
     async def get_available_players(self, league_id: str, season: int = 2024, size: int = 50) -> List[Dict[str, Any]]:
@@ -110,7 +121,7 @@ class ESPNFantasyService:
                     })
             
             return available_players
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get available players: {str(e)}"}]
 
     async def get_draft_info(self, league_id: str, season: int = 2024) -> Dict[str, Any]:
@@ -134,7 +145,7 @@ class ESPNFantasyService:
                 "draft_order": self._get_draft_order(draft_detail),
                 "picks": self._format_draft_picks(draft_detail.get("picks", []))
             }
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Failed to get draft info: {str(e)}"}
 
     async def get_matchup_info(self, league_id: str, season: int = 2024, week: int = None) -> List[Dict[str, Any]]:
@@ -166,7 +177,7 @@ class ESPNFantasyService:
                 })
             
             return matchups
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get matchups: {str(e)}"}]
 
     async def monitor_draft_progress(self, league_id: str, season: int = 2024) -> Dict[str, Any]:

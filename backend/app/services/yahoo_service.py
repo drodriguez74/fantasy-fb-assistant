@@ -9,19 +9,30 @@ from app.core.config import settings
 
 class YahooFantasyService:
     def __init__(self):
-        self.client = httpx.AsyncClient()
+        self._client: Optional[httpx.AsyncClient] = None
+        self._client_loop: Optional[asyncio.AbstractEventLoop] = None
         self.base_url = "https://fantasysports.yahooapis.com/fantasy/v2"
         self.oauth_url = "https://api.login.yahoo.com/oauth2"
-        
+
         self.client_id = settings.YAHOO_CLIENT_ID
         self.client_secret = settings.YAHOO_CLIENT_SECRET
         self.access_token = None
-        
+
         # Check if credentials are configured
         if not self.client_id or not self.client_secret:
             self.credentials_configured = False
         else:
             self.credentials_configured = True
+
+    @property
+    def client(self) -> httpx.AsyncClient:
+        # See SleeperService.client for why this is lazy/loop-aware rather than
+        # a single client created once in __init__.
+        loop = asyncio.get_event_loop()
+        if self._client is None or self._client_loop is not loop:
+            self._client = httpx.AsyncClient()
+            self._client_loop = loop
+        return self._client
 
     async def authenticate(self, authorization_code: str, redirect_uri: str) -> Dict[str, Any]:
         """Exchange authorization code for access token"""
@@ -73,7 +84,7 @@ class YahooFantasyService:
             print(f"Yahoo OAuth: Successfully obtained access token")
             
             return token_data
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             print(f"Yahoo OAuth Request Error: {str(e)}")
             return {"error": f"Authentication request failed: {str(e)}"}
         except Exception as e:
@@ -118,7 +129,7 @@ class YahooFantasyService:
                                 })
             
             return leagues
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get leagues: {str(e)}"}]
 
     async def get_league_info(self, league_key: str) -> Dict[str, Any]:
@@ -149,7 +160,7 @@ class YahooFantasyService:
                 "league_type": league_data.get("league_type"),
                 "draft_status": league_data.get("draft_status")
             }
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Failed to get league info: {str(e)}"}
 
     async def get_league_teams(self, league_key: str) -> List[Dict[str, Any]]:
@@ -184,7 +195,7 @@ class YahooFantasyService:
                     })
             
             return teams
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get teams: {str(e)}"}]
 
     async def get_team_roster(self, team_key: str, week: int = None) -> Dict[str, Any]:
@@ -227,7 +238,7 @@ class YahooFantasyService:
                 "week": week,
                 "players": players
             }
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Failed to get roster: {str(e)}"}
 
     async def get_available_players(self, league_key: str, position: str = None, count: int = 25) -> List[Dict[str, Any]]:
@@ -269,7 +280,7 @@ class YahooFantasyService:
                     })
             
             return available_players
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get available players: {str(e)}"}]
 
     async def get_draft_results(self, league_key: str) -> List[Dict[str, Any]]:
@@ -300,7 +311,7 @@ class YahooFantasyService:
                     })
             
             return draft_results
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get draft results: {str(e)}"}]
 
     async def monitor_live_draft(self, league_key: str) -> Dict[str, Any]:
@@ -384,7 +395,7 @@ class YahooFantasyService:
                     })
             
             return matchups
-        except httpx.RequestError as e:
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get matchups: {str(e)}"}]
 
     async def close(self):

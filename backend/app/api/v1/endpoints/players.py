@@ -161,6 +161,7 @@ async def get_player(player_id: str):
         news = []
         
         return {
+            "id": int(player_id) if player_id.isdigit() else hash(player_id) % 100000,
             "player_data": player_data,
             "stats": stats,
             "ai_analysis": ai_analysis,
