@@ -59,11 +59,11 @@ This one root cause explains what looked to the creative director like "broken A
 5. ✅ Fix the `generate_multi_perspective_analysis` → `generate_multi_perspective_content` bug; stop stamping `ai_model_used` on template-only content. — `30ee8dd`
 
 **P1 — before any external beta:**
-- Seed real waiver-wire recommendations (rank by ownership-delta/trending-add) instead of an empty default view.
-- Run the missing `player_historical_performance` migration so the real (already-written) ML code can actually execute.
-- Cut the beta nav to ~4 items (Home, Draft Assistant, Leagues, Players); flag or hide the rest until each has real data behind it.
-- Add ADP/tier sort and a bye-week column to Players — higher value than another AI button.
-- Build a real onboarding path (register → connect a league → see one real recommendation).
+- ✅ Seed real waiver-wire recommendations (rank by ownership-delta/trending-add) instead of an empty default view. — `0bc08e4`, sourced from Sleeper's live trending-add feed, confidence tied to real add-counts
+- ✅ Run the missing `player_historical_performance` migration so the real (already-written) ML code can actually execute. — `b792a04`, also healed 11 other tables that had drifted from what alembic believed was applied
+- ✅ Cut the beta nav to ~4 items (Home, Draft Assistant, Leagues, Players); flag or hide the rest until each has real data behind it. — `d498cd9`, rest behind a "More" menu, real mobile hamburger added
+- ✅ Add ADP/tier sort and a bye-week column to Players. — `3e877a6`
+- ✅ Build a real onboarding path (register → connect a league → see one real recommendation). — `52adf5b`, new registrants land on Draft Assistant with real data instead of the marketing homepage
 
 **P2 — roadmap:**
 - Real visual identity (palette, injury-status color scale, card elevation system).
