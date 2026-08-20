@@ -22,6 +22,7 @@ const moreNavigation = [
   { name: 'Post-Draft Analysis', href: '/post-draft' },
   { name: 'Live Draft', href: '/live-draft' },
   { name: 'Waiver Wire', href: '/waiver-wire' },
+  { name: 'Trade Analyzer', href: '/trade-analyzer' },
   { name: 'Content', href: '/content' },
   { name: 'Historical', href: '/historical' },
   { name: 'Analytics', href: '/analytics' },

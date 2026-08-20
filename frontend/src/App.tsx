@@ -19,6 +19,7 @@ import { AnalyticsPage } from './pages/AnalyticsPage'
 import { WaiverWirePage } from './pages/WaiverWirePage'
 import { AdvancedAnalysisPage } from './pages/AdvancedAnalysisPage'
 import { PostDraftAnalysisPage } from './pages/PostDraftAnalysisPage'
+import { TradeAnalyzerPage } from './pages/TradeAnalyzerPage'
 
 function App() {
   return (
@@ -107,13 +108,21 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/post-draft" 
+              <Route
+                path="/post-draft"
                 element={
                   <ProtectedRoute>
                     <PostDraftAnalysisPage />
                   </ProtectedRoute>
-                } 
+                }
+              />
+              <Route
+                path="/trade-analyzer"
+                element={
+                  <ProtectedRoute>
+                    <TradeAnalyzerPage />
+                  </ProtectedRoute>
+                }
               />
             </Routes>
           </main>

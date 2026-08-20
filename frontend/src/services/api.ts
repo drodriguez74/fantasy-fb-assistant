@@ -262,4 +262,13 @@ export const waiverWire = {
     api.post('/waiver-wire/alerts/subscribe', data),
 }
 
+// Trade analyzer endpoints
+export const trade = {
+  searchPlayers: (q: string, limit?: number) =>
+    api.get('/trade/player-search', { params: { q, limit } }),
+
+  analyze: (data: { side_a_gives: string[]; side_b_gives: string[] }) =>
+    api.post('/trade/analysis', data),
+}
+
 export default api
