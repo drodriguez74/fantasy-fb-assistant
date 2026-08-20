@@ -8,10 +8,12 @@ Four independent reviews (Creative Director, Fantasy Football Enthusiast, Data S
 
 Worse: that file got swept into the git history created earlier this session (commit `8ae3635`, an unqualified `git add -A`) and was never in `.gitignore`. **Already fixed**: untracked the file, added it to `.gitignore` (commit `675a841`). Not yet fixed: the secret is still sitting in that one local commit (never pushed anywhere — no remote is configured, so exposure is contained to this machine), and the endpoint itself is still unauthenticated.
 
-**Recommended next steps, your call:**
-1. Rotate the ESPN cookie (log out/in to ESPN) — cheapest way to fully neutralize the leak regardless of git history. Worth doing regardless of the option below.
-2. Decide whether to rewrite local git history to purge commit `8ae3635` of the file entirely (destructive — changes every commit hash after it). Given the repo was never pushed, this is optional/cosmetic once the cookie is rotated, but say the word if you want it done.
-3. Fix `GET /api/v1/leagues/` and `GET /api/v1/leagues/{id}/roster-analysis` to require `Depends(get_current_active_user)` and query `UserLeague` by `current_user.id`, same as the already-correct `/leagues/{id}/analysis` endpoint. This is the actual root cause and is a P0 alongside everything below.
+**Status:**
+1. ✅ **Fixed** (commit `8b97ec2`): `GET /api/v1/leagues/`, `POST /espn/connect`, and `GET /leagues/{id}/roster-analysis` now require `current_user` and read/write real per-user `UserLeague` rows instead of the shared file. Also fixed a latent crash: `UserService.get_user_league` (singular) didn't exist at all, so every endpoint that already looked correctly-scoped was actually throwing `AttributeError` on every call. Verified live with two fresh accounts: user B sees an empty league list and gets a 404 (not user A's data) requesting user A's league by ID.
+2. **Still your call**: rotate the ESPN cookie (log out/in to ESPN) — cheapest way to fully neutralize the leak regardless of git history.
+3. **Still your call**: whether to rewrite local git history to purge commit `8ae3635` of the file entirely (destructive — changes every commit hash after it). Repo was never pushed, so this is optional/cosmetic once the cookie is rotated.
+
+Note: `GET /{league_id}/comprehensive-analysis` and `GET /{league_id}/insights` still read from the same global file/hardcoded demo data (e.g. `/insights` returns "Lamar Jackson" as a start/sit recommendation regardless of the actual league) — these were already returning canned data before this fix and weren't part of the original security finding, but are worth the same treatment; not yet done.
 
 ## The one bug all four reviewers hit independently
 
@@ -22,7 +24,9 @@ The data scientist review traced this to its actual root cause, live over the wi
 - The frontend (`frontend/src/pages/DraftPage.tsx:114-151`) silently swallows that failure and falls back to a **hardcoded client-side stub**: every player gets `confidence: 75` and the string `"Top available {position} with strong projections"`, built from the first 3 unfiltered entries in the player list — no ranking, no model, no disclosure to the user that this isn't real.
 - Even the *real* path is broken: `GET /api/v1/draft/positional-rankings/RB` returns raw, unsorted Sleeper rows with no `projected_points` field, mixed active/inactive/retired status, and no filter excluding players no longer on an NFL roster. There is no `is_active`/retired flag anywhere on the `Player` model at all.
 
-This one root cause explains what looked to the creative director like "broken AI branding," to the enthusiast like "a disqualifying trust failure," to the data scientist like "fabricated confidence scores," and to the PM like "proof the AI claim is currently fiction." Fix the data hygiene (filter by active roster status) and make failures visible instead of silently faked, and the single most damaging finding in this whole review disappears.
+This one root cause explains what looked to the creative director like "broken AI branding," to the enthusiast like "a disqualifying trust failure," to the data scientist like "fabricated confidence scores," and to the PM like "proof the AI claim is currently fiction."
+
+✅ **Fixed** (commit `a65a988`): `GET /draft/positional-rankings/{position}` now filters to players with both a real NFL team and `status: "Active"` — verified by scanning all 947 rows returned across QB/RB/WR/TE and confirming none of the six named retired players remain (one legitimately-active *different* player also named "Frank Gore" does appear, correctly). Ranking now sorts by Sleeper's own `search_rank` instead of raw DB order. The frontend's silent fake-confidence fallback in `DraftPage.tsx` is gone — a failed recommendations call now shows an honest "Couldn't load recommendations. Try refreshing." instead of fabricating data.
 
 ## Cross-cutting findings (hit by 2+ reviewers)
 
@@ -48,11 +52,11 @@ This one root cause explains what looked to the creative director like "broken A
 ## Prioritized punch list
 
 **P0 — must fix before anyone but you touches this:**
-1. Scope `GET /api/v1/leagues/` and `/leagues/{id}/roster-analysis` to `current_user` (security bug, see top).
-2. Rotate the ESPN session cookie; decide on git history rewrite.
-3. Filter the draft/ranking candidate pool by active roster status; stop the silent fake-confidence fallback in `DraftPage.tsx` (either surface the real error or clearly label a fallback as an estimate).
-4. Wrap pages in an error boundary — no more raw stack traces in the UI (Historical page today).
-5. Fix the `generate_multi_perspective_analysis` → `generate_multi_perspective_content` bug; stop stamping `ai_model_used` on template-only content.
+1. ✅ Scope `GET /api/v1/leagues/` and `/leagues/{id}/roster-analysis` to `current_user` (security bug, see top). — `8b97ec2`
+2. Rotate the ESPN session cookie; decide on git history rewrite. — **still open, needs you**
+3. ✅ Filter the draft/ranking candidate pool by active roster status; stop the silent fake-confidence fallback in `DraftPage.tsx`. — `a65a988`
+4. ✅ Wrap pages in an error boundary — no more raw stack traces in the UI. — `11dffb6` (also hardened the shared `getErrorMessage()` helper to catch raw backend errors across all ~15 pages that use it, not just Historical)
+5. ✅ Fix the `generate_multi_perspective_analysis` → `generate_multi_perspective_content` bug; stop stamping `ai_model_used` on template-only content. — `30ee8dd`
 
 **P1 — before any external beta:**
 - Seed real waiver-wire recommendations (rank by ownership-delta/trending-add) instead of an empty default view.
