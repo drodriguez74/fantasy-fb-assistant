@@ -105,7 +105,11 @@ class ESPNConnectRequest(BaseModel):
     espn_s2: Optional[str] = None
 
 @router.post("/espn/connect")
-async def connect_espn_league(request: ESPNConnectRequest):
+async def connect_espn_league(
+    request: ESPNConnectRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """Connect to ESPN Fantasy Football league"""
     try:
         # Test connection and get league info
@@ -115,38 +119,39 @@ async def connect_espn_league(request: ESPNConnectRequest):
             swid=request.swid,
             espn_s2=request.espn_s2
         )
-        
+
         if not connection_result.get("connected", False):
             raise HTTPException(
-                status_code=400, 
+                status_code=400,
                 detail=connection_result.get("error", "Failed to connect to ESPN league")
             )
-        
+
         league_info = connection_result["league_info"]
-        
-        # Store connection details for later use
-        import json
-        connection_data = {
-            "espn_league_id": request.league_id,
-            "espn_swid": request.swid,
-            "espn_s2": request.espn_s2,
-            "season": request.season,
-            "league_size": league_info.get("team_count", 10),
-            "scoring_format": league_info.get("scoring_type", "PPR"),
-            "draft_position": None,  # Will be set during draft
-            "connected_at": datetime.now().isoformat()
-        }
-        
-        with open("/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/connected_league.json", "w") as f:
-            json.dump(connection_data, f, indent=2)
-        
+
+        # Persist the connection against this user, not a shared file on disk --
+        # every account used to see whichever league was last written here.
+        user_service = UserService(db)
+        user_league = user_service.add_user_league(
+            user_id=current_user.id,
+            platform="espn",
+            league_id=request.league_id,
+            league_data={
+                "league_name": league_info.get("league_name", f"ESPN League {request.league_id}"),
+                "season": request.season,
+                "league_size": league_info.get("team_count", 10),
+                "scoring_format": league_info.get("scoring_type", "PPR"),
+                "espn_swid": request.swid,
+                "espn_s2": request.espn_s2,
+            }
+        )
+
         # Return connection info
         return {
             "success": True,
             "connected": True,
             "access_level": connection_result.get("access_level", "public"),
             "league": {
-                "id": 1,
+                "id": user_league.id,
                 "league_name": league_info.get("league_name", f"ESPN League {request.league_id}"),
                 "league_key": str(request.league_id),
                 "platform": "ESPN",
@@ -157,7 +162,9 @@ async def connect_espn_league(request: ESPNConnectRequest):
             },
             "league_info": league_info
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to connect ESPN league: {str(e)}")
 
@@ -210,10 +217,30 @@ async def espn_diagnostics():
 
 
 @router.get("/")
-async def get_user_leagues():
-    """Get all leagues connected to the user"""
-    from app.utils.league_data_loader import get_all_user_leagues
-    return get_all_user_leagues()
+async def get_user_leagues(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get all leagues connected to the current user"""
+    user_service = UserService(db)
+    leagues = user_service.get_user_leagues(current_user.id)
+    return [
+        {
+            "id": league.id,
+            "league_name": league.league_name,
+            "league_key": league.league_key,
+            "platform": league.platform.value.upper(),
+            "scoring_format": league.scoring_format,
+            "league_size": league.league_size,
+            "season": league.season,
+            "is_active": league.is_active,
+            "team_id": league.team_id,
+            "user_id": league.user_id,
+            "is_commissioner": league.is_commissioner,
+            "added_at": league.added_at.isoformat() if league.added_at else None,
+        }
+        for league in leagues
+    ]
 
 
 @router.get("/{league_id}/analysis")
@@ -620,17 +647,38 @@ async def get_league_insights(
 
 
 @router.get("/{league_id}/roster-analysis")
-async def get_roster_analysis(league_id: int):
+async def get_roster_analysis(
+    league_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """Get detailed roster analysis using real ESPN data"""
     try:
-        # Get league info from our connected league data
-        from app.utils.league_data_loader import get_league_info
-        league_info = get_league_info(league_id)
-        
-        # If this is our connected ESPN league, try to get real roster data
-        if league_id == 1 and league_info.get("espn_league_id"):
+        # Look up this specific league in the current user's own connected
+        # leagues -- previously this read one shared file off disk, so every
+        # account (including brand-new ones) saw the same connected league.
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        league_info = {
+            "id": user_league.id,
+            "name": user_league.league_name,
+            "platform": user_league.platform.value.upper(),
+            "season": user_league.season,
+            "scoring_format": user_league.scoring_format,
+            "league_size": user_league.league_size,
+            "espn_league_id": user_league.league_id,
+            "espn_swid": user_league.espn_swid,
+            "espn_s2": user_league.espn_s2,
+        }
+
+        # If this is a connected ESPN league, try to get real roster data
+        if user_league.platform.value.upper() == "ESPN" and league_info.get("espn_league_id"):
             from app.services.espn_service_enhanced import espn_service_enhanced
-            
+
             try:
                 # Try to get your team roster for 2025 season
                 roster_data = await espn_service_enhanced.get_team_roster(
@@ -717,7 +765,9 @@ async def get_roster_analysis(league_id: int):
                 }
             }
         }
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get roster analysis: {str(e)}")
 

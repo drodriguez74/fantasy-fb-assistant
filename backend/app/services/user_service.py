@@ -184,13 +184,22 @@ class UserService:
             season=league_data.get('season', 2024),
             scoring_format=league_data.get('scoring_format'),
             league_size=league_data.get('league_size'),
-            is_commissioner=league_data.get('is_commissioner', False)
+            is_commissioner=league_data.get('is_commissioner', False),
+            espn_swid=league_data.get('espn_swid'),
+            espn_s2=league_data.get('espn_s2')
         )
-        
+
         self.db.add(user_league)
         self.db.commit()
         self.db.refresh(user_league)
         return user_league
+
+    def get_user_league(self, user_id: int, league_id: int) -> Optional[UserLeague]:
+        """Get a single league by its UserLeague row id, scoped to the owning user"""
+        return self.db.query(UserLeague).filter(
+            UserLeague.user_id == user_id,
+            UserLeague.id == league_id
+        ).first()
 
     def get_user_leagues(self, user_id: int) -> List[UserLeague]:
         """Get all leagues for a user"""
