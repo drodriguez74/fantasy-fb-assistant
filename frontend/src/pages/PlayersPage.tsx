@@ -15,6 +15,20 @@ interface PaginationInfo {
   previous_page?: number
 }
 
+// Semantic injury-status scale (healthy=green, questionable=amber,
+// out/doubtful/IR=red), matched by keyword so it holds up against the
+// backend's various casings/phrasings rather than one exact string.
+function injuryBadgeClasses(status: string): string {
+  const s = status.toUpperCase()
+  if (s.includes('OUT') || s === 'IR' || s.includes('DOUBTFUL') || s.includes('SUSPENDED') || s.includes('PUP')) {
+    return 'bg-danger-100 text-danger-800'
+  }
+  if (s.includes('QUESTIONABLE')) {
+    return 'bg-warning-100 text-warning-800'
+  }
+  return 'bg-success-100 text-success-800'
+}
+
 export function PlayersPage() {
   const [playerList, setPlayerList] = useState<Player[]>([])
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
@@ -62,7 +76,7 @@ export function PlayersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-500"></div>
       </div>
     )
   }
@@ -70,14 +84,14 @@ export function PlayersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Player Rankings</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold text-ink-900">Player Rankings</h1>
+        <p className="text-ink-600 mt-2">
           Comprehensive player analysis and PPR rankings
         </p>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded">
           {error}
         </div>
       )}
@@ -86,7 +100,7 @@ export function PlayersPage() {
         <select
           value={selectedPosition}
           onChange={(e) => setSelectedPosition(e.target.value as Position | '')}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
         >
           <option value="">All Positions</option>
           <option value="QB">QB</option>
@@ -100,7 +114,7 @@ export function PlayersPage() {
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as 'rank' | 'bye_week' | '')}
-          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
         >
           <option value="">Sort: Relevance</option>
           <option value="rank">Rank (ADP)</option>
@@ -112,16 +126,16 @@ export function PlayersPage() {
           placeholder="Search players..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
         />
 
-        <div className="flex rounded-md border border-gray-300">
+        <div className="flex rounded-md border border-ink-300">
           <button
             onClick={() => setViewMode('cards')}
             className={`px-3 py-2 text-sm font-medium rounded-l-md ${
               viewMode === 'cards'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+                ? 'bg-accent-500 text-white'
+                : 'bg-white text-ink-700 hover:bg-ink-50'
             }`}
           >
             Cards
@@ -130,8 +144,8 @@ export function PlayersPage() {
             onClick={() => setViewMode('table')}
             className={`px-3 py-2 text-sm font-medium rounded-r-md border-l ${
               viewMode === 'table'
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
+                ? 'bg-accent-500 text-white'
+                : 'bg-white text-ink-700 hover:bg-ink-50'
             }`}
           >
             Table
@@ -150,59 +164,61 @@ export function PlayersPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-ink-200">
+              <thead className="bg-ink-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Player
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Position
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Team
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Projected Points
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     ADP
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Bye Week
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-ink-200">
                 {filteredPlayers.map((player) => (
-                  <tr key={player.id} className="hover:bg-gray-50">
+                  <tr key={player.id} className="hover:bg-ink-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div>
-                          <div className="text-sm font-medium text-gray-900">{player.name}</div>
-                          {player.injury_status && player.injury_status !== 'Healthy' && (
-                            <div className="text-xs text-red-600">⚠️ {player.injury_status}</div>
+                          <div className="text-sm font-medium text-ink-900">{player.name}</div>
+                          {player.injury_status && player.injury_status.toUpperCase() !== 'HEALTHY' && (
+                            <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-xs font-medium ${injuryBadgeClasses(player.injury_status)}`}>
+                              {player.injury_status}
+                            </span>
                           )}
                         </div>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-medium bg-gray-100 text-gray-800 rounded-full">
+                      <span className="px-2 py-1 text-xs font-medium bg-ink-100 text-ink-800 rounded-full">
                         {player.position}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                       {player.team}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
                       {player.projected_points ? player.projected_points.toFixed(1) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                       {player.adp ? player.adp.toFixed(1) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                       {player.bye_week ? `Week ${player.bye_week}` : '-'}
                     </td>
                   </tr>
@@ -215,17 +231,17 @@ export function PlayersPage() {
 
       {filteredPlayers.length === 0 && !loading && (
         <div className="text-center py-12">
-          <p className="text-gray-500">No players found matching your criteria.</p>
+          <p className="text-ink-500">No players found matching your criteria.</p>
         </div>
       )}
 
       {/* Pagination Controls */}
       {pagination && pagination.total_pages > 1 && (
-        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-gray-200 sm:px-6">
+        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-ink-200 sm:px-6">
           <div className="flex-1 flex justify-between items-center">
-            <div className="flex items-center text-sm text-gray-700">
+            <div className="flex items-center text-sm text-ink-700">
               <span>
-                Showing page {pagination.current_page} of {pagination.total_pages} 
+                Showing page {pagination.current_page} of {pagination.total_pages}
                 ({pagination.total_count} total players)
               </span>
               <select
@@ -234,27 +250,27 @@ export function PlayersPage() {
                   setPageSize(Number(e.target.value))
                   setCurrentPage(1)
                 }}
-                className="ml-4 border-gray-300 rounded-md text-sm"
+                className="ml-4 border-ink-300 rounded-md text-sm"
               >
                 <option value={25}>25 per page</option>
                 <option value={50}>50 per page</option>
                 <option value={100}>100 per page</option>
               </select>
             </div>
-            
+
             <div className="flex items-center space-x-2">
               <button
                 onClick={() => setCurrentPage(pagination.previous_page!)}
                 disabled={!pagination.has_previous}
                 className={`relative inline-flex items-center px-2 py-2 rounded-l-md border text-sm font-medium ${
                   pagination.has_previous
-                    ? 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-                    : 'border-gray-300 bg-gray-100 text-gray-300 cursor-not-allowed'
+                    ? 'border-ink-300 bg-white text-ink-500 hover:bg-ink-50'
+                    : 'border-ink-300 bg-ink-100 text-ink-300 cursor-not-allowed'
                 }`}
               >
                 <ChevronLeftIcon className="h-5 w-5" />
               </button>
-              
+
               {/* Page Numbers */}
               <div className="flex items-center space-x-1">
                 {(() => {
@@ -263,20 +279,20 @@ export function PlayersPage() {
                   const startPage = Math.max(1, pagination.current_page - 2)
                   const endPage = Math.min(pagination.total_pages, startPage + maxPagesToShow - 1)
                   const adjustedStartPage = Math.max(1, endPage - maxPagesToShow + 1)
-                  
+
                   const pageNumbers = []
                   for (let i = adjustedStartPage; i <= endPage; i++) {
                     pageNumbers.push(i)
                   }
-                  
+
                   return pageNumbers.map((pageNum) => (
                     <button
                       key={pageNum}
                       onClick={() => setCurrentPage(pageNum)}
                       className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                         pageNum === pagination.current_page
-                          ? 'z-10 bg-blue-50 border-blue-500 text-blue-600'
-                          : 'bg-white border-gray-300 text-gray-500 hover:bg-gray-50'
+                          ? 'z-10 bg-accent-50 border-accent-500 text-accent-600'
+                          : 'bg-white border-ink-300 text-ink-500 hover:bg-ink-50'
                       }`}
                     >
                       {pageNum}
@@ -284,14 +300,14 @@ export function PlayersPage() {
                   ))
                 })()}
               </div>
-              
+
               <button
                 onClick={() => setCurrentPage(pagination.next_page!)}
                 disabled={!pagination.has_next}
                 className={`relative inline-flex items-center px-2 py-2 rounded-r-md border text-sm font-medium ${
                   pagination.has_next
-                    ? 'border-gray-300 bg-white text-gray-500 hover:bg-gray-50'
-                    : 'border-gray-300 bg-gray-100 text-gray-300 cursor-not-allowed'
+                    ? 'border-ink-300 bg-white text-ink-500 hover:bg-ink-50'
+                    : 'border-ink-300 bg-ink-100 text-ink-300 cursor-not-allowed'
                 }`}
               >
                 <ChevronRightIcon className="h-5 w-5" />

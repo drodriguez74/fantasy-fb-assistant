@@ -194,8 +194,8 @@ export function DraftPage() {
     return (
       <div className="flex items-center justify-center h-96">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-2 text-gray-600">Loading draft data...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-500 mx-auto"></div>
+          <p className="mt-2 text-ink-600">Loading draft data...</p>
         </div>
       </div>
     )
@@ -204,12 +204,12 @@ export function DraftPage() {
   return (
     <div className="space-y-6">
       {showWelcome && (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start justify-between gap-4">
-          <p className="text-sm text-blue-900">
+        <div className="bg-accent-50 border border-accent-200 rounded-lg p-4 flex items-start justify-between gap-4">
+          <p className="text-sm text-accent-900">
             <span className="font-semibold">Welcome!</span> Here's a live look at AI draft
             recommendations below, built from real player data -- try adjusting the settings
             on the right to see them change. These aren't tied to a specific league yet;{' '}
-            <Link to="/leagues" className="font-medium underline hover:text-blue-700">
+            <Link to="/leagues" className="font-medium underline hover:text-accent-700">
               connect your league
             </Link>{' '}
             to get advice based on your actual roster and draft slot.
@@ -217,7 +217,7 @@ export function DraftPage() {
           <button
             type="button"
             onClick={dismissWelcome}
-            className="text-blue-400 hover:text-blue-600 shrink-0"
+            className="text-accent-400 hover:text-accent-600 shrink-0"
             aria-label="Dismiss welcome message"
           >
             <XMarkIcon className="w-5 h-5" />
@@ -226,8 +226,8 @@ export function DraftPage() {
       )}
 
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Draft Assistant</h1>
-        <p className="text-gray-600 mt-2">
+        <h1 className="text-3xl font-bold text-ink-900">Draft Assistant</h1>
+        <p className="text-ink-600 mt-2">
           AI-powered draft recommendations optimized for {settings.scoringFormat} scoring
         </p>
       </div>
@@ -235,51 +235,51 @@ export function DraftPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* AI Recommendations */}
-          <div className="card">
+          <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">AI Recommendations</h2>
-              <span className="text-sm text-gray-500">
+              <h2 className="text-xl font-semibold text-ink-900">AI Recommendations</h2>
+              <span className="text-sm text-ink-500">
                 Round {currentRound}, Pick {getCurrentPick()}
               </span>
             </div>
-            
+
             <div className="space-y-3">
               {recommendations.length > 0 ? recommendations.map((rec, index) => (
-                <div key={`rec-${rec.player_name}-${index}`} className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+                <div key={`rec-${rec.player_name}-${index}`} className="flex items-center justify-between p-4 bg-accent-50 rounded-lg border border-accent-200">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium text-gray-900">{rec.player_name}</span>
-                      <span className="text-sm text-gray-500">{rec.position}</span>
-                      <StarIcon className="w-4 h-4 text-yellow-500" />
+                      <span className="font-medium text-ink-900">{rec.player_name}</span>
+                      <span className="text-sm text-ink-500">{rec.position}</span>
+                      <StarIcon className="w-4 h-4 text-accent-500" />
                     </div>
-                    <p className="text-sm text-gray-700">{rec.reasoning}</p>
+                    <p className="text-sm text-ink-700">{rec.reasoning}</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-sm font-medium text-green-600">
+                    <div className="text-sm font-medium text-success-700">
                       {rec.confidence}% confidence
                     </div>
                     <button
                       onClick={() => {
-                        const player = availablePlayers.find(p => 
-                          p.full_name === rec.player_name || 
+                        const player = availablePlayers.find(p =>
+                          p.full_name === rec.player_name ||
                           p.full_name.includes(rec.player_name)
                         )
                         if (player) draftPlayer(player)
                       }}
-                      className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                      className="mt-2 px-3 py-1 bg-accent-500 text-white text-xs rounded hover:bg-accent-600 transition-colors"
                     >
                       Draft
                     </button>
                   </div>
                 </div>
               )) : recommendationsError ? (
-                <div className="text-center py-8 text-red-600">
+                <div className="text-center py-8 text-danger-600">
                   <p>{recommendationsError}</p>
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
+                <div className="text-center py-8 text-ink-500">
                   <p>Configure your draft settings to get AI recommendations</p>
                 </div>
               )}
@@ -287,30 +287,30 @@ export function DraftPage() {
           </div>
 
           {/* Available Players */}
-          <div className="card">
+          <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">Available Players</h2>
-              <select 
+              <h2 className="text-xl font-semibold text-ink-900">Available Players</h2>
+              <select
                 value={selectedPosition}
                 onChange={(e) => setSelectedPosition(e.target.value)}
-                className="rounded-md border-gray-300 text-sm"
+                className="rounded-md border-ink-300 text-sm focus:border-accent-500 focus:ring-accent-500"
               >
                 {positions.map(pos => (
                   <option key={pos} value={pos}>{pos}</option>
                 ))}
               </select>
             </div>
-            
+
             <div className="max-h-96 overflow-y-auto">
               <div className="space-y-2">
                 {availableFilteredPlayers.slice(0, 50).map((player) => (
-                  <div key={player.sleeper_id} className="flex items-center justify-between p-3 bg-gray-50 rounded-md hover:bg-gray-100">
+                  <div key={player.sleeper_id} className="flex items-center justify-between p-3 bg-ink-50 rounded-md hover:bg-ink-100 transition-colors">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium">{player.full_name}</span>
-                        <span className="text-sm text-gray-500">{player.position} - {player.team}</span>
+                        <span className="font-medium text-ink-900">{player.full_name}</span>
+                        <span className="text-sm text-ink-500">{player.position} - {player.team}</span>
                         {trendingPlayers.some(tp => tp.sleeper_id === player.sleeper_id) && (
-                          <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                          <span className="text-xs bg-success-100 text-success-800 px-2 py-1 rounded">
                             Trending
                           </span>
                         )}
@@ -319,12 +319,12 @@ export function DraftPage() {
                     <div className="flex items-center gap-3">
                       {player.projected_points && (
                         <div className="text-right">
-                          <div className="text-sm font-medium">Proj: {player.projected_points}</div>
+                          <div className="text-sm font-medium text-ink-900">Proj: {player.projected_points}</div>
                         </div>
                       )}
                       <button
                         onClick={() => draftPlayer(player)}
-                        className="p-1 text-blue-600 hover:text-blue-800"
+                        className="p-1 text-accent-600 hover:text-accent-800"
                         title="Draft player"
                       >
                         <PlusIcon className="w-5 h-5" />
@@ -339,19 +339,19 @@ export function DraftPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          
+
           {/* Draft Settings */}
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">Draft Settings</h2>
+          <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6">
+            <h2 className="text-lg font-semibold mb-4 text-ink-900">Draft Settings</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-ink-700 mb-1">
                   Scoring Format
                 </label>
-                <select 
+                <select
                   value={settings.scoringFormat}
                   onChange={(e) => setSettings({...settings, scoringFormat: e.target.value as DraftSettings['scoringFormat']})}
-                  className="w-full rounded-md border-gray-300"
+                  className="w-full rounded-md border-ink-300 focus:border-accent-500 focus:ring-accent-500"
                 >
                   <option value="PPR">PPR</option>
                   <option value="Half PPR">Half PPR</option>
@@ -360,13 +360,13 @@ export function DraftPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-ink-700 mb-1">
                   Team Count
                 </label>
-                <select 
+                <select
                   value={settings.teamCount}
                   onChange={(e) => setSettings({...settings, teamCount: Number(e.target.value)})}
-                  className="w-full rounded-md border-gray-300"
+                  className="w-full rounded-md border-ink-300 focus:border-accent-500 focus:ring-accent-500"
                 >
                   <option value={8}>8 Teams</option>
                   <option value={10}>10 Teams</option>
@@ -376,13 +376,13 @@ export function DraftPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-ink-700 mb-1">
                   Your Draft Position
                 </label>
-                <select 
+                <select
                   value={settings.draftPosition}
                   onChange={(e) => setSettings({...settings, draftPosition: Number(e.target.value)})}
-                  className="w-full rounded-md border-gray-300"
+                  className="w-full rounded-md border-ink-300 focus:border-accent-500 focus:ring-accent-500"
                 >
                   {Array.from({length: settings.teamCount}, (_, i) => (
                     <option key={i + 1} value={i + 1}>Position {i + 1}</option>
@@ -392,7 +392,7 @@ export function DraftPage() {
 
               <button
                 onClick={generateRecommendations}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+                className="w-full bg-accent-500 text-white py-2 px-4 rounded-md hover:bg-accent-600 transition-colors"
               >
                 Refresh Recommendations
               </button>
@@ -400,21 +400,21 @@ export function DraftPage() {
           </div>
 
           {/* Your Team */}
-          <div className="card">
-            <h2 className="text-lg font-semibold mb-4">
+          <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6">
+            <h2 className="text-lg font-semibold mb-4 text-ink-900">
               Your Team ({draftedPlayers.length})
             </h2>
-            
+
             {draftedPlayers.length > 0 ? (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {draftedPlayers.map((player) => (
-                  <div key={`drafted-${player.sleeper_id}-${player.round}-${player.pick}`} className="p-2 bg-green-50 rounded border border-green-200">
+                  <div key={`drafted-${player.sleeper_id}-${player.round}-${player.pick}`} className="p-2 bg-success-50 rounded border border-success-200">
                     <div className="flex items-center justify-between">
                       <div>
-                        <span className="font-medium text-sm">{player.full_name}</span>
-                        <span className="text-xs text-gray-500 ml-2">{player.position}</span>
+                        <span className="font-medium text-sm text-ink-900">{player.full_name}</span>
+                        <span className="text-xs text-ink-500 ml-2">{player.position}</span>
                       </div>
-                      <span className="text-xs text-gray-600">
+                      <span className="text-xs text-ink-600">
                         R{player.round}P{player.pick}
                       </span>
                     </div>
@@ -423,10 +423,10 @@ export function DraftPage() {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-gray-500 text-sm">
+                <p className="text-ink-500 text-sm">
                   Your drafted players will appear here
                 </p>
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-ink-400 mt-1">
                   Click the + button next to players to draft them
                 </p>
               </div>
@@ -438,7 +438,7 @@ export function DraftPage() {
                   setDraftedPlayers([])
                   setCurrentRound(1)
                 }}
-                className="w-full mt-4 text-sm text-gray-600 hover:text-gray-800"
+                className="w-full mt-4 text-sm text-ink-600 hover:text-ink-800"
               >
                 Reset Draft
               </button>
@@ -447,11 +447,11 @@ export function DraftPage() {
 
           {/* Team Needs */}
           {draftedPlayers.length > 0 && (
-            <div className="card">
-              <h2 className="text-lg font-semibold mb-2">Team Needs</h2>
+            <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6">
+              <h2 className="text-lg font-semibold mb-2 text-ink-900">Team Needs</h2>
               <div className="flex flex-wrap gap-2">
                 {getTeamNeeds().map(need => (
-                  <span key={need} className="px-2 py-1 bg-orange-100 text-orange-800 text-xs rounded">
+                  <span key={need} className="px-2 py-1 bg-warning-100 text-warning-800 text-xs rounded">
                     {need}
                   </span>
                 ))}
