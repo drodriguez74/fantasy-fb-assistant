@@ -83,32 +83,35 @@ async def get_waiver_recommendations(
     week: int = Query(..., description="NFL week number"),
     season: int = Query(2025, description="NFL season"),
     position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE)"),
+    priority: Optional[str] = Query(None, description="Filter by priority (urgent, high, medium, low, watch)"),
     limit: int = Query(20, description="Maximum recommendations to return"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get waiver wire recommendations for a specific week"""
+    """Get waiver wire recommendations for a specific week.
+
+    Sourced from Sleeper's live trending-add feed rather than the local
+    Player/WaiverWireRecommendation tables, which have no ingestion pipeline
+    behind them and are empty for a fresh deployment -- see
+    WaiverWireService.get_live_trending_recommendations for details.
+    """
     try:
         waiver_service = WaiverWireService(db)
-        
-        if position:
-            recommendations = await waiver_service.get_recommendations_by_position(
-                position.upper(), week, season, limit
-            )
-        else:
-            recommendations = await waiver_service.generate_weekly_recommendations(
-                week, season, limit
-            )
-        
+
+        recommendations = await waiver_service.get_live_trending_recommendations(
+            position=position, priority=priority, limit=limit
+        )
+
         return {
             "week": week,
             "season": season,
             "position_filter": position,
+            "priority_filter": priority,
             "recommendations": recommendations,
             "total_found": len(recommendations),
             "generated_at": datetime.utcnow().isoformat()
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get waiver recommendations: {str(e)}")
 

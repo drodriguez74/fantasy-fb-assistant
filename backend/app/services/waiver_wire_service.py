@@ -23,6 +23,23 @@ from app.services.matchup_analysis_service import MatchupAnalysisService
 logger = logging.getLogger(__name__)
 
 
+def _is_rosterable_player(player_data: Dict[str, Any]) -> bool:
+    """Determine whether a Sleeper player record represents someone currently
+    on an active NFL roster (i.e. not retired/free agent/practice squad cut).
+
+    Mirrors the fix applied to the Draft Assistant's positional-rankings
+    endpoint for this same underlying data source: Sleeper's `status` field
+    alone is unreliable (long-retired players like Frank Gore or Adrian
+    Peterson are still tagged `status: "Active"`), but they also carry
+    `team: null` once they're off an NFL roster, so require both.
+    """
+    return bool(player_data.get("team")) and player_data.get("status") == "Active"
+
+
+# Fantasy-relevant positions we're willing to recommend off the waiver wire.
+_WAIVER_ELIGIBLE_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
+
+
 class WaiverWireService:
     """Intelligent waiver wire analysis and recommendations"""
     
@@ -84,6 +101,140 @@ class WaiverWireService:
             logger.error(f"Error generating waiver recommendations: {str(e)}")
             return []
     
+    async def get_live_trending_recommendations(
+        self,
+        position: Optional[str] = None,
+        priority: Optional[str] = None,
+        limit: int = 20
+    ) -> List[Dict[str, Any]]:
+        """Real waiver-add recommendations sourced from Sleeper's live
+        trending-add feed (players actually being added across real fantasy
+        leagues in the last 24 hours).
+
+        `generate_weekly_recommendations` above sources candidates from the
+        local `Player` table, requiring `updated_at` within the last 14 days.
+        That table has no ingestion pipeline behind it -- it's essentially
+        empty/stale in a fresh deployment (14 rows total, none updated
+        recently), so that path returns nothing for any real user, which is
+        why the Recommendations tab shows "No recommendations found" even
+        with the widest possible filters. This method draws instead from the
+        same live Sleeper source already used successfully elsewhere in the
+        app (Draft Assistant trending candidates / positional rankings).
+        """
+        try:
+            # Over-fetch: some trending adds will be filtered out by the
+            # active-roster check or an optional position filter.
+            pool_size = max(limit * 5, 100)
+            trending = await self.sleeper_service.get_trending_players("add", 24, pool_size)
+
+            if trending and isinstance(trending[0], dict) and "error" in trending[0]:
+                logger.error(f"Sleeper trending-add lookup failed: {trending[0]['error']}")
+                return []
+
+            all_players = await self.sleeper_service.get_all_players()
+            if isinstance(all_players, dict) and "error" in all_players:
+                logger.error(f"Sleeper player lookup failed: {all_players['error']}")
+                return []
+
+            target_position = position.upper() if position else None
+
+            candidates = []
+            for entry in trending:
+                sleeper_id = entry.get("player_id")
+                add_count = entry.get("count", 0)
+                player_data = all_players.get(sleeper_id)
+
+                if not player_data or not _is_rosterable_player(player_data):
+                    continue
+
+                player_position = player_data.get("position")
+                if player_position not in _WAIVER_ELIGIBLE_POSITIONS:
+                    continue
+                if target_position and player_position != target_position:
+                    continue
+
+                candidates.append((sleeper_id, player_data, add_count))
+
+            if not candidates:
+                return []
+
+            # Sleeper returns trending entries pre-sorted by count, but sort
+            # explicitly since filtering doesn't guarantee order is preserved
+            # in every runtime.
+            candidates.sort(key=lambda c: c[2], reverse=True)
+
+            max_add_count = candidates[0][2] or 1
+            total = len(candidates)
+
+            recommendations = []
+            for rank, (sleeper_id, player_data, add_count) in enumerate(candidates):
+                rec_priority = self._priority_from_rank(rank, total)
+
+                if priority and rec_priority != priority.lower():
+                    continue
+
+                try:
+                    player_id = int(sleeper_id)
+                except (TypeError, ValueError):
+                    player_id = sleeper_id
+
+                name = player_data.get("full_name") or " ".join(
+                    filter(None, [player_data.get("first_name"), player_data.get("last_name")])
+                ) or "Unknown Player"
+
+                # Confidence is a real, deterministic function of the actual
+                # Sleeper add-count data (this player's adds relative to the
+                # single most-added player in today's pool) -- not a flat or
+                # templated value.
+                confidence = round(add_count / max_add_count, 3)
+
+                recommendations.append({
+                    'player_id': player_id,
+                    'player_name': name,
+                    'position': player_data.get('position'),
+                    'team': player_data.get('team'),
+                    'recommendation_type': RecommendationType.ADD.value,
+                    'priority': rec_priority,
+                    'confidence_score': confidence,
+                    'reason': (
+                        f"Trending add: {add_count:,} adds across Sleeper fantasy "
+                        f"leagues in the last 24 hours."
+                    ),
+                    'projected_points': None,
+                    'ownership_percentage': None,
+                    'trend_direction': 'up',
+                    'add_count_24h': add_count,
+                })
+
+                if len(recommendations) >= limit:
+                    break
+
+            return recommendations
+
+        except Exception as e:
+            logger.error(f"Error getting live trending waiver recommendations: {str(e)}")
+            return []
+
+    @staticmethod
+    def _priority_from_rank(rank: int, total: int) -> str:
+        """Bucket a player into a priority tier based on where their real
+        Sleeper add-count ranks within today's live trending pool (top 10% =
+        urgent, next 20% = high, next 30% = medium, next 25% = low, rest =
+        watch). Percentile-based rather than a fixed count threshold, since
+        raw add volumes shift a lot with the time of year.
+        """
+        percentile = rank / total
+        if percentile < 0.10:
+            return Priority.URGENT.value
+        elif percentile < 0.30:
+            return Priority.HIGH.value
+        elif percentile < 0.60:
+            return Priority.MEDIUM.value
+        elif percentile < 0.85:
+            return Priority.LOW.value
+        else:
+            return Priority.WATCH.value
+
     async def _evaluate_player_for_waiver(
         self, 
         player: Player, 

@@ -234,7 +234,7 @@ export const historical = {
 
 // Waiver wire endpoints
 export const waiverWire = {
-  getRecommendations: (params: { week: number; season?: number; position?: string; limit?: number }) =>
+  getRecommendations: (params: { week: number; season?: number; position?: string; priority?: string; limit?: number }) =>
     api.get('/waiver-wire/recommendations', { params }),
   
   getRecommendationsByPriority: (priority: string, params: { week: number; season?: number; limit?: number }) =>

@@ -24,8 +24,8 @@ interface WaiverRecommendation {
   priority: string
   confidence_score: number
   reason: string
-  projected_points: number
-  ownership_percentage: number
+  projected_points: number | null
+  ownership_percentage: number | null
   trend_direction: string
   component_scores?: {
     performance: number
@@ -121,9 +121,12 @@ export function WaiverWirePage() {
       setLoading(true)
       setError('')
 
-      const params: { week: number; position?: string } = { week: currentWeek }
+      const params: { week: number; position?: string; priority?: string } = { week: currentWeek }
       if (selectedPosition) {
         params.position = selectedPosition
+      }
+      if (selectedPriority) {
+        params.priority = selectedPriority
       }
 
       const response = await waiverWire.getRecommendations(params)
@@ -133,7 +136,7 @@ export function WaiverWirePage() {
     } finally {
       setLoading(false)
     }
-  }, [currentWeek, selectedPosition])
+  }, [currentWeek, selectedPosition, selectedPriority])
 
   const loadTrendingPlayers = useCallback(async () => {
     try {
@@ -433,7 +436,9 @@ export function WaiverWirePage() {
                         </div>
                         <div>
                           <span className="font-medium text-gray-700">Ownership:</span>
-                          <span className="ml-2">{rec.ownership_percentage?.toFixed(1) || 0}%</span>
+                          <span className="ml-2">
+                            {rec.ownership_percentage != null ? `${rec.ownership_percentage.toFixed(1)}%` : 'N/A'}
+                          </span>
                         </div>
                         <div className="flex items-center">
                           <span className="font-medium text-gray-700">Trend:</span>
