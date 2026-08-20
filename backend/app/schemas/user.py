@@ -102,7 +102,6 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     is_active: bool
     is_verified: bool
-    is_premium: bool
     avatar_url: Optional[str]
     bio: Optional[str]
     timezone: str
@@ -123,7 +122,6 @@ class UserPublic(BaseModel):
     full_name: Optional[str]
     avatar_url: Optional[str]
     bio: Optional[str]
-    is_premium: bool
     created_at: datetime
     
     class Config:
@@ -151,7 +149,6 @@ class UserStats(BaseModel):
     completed_drafts: int
     member_since: datetime
     last_login: Optional[datetime]
-    is_premium: bool
 
 
 # League Addition

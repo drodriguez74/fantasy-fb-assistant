@@ -37,8 +37,7 @@ def create_initial_data() -> None:
                 full_name="System Administrator",
                 is_active=True,
                 is_verified=True,
-                is_superuser=True,
-                is_premium=True
+                is_superuser=True
             )
             db.add(superuser)
             print("✅ Created superuser: admin@fantasyfootball.com / admin123")

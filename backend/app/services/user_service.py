@@ -292,6 +292,5 @@ class UserService:
             'total_drafts': total_drafts,
             'completed_drafts': completed_drafts,
             'member_since': user.created_at,
-            'last_login': user.last_login,
-            'is_premium': user.is_premium
+            'last_login': user.last_login
         }

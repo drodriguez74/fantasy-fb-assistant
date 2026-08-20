@@ -6,7 +6,6 @@ export type User = {
   full_name?: string
   is_active: boolean
   is_verified: boolean
-  is_premium: boolean
   avatar_url?: string
   bio?: string
   timezone?: string
