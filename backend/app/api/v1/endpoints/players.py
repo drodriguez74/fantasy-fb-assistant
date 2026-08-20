@@ -14,15 +14,31 @@ from app.services.historical_data_service import HistoricalDataService
 
 router = APIRouter()
 
+# Sleeper uses 9999999 as a sentinel for "unranked" players (see the
+# positional-rankings fix in draft.py); treat missing search_rank the same
+# way so unranked players sort to the bottom instead of the top.
+_UNRANKED_SENTINEL = 9999999
+
+_VALID_SORTS = ("rank", "bye_week")
+
 
 @router.get("/")
 async def get_players(
     position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE, K, DEF)"),
+    sort: Optional[str] = Query(
+        None,
+        description="Sort order: 'rank' (Sleeper search_rank ascending, ADP proxy) or "
+                     "'bye_week' (ascending, players with no bye week sort last). "
+                     "Defaults to the existing relevance sort (rostered players first, then search_rank)."
+    ),
     page: int = Query(1, description="Page number (1-based)", ge=1),
     page_size: int = Query(50, description="Number of players per page", ge=1, le=200)
 ):
     """Get all NFL players with optional position filtering"""
     try:
+        if sort is not None and sort not in _VALID_SORTS:
+            raise HTTPException(status_code=400, detail=f"Invalid sort. Must be one of: {list(_VALID_SORTS)}")
+
         all_players = await sleeper_service.get_all_players()
         
         if "error" in all_players:
@@ -66,15 +82,32 @@ async def get_players(
                     
                 players_list.append(transformed_player)
         
-        # Sort by relevance (players with teams first, then by search rank)
-        def sort_key(player):
-            has_team = 1 if player["team"] != "FA" else 2
-            # Get search rank from original data if available
-            original_data = all_players.get(player["sleeper_id"], {})
-            search_rank = original_data.get("search_rank") or 9999999
-            return (has_team, search_rank)
-        
-        players_list.sort(key=sort_key)
+        if sort == "rank":
+            # Rank by Sleeper's own search_rank (ADP proxy), ascending. Missing/
+            # unranked players use Sleeper's sentinel so they sort last, not first.
+            def rank_sort_key(player):
+                original_data = all_players.get(player["sleeper_id"], {})
+                return original_data.get("search_rank") or _UNRANKED_SENTINEL
+
+            players_list.sort(key=rank_sort_key)
+        elif sort == "bye_week":
+            # Ascending by bye week; players with no bye week data (None) sort last
+            # instead of first or raising on the None/int comparison.
+            def bye_week_sort_key(player):
+                bye_week = player["bye_week"]
+                return (bye_week is None, bye_week if bye_week is not None else 0)
+
+            players_list.sort(key=bye_week_sort_key)
+        else:
+            # Default: sort by relevance (players with teams first, then by search rank)
+            def sort_key(player):
+                has_team = 1 if player["team"] != "FA" else 2
+                # Get search rank from original data if available
+                original_data = all_players.get(player["sleeper_id"], {})
+                search_rank = original_data.get("search_rank") or _UNRANKED_SENTINEL
+                return (has_team, search_rank)
+
+            players_list.sort(key=sort_key)
         
         # Apply pagination
         total_count = len(players_list)
@@ -100,6 +133,8 @@ async def get_players(
                 "previous_page": page - 1 if has_previous else None
             }
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get players: {str(e)}")
 

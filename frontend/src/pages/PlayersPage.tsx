@@ -21,20 +21,22 @@ export function PlayersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedPosition, setSelectedPosition] = useState<Position | ''>('')
+  const [sort, setSort] = useState<'rank' | 'bye_week' | ''>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
 
   useEffect(() => {
-    setCurrentPage(1) // Reset to first page when position changes
-  }, [selectedPosition])
+    setCurrentPage(1) // Reset to first page when position or sort changes
+  }, [selectedPosition, sort])
 
   const loadPlayers = useCallback(async () => {
     try {
       setLoading(true)
       const params = {
         ...(selectedPosition ? { position: selectedPosition } : {}),
+        ...(sort ? { sort } : {}),
         page: currentPage,
         page_size: pageSize
       }
@@ -46,7 +48,7 @@ export function PlayersPage() {
     } finally {
       setLoading(false)
     }
-  }, [selectedPosition, currentPage, pageSize])
+  }, [selectedPosition, sort, currentPage, pageSize])
 
   useEffect(() => {
     loadPlayers()
@@ -93,6 +95,16 @@ export function PlayersPage() {
           <option value="TE">TE</option>
           <option value="K">K</option>
           <option value="DEF">DEF</option>
+        </select>
+
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as 'rank' | 'bye_week' | '')}
+          className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Sort: Relevance</option>
+          <option value="rank">Rank (ADP)</option>
+          <option value="bye_week">Bye Week</option>
         </select>
 
         <input

@@ -54,8 +54,15 @@ export function PlayerCard({ player, onClick, showDetails = false, isDraftMode =
             )}
           </div>
           
-          <p className="text-sm text-gray-600 mb-2">{player.team}</p>
-          
+          <p className="text-sm text-gray-600 mb-2 flex items-center gap-2">
+            <span>{player.team}</span>
+            {player.bye_week && (
+              <span className="px-1.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 rounded">
+                Bye: {player.bye_week}
+              </span>
+            )}
+          </p>
+
           {showDetails && (
             <div className="space-y-2">
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -69,12 +76,6 @@ export function PlayerCard({ player, onClick, showDetails = false, isDraftMode =
                   <div>
                     <span className="text-gray-500">ADP:</span>
                     <span className="ml-1 font-medium">{player.adp.toFixed(1)}</span>
-                  </div>
-                )}
-                {player.bye_week && (
-                  <div>
-                    <span className="text-gray-500">Bye:</span>
-                    <span className="ml-1 font-medium">Week {player.bye_week}</span>
                   </div>
                 )}
                 {player.risk_level && (
