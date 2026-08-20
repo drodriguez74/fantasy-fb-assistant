@@ -175,7 +175,7 @@ export function LeaguesPage() {
   if (!user) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Please log in to manage your fantasy leagues.</p>
+        <p className="text-ink-500">Please log in to manage your fantasy leagues.</p>
       </div>
     )
   }
@@ -184,76 +184,76 @@ export function LeaguesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">My Fantasy Leagues</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="text-3xl font-bold text-ink-900">My Fantasy Leagues</h1>
+          <p className="text-ink-600 mt-2">
             Connect your fantasy leagues to get AI-powered insights
           </p>
         </div>
-        
+
         <div className="flex space-x-3">
           <button
             onClick={connectYahooLeague}
             disabled={connecting}
-            className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2"
+            className="inline-flex items-center space-x-2 rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-900 shadow-sm transition-colors hover:bg-ink-50 disabled:opacity-50"
           >
             {connecting ? (
               <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-ink-400"></div>
                 <span>Connecting...</span>
               </>
             ) : (
               <>
-                <span className="font-bold">Y!</span>
+                <span className="flex h-5 w-5 items-center justify-center rounded bg-[#6001d2] text-[11px] font-bold text-white">Y!</span>
                 <span>Yahoo</span>
               </>
             )}
           </button>
-          
+
           <button
             onClick={() => setShowEspnModal(true)}
             disabled={connecting}
-            className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center space-x-2"
+            className="inline-flex items-center space-x-2 rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-900 shadow-sm transition-colors hover:bg-ink-50 disabled:opacity-50"
           >
-            <span className="font-bold">ESPN</span>
+            <span className="flex h-5 w-5 items-center justify-center rounded bg-[#d00e35] text-[9px] font-bold text-white">ESPN</span>
             <span>Connect</span>
           </button>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded">
           {error}
         </div>
       )}
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-500"></div>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {userLeagues.length === 0 ? (
             <div className="col-span-full text-center py-12">
-              <div className="text-gray-400 text-6xl mb-4">🏈</div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">No Leagues Connected</h3>
-              <p className="text-gray-500 mb-6">
+              <div className="text-ink-400 text-6xl mb-4">🏈</div>
+              <h3 className="text-xl font-semibold text-ink-900 mb-2">No Leagues Connected</h3>
+              <p className="text-ink-500 mb-6">
                 Connect your fantasy leagues from Yahoo or ESPN to get started with AI-powered analysis
               </p>
               <div className="flex space-x-3 justify-center">
                 <button
                   onClick={connectYahooLeague}
                   disabled={connecting}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2"
+                  className="inline-flex items-center space-x-2 rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-900 shadow-sm transition-colors hover:bg-ink-50 disabled:opacity-50"
                 >
-                  <span className="font-bold">Y!</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-[#6001d2] text-[11px] font-bold text-white">Y!</span>
                   <span>Yahoo</span>
                 </button>
                 <button
                   onClick={() => setShowEspnModal(true)}
                   disabled={connecting}
-                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 flex items-center space-x-2"
+                  className="inline-flex items-center space-x-2 rounded-lg border border-ink-200 bg-white px-4 py-2 text-sm font-medium text-ink-900 shadow-sm transition-colors hover:bg-ink-50 disabled:opacity-50"
                 >
-                  <span className="font-bold">ESPN</span>
+                  <span className="flex h-5 w-5 items-center justify-center rounded bg-[#d00e35] text-[9px] font-bold text-white">ESPN</span>
                   <span>Connect</span>
                 </button>
               </div>
@@ -262,30 +262,30 @@ export function LeaguesPage() {
             userLeagues.map((league) => (
               <div
                 key={league.id}
-                className="bg-white rounded-lg shadow-sm border p-6 hover:shadow-md transition-shadow"
+                className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center space-x-2">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      league.platform === 'YAHOO' ? 'bg-purple-100' :
-                      league.platform === 'ESPN' ? 'bg-red-100' : 'bg-gray-100'
+                      league.platform === 'YAHOO' ? 'bg-[#6001d2]' :
+                      league.platform === 'ESPN' ? 'bg-[#d00e35]' : 'bg-ink-100'
                     }`}>
                       {league.platform === 'YAHOO' ? (
-                        <span className="text-purple-600 font-bold">Y!</span>
+                        <span className="text-white font-bold">Y!</span>
                       ) : league.platform === 'ESPN' ? (
-                        <span className="text-red-600 font-bold text-xs">ESPN</span>
+                        <span className="text-white font-bold text-xs">ESPN</span>
                       ) : (
-                        <span className="text-gray-600">🏈</span>
+                        <span className="text-ink-600">🏈</span>
                       )}
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{league.league_name}</h3>
-                      <p className="text-sm text-gray-500">{league.platform} • {league.season}</p>
+                      <h3 className="font-semibold text-ink-900">{league.league_name}</h3>
+                      <p className="text-sm text-ink-500">{league.platform} • {league.season}</p>
                     </div>
                   </div>
-                  
+
                   {league.is_commissioner && (
-                    <span className="px-2 py-1 text-xs font-medium bg-yellow-100 text-yellow-800 rounded-full">
+                    <span className="px-2 py-1 text-xs font-medium bg-accent-100 text-accent-800 rounded-full">
                       Commissioner
                     </span>
                   )}
@@ -293,31 +293,31 @@ export function LeaguesPage() {
 
                 <div className="grid grid-cols-2 gap-4 text-sm mb-4">
                   <div>
-                    <span className="text-gray-500">Teams:</span>
-                    <span className="ml-1 font-medium">{league.league_size || 'N/A'}</span>
+                    <span className="text-ink-500">Teams:</span>
+                    <span className="ml-1 font-medium text-ink-900">{league.league_size || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="text-gray-500">Scoring:</span>
-                    <span className="ml-1 font-medium">{league.scoring_format || 'Standard'}</span>
+                    <span className="text-ink-500">Scoring:</span>
+                    <span className="ml-1 font-medium text-ink-900">{league.scoring_format || 'Standard'}</span>
                   </div>
                 </div>
 
                 <div className="flex space-x-2">
                   <button
                     onClick={() => navigate(`/leagues/${league.id}`)}
-                    className="flex-1 bg-blue-600 text-white px-3 py-2 rounded text-sm hover:bg-blue-700"
+                    className="flex-1 bg-accent-500 text-white px-3 py-2 rounded text-sm hover:bg-accent-600 transition-colors"
                   >
                     View Analysis
                   </button>
                   <button
                     onClick={() => navigate(`/leagues/${league.id}?tab=standings`)}
-                    className="flex-1 bg-gray-100 text-gray-700 px-3 py-2 rounded text-sm hover:bg-gray-200"
+                    className="flex-1 bg-ink-100 text-ink-700 px-3 py-2 rounded text-sm hover:bg-ink-200 transition-colors"
                   >
                     Standings
                   </button>
                   <button
                     onClick={() => disconnectLeague(league.id)}
-                    className="px-3 py-2 bg-red-100 text-red-600 rounded text-sm hover:bg-red-200"
+                    className="px-3 py-2 bg-danger-100 text-danger-600 rounded text-sm hover:bg-danger-200 transition-colors"
                   >
                     ✕
                   </button>
@@ -329,10 +329,10 @@ export function LeaguesPage() {
       )}
 
       {/* Instructions */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-        <h3 className="font-semibold text-blue-900 mb-2">🤖 AI-Powered League Analysis</h3>
-        <p className="text-blue-800 text-sm">
-          Once connected, you'll get personalized insights including roster analysis, 
+      <div className="bg-accent-50 border border-accent-200 rounded-lg p-6">
+        <h3 className="font-semibold text-accent-900 mb-2">🤖 AI-Powered League Analysis</h3>
+        <p className="text-accent-800 text-sm">
+          Once connected, you'll get personalized insights including roster analysis,
           start/sit recommendations, waiver wire targets, and trade suggestions powered by AI.
           Works with both Yahoo Fantasy and ESPN Fantasy Football leagues.
         </p>
@@ -343,10 +343,10 @@ export function LeaguesPage() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900">Connect ESPN League</h3>
+              <h3 className="text-lg font-semibold text-ink-900">Connect ESPN League</h3>
               <button
                 onClick={() => setShowEspnModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                className="text-ink-400 hover:text-ink-600"
               >
                 ✕
               </button>
@@ -354,58 +354,58 @@ export function LeaguesPage() {
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  League ID <span className="text-red-500">*</span>
+                <label className="block text-sm font-medium text-ink-700 mb-1">
+                  League ID <span className="text-danger-500">*</span>
                 </label>
                 <input
                   type="text"
                   value={espnForm.leagueId}
                   onChange={(e) => setEspnForm(prev => ({ ...prev, leagueId: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                   placeholder="e.g., 123456789"
                 />
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-ink-500 mt-1">
                   Find this in your ESPN league URL: fantasy.espn.com/.../leagues/{espnForm.leagueId || 'LEAGUE_ID'}
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Season</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Season</label>
                 <input
                   type="number"
                   value={espnForm.season}
                   onChange={(e) => setEspnForm(prev => ({ ...prev, season: parseInt(e.target.value) }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                   min="2020"
                   max="2026"
                 />
               </div>
 
-              <div className="border-t pt-4">
-                <h4 className="font-medium text-gray-900 mb-2">Private League Access (Optional)</h4>
-                <p className="text-xs text-gray-500 mb-3">
+              <div className="border-t border-ink-200 pt-4">
+                <h4 className="font-medium text-ink-900 mb-2">Private League Access (Optional)</h4>
+                <p className="text-xs text-ink-500 mb-3">
                   Only needed for private leagues. Find these cookies in your browser when logged into ESPN.
                 </p>
-                
+
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">SWID</label>
+                    <label className="block text-sm font-medium text-ink-700 mb-1">SWID</label>
                     <input
                       type="text"
                       value={espnForm.swid}
                       onChange={(e) => setEspnForm(prev => ({ ...prev, swid: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                       placeholder="Optional - for private leagues"
                     />
                   </div>
-                  
+
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">ESPN_S2</label>
+                    <label className="block text-sm font-medium text-ink-700 mb-1">ESPN_S2</label>
                     <input
                       type="text"
                       value={espnForm.espnS2}
                       onChange={(e) => setEspnForm(prev => ({ ...prev, espnS2: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-500"
+                      className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                       placeholder="Optional - for private leagues"
                     />
                   </div>
@@ -416,7 +416,7 @@ export function LeaguesPage() {
                 <button
                   onClick={connectEspnLeague}
                   disabled={connecting || testingConnection || !espnForm.leagueId}
-                  className="flex-1 bg-red-600 text-white py-2 px-4 rounded-md hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                  className="flex-1 bg-accent-500 text-white py-2 px-4 rounded-md hover:bg-accent-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                 >
                   {connecting || testingConnection ? (
                     <>
@@ -429,7 +429,7 @@ export function LeaguesPage() {
                 </button>
                 <button
                   onClick={() => setShowEspnModal(false)}
-                  className="px-4 py-2 text-gray-600 border border-gray-300 rounded-md hover:bg-gray-50"
+                  className="px-4 py-2 text-ink-600 border border-ink-300 rounded-md hover:bg-ink-50"
                 >
                   Cancel
                 </button>

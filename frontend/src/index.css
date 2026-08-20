@@ -1,12 +1,85 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens -- "Friday Night Lights" palette.
+ *
+ * The app previously had zero visual identity: stock Tailwind gray-50 +
+ * blue-600 used identically for every accent, link, and active state. This
+ * introduces a real, deliberate palette instead of another generic
+ * SaaS-blue-on-white theme:
+ *
+ *   - `ink`: a cool, near-navy neutral ramp (deep charcoal-blue rather than
+ *     flat gray) for text, borders, and surfaces -- evokes stadium lights
+ *     at dusk rather than an admin dashboard.
+ *   - `accent`: ONE saturated brand color, a burnt rust-orange
+ *     (#C2560B) -- the color of a well-worn football and turf end-zone
+ *     paint, paired with the navy `ink` ramp the way a lot of real NFL
+ *     franchises pair navy with burnt orange. Used for every primary
+ *     CTA, link, and active state so the brand reads as one system.
+ *   - `success` / `warning` / `danger`: a semantic traffic-light scale,
+ *     used ONLY for status meaning (injury status, risk level, confidence)
+ *     -- never as decoration -- so color always means the same thing.
+ *
+ * This lives in the CSS `@theme` block (not tailwind.config.js) because
+ * this project runs Tailwind v4 via `@tailwindcss/postcss` with no
+ * `@config` directive pulling tailwind.config.js in -- that file's `theme`
+ * key is inert today. tailwind.config.js still mirrors these values for
+ * discoverability, but this block is the source of truth that Tailwind
+ * actually compiles against.
+ */
+@theme {
+  --color-ink-50: #f4f5f7;
+  --color-ink-100: #e4e6eb;
+  --color-ink-200: #cbced8;
+  --color-ink-300: #a3a9b8;
+  --color-ink-400: #7d8598;
+  --color-ink-500: #5b6478;
+  --color-ink-600: #3d4557;
+  --color-ink-700: #29303f;
+  --color-ink-800: #1b212d;
+  --color-ink-900: #12161f;
+  --color-ink-950: #0a0d14;
+
+  --color-accent-50: #fdf3ed;
+  --color-accent-100: #fbe1d0;
+  --color-accent-200: #f5be9c;
+  --color-accent-300: #ec9764;
+  --color-accent-400: #dd7638;
+  --color-accent-500: #c2560b;
+  --color-accent-600: #a0470a;
+  --color-accent-700: #7a3708;
+  --color-accent-800: #562705;
+  --color-accent-900: #351803;
+
+  --color-success-50: #f0fdf4;
+  --color-success-100: #dcfce7;
+  --color-success-500: #22c55e;
+  --color-success-600: #16a34a;
+  --color-success-700: #15803d;
+  --color-success-800: #166534;
+
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+  --color-danger-800: #991b1b;
+}
+
 body {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light;
-  color: rgba(17, 24, 39, 1);
-  background-color: rgba(249, 250, 251, 1);
+  color: var(--color-ink-900);
+  background-color: var(--color-ink-50);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

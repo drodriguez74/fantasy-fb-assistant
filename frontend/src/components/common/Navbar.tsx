@@ -40,12 +40,12 @@ export function Navbar() {
   const isMoreActive = moreNavigation.some((item) => item.href === location.pathname)
 
   return (
-    <nav className="bg-white shadow-sm border-b border-gray-200">
+    <nav className="bg-white shadow-sm border-b border-ink-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex min-w-0">
             <div className="flex-shrink-0 flex items-center">
-              <Link to="/" className="text-xl font-bold text-blue-600">
+              <Link to="/" className="text-xl font-bold text-accent-600">
                 FF Assistant
               </Link>
             </div>
@@ -57,8 +57,8 @@ export function Navbar() {
                   className={clsx(
                     'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors',
                     location.pathname === item.href
-                      ? 'border-blue-500 text-gray-900'
-                      : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                      ? 'border-accent-500 text-ink-900'
+                      : 'border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-700'
                   )}
                 >
                   {item.name}
@@ -70,10 +70,10 @@ export function Navbar() {
                   <>
                     <Menu.Button
                       className={clsx(
-                        'inline-flex items-center gap-1 px-1 pt-1 border-b-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-sm',
+                        'inline-flex items-center gap-1 px-1 pt-1 border-b-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 rounded-sm',
                         open || isMoreActive
-                          ? 'border-blue-500 text-gray-900'
-                          : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'
+                          ? 'border-accent-500 text-ink-900'
+                          : 'border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-700'
                       )}
                     >
                       More
@@ -100,9 +100,9 @@ export function Navbar() {
                                 className={clsx(
                                   'block px-4 py-2 text-sm transition-colors',
                                   location.pathname === item.href
-                                    ? 'text-blue-600 font-medium'
-                                    : 'text-gray-700',
-                                  active && 'bg-gray-100'
+                                    ? 'text-accent-600 font-medium'
+                                    : 'text-ink-700',
+                                  active && 'bg-ink-100'
                                 )}
                               >
                                 {item.name}
@@ -122,14 +122,14 @@ export function Navbar() {
             {user ? (
               <>
                 <div className="flex items-center space-x-2 min-w-0">
-                  <UserIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                  <span className="text-sm font-medium text-gray-700 truncate max-w-[10rem]">
+                  <UserIcon className="h-5 w-5 text-ink-400 flex-shrink-0" />
+                  <span className="text-sm font-medium text-ink-700 truncate max-w-[10rem]">
                     {user.full_name || user.username}
                   </span>
                 </div>
                 <button
                   onClick={logout}
-                  className="flex items-center space-x-1 text-sm text-gray-500 hover:text-gray-700 flex-shrink-0"
+                  className="flex items-center space-x-1 text-sm text-ink-500 hover:text-ink-700 flex-shrink-0"
                 >
                   <ArrowRightOnRectangleIcon className="h-4 w-4" />
                   <span>Sign Out</span>
@@ -138,7 +138,7 @@ export function Navbar() {
             ) : (
               <Link
                 to="/auth"
-                className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors flex-shrink-0"
+                className="bg-accent-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-accent-600 transition-colors flex-shrink-0"
               >
                 Sign In
               </Link>
@@ -152,7 +152,7 @@ export function Navbar() {
               aria-expanded={mobileMenuOpen}
               aria-controls="mobile-nav-panel"
               aria-label={mobileMenuOpen ? 'Close main menu' : 'Open main menu'}
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-500 hover:text-gray-700 hover:bg-gray-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              className="inline-flex items-center justify-center p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
             >
               {mobileMenuOpen ? (
                 <XMarkIcon className="h-6 w-6" aria-hidden="true" />
@@ -165,7 +165,7 @@ export function Navbar() {
       </div>
 
       {mobileMenuOpen && (
-        <div id="mobile-nav-panel" className="md:hidden border-t border-gray-200">
+        <div id="mobile-nav-panel" className="md:hidden border-t border-ink-200">
           <div className="px-2 pt-2 pb-3 space-y-1">
             {allNavigation.map((item) => (
               <Link
@@ -175,20 +175,20 @@ export function Navbar() {
                 className={clsx(
                   'block rounded-md px-3 py-2 text-base font-medium transition-colors',
                   location.pathname === item.href
-                    ? 'bg-blue-50 text-blue-700'
-                    : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    ? 'bg-accent-50 text-accent-700'
+                    : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
                 )}
               >
                 {item.name}
               </Link>
             ))}
           </div>
-          <div className="border-t border-gray-200 px-4 py-3">
+          <div className="border-t border-ink-200 px-4 py-3">
             {user ? (
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center space-x-2 min-w-0">
-                  <UserIcon className="h-5 w-5 text-gray-400 flex-shrink-0" />
-                  <span className="text-sm font-medium text-gray-700 truncate">
+                  <UserIcon className="h-5 w-5 text-ink-400 flex-shrink-0" />
+                  <span className="text-sm font-medium text-ink-700 truncate">
                     {user.full_name || user.username}
                   </span>
                 </div>
@@ -197,7 +197,7 @@ export function Navbar() {
                     setMobileMenuOpen(false)
                     logout()
                   }}
-                  className="flex items-center space-x-1 text-sm text-gray-500 hover:text-gray-700 flex-shrink-0"
+                  className="flex items-center space-x-1 text-sm text-ink-500 hover:text-ink-700 flex-shrink-0"
                 >
                   <ArrowRightOnRectangleIcon className="h-4 w-4" />
                   <span>Sign Out</span>
@@ -207,7 +207,7 @@ export function Navbar() {
               <Link
                 to="/auth"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block w-full text-center bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                className="block w-full text-center bg-accent-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-accent-600 transition-colors"
               >
                 Sign In
               </Link>
