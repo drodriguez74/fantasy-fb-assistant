@@ -66,7 +66,9 @@ This one root cause explains what looked to the creative director like "broken A
 - ✅ Build a real onboarding path (register → connect a league → see one real recommendation). — `52adf5b`, new registrants land on Draft Assistant with real data instead of the marketing homepage
 
 **P2 — roadmap:**
-- Real visual identity (palette, injury-status color scale, card elevation system).
-- Mock draft simulator, trade analyzer, keeper/dynasty support, push alerts.
-- Decide `is_premium`'s fate — either build the gate or remove the column.
-- Live in-draft reactivity (recommendations that update as picks come off the board) — the actual differentiator worth building, but only after the list stops recommending Frank Gore.
+- ✅ Real visual identity (palette, injury-status color scale, card elevation system). — `9f40aeb`, a navy/rust "Friday Night Lights" palette with a real semantic status scale, applied to the highest-traffic surfaces (Players, Draft Assistant, Leagues, Navbar)
+- ✅ Mock draft simulator + live in-draft reactivity, merged into one feature. — `b4eeff4`, the Draft Assistant now simulates the other 11 teams' picks (using the same real, active-roster-filtered ranking data as the recommendations engine) so a user can play a full draft with recommendations updating turn by turn
+- ✅ Trade analyzer. — `33561e1`, an honest heuristic (inverse Sleeper rank) trade evaluator, explicitly labeled as a heuristic rather than "AI" in the UI copy
+- ✅ Decide `is_premium`'s fate. — `62d01ef`, removed (confirmed dead — serialized everywhere, gated nothing anywhere); a real premium tier is a pricing/business decision for later, not something to fake in the meantime
+- Keeper/dynasty support, push alerts — not attempted. Both need real infrastructure/product decisions (contract-year rules, a notification service with service workers + scheduling) beyond what fits a bug-fix-shaped pass; flagging rather than shipping a shallow version of either.
+- Real external live-draft-room polling (the separate "Live Draft" page connecting to an actual in-progress ESPN/Yahoo/Sleeper draft) remains a confirmed stub. Deliberately out of scope for the mock draft simulator work above — it needs a live real draft to test against and real per-platform polling, a larger project than this pass.
