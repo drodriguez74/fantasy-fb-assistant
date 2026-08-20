@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react'
-import { useAuth } from '../hooks/useAuth'
 import { api } from '../services/api'
 import {
   TrophyIcon,
@@ -52,7 +51,6 @@ interface UserLeague {
 }
 
 export function PostDraftAnalysisPage() {
-  const { user } = useAuth()
   const [roster, setRoster] = useState<RosterPlayer[]>([])
   const [analysis, setAnalysis] = useState<RosterAnalysis | null>(null)
   const [waiverTargets, setWaiverTargets] = useState<WaiverTarget[]>([])

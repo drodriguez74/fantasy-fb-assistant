@@ -25,13 +25,32 @@ interface LeagueInfo {
 }
 
 interface RosterAnalysis {
+  team_name?: string
+  owner?: string
+  roster_size?: number
   total_players: number
-  position_analysis: Record<string, any>
-  overall_grade: string
-  strengths: string[]
-  weaknesses: string[]
-  injury_concerns: any[]
-  last_updated: string
+  position_analysis?: Record<string, any>
+  composition?: {
+    starting_lineup: any[]
+    bench_players: any[]
+    composition_score: number
+  }
+  overall_grade: {
+    grade: string
+    score: number
+    description: string
+    player_count?: number
+    avg_player_value?: number
+  }
+  strengths_weaknesses?: {
+    strengths: string[]
+    weaknesses: string[]
+  }
+  strengths?: string[]
+  weaknesses?: string[]
+  players?: any[]
+  injury_concerns?: any[]
+  last_updated?: string
 }
 
 interface WaiverRecommendation {
@@ -235,8 +254,8 @@ export function LeagueDetailPage() {
           </div>
           <div className="flex items-center space-x-3">
             {rosterAnalysis && (
-              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getGradeColor(rosterAnalysis.overall_grade)}`}>
-                Team Grade: {rosterAnalysis.overall_grade}
+              <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getGradeColor(rosterAnalysis.overall_grade?.grade || 'B')}`}>
+                Team Grade: {rosterAnalysis.overall_grade?.grade || 'B'}
               </span>
             )}
             <button
@@ -296,7 +315,7 @@ export function LeagueDetailPage() {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-500">Roster Grade</p>
                   <p className="text-2xl font-bold text-gray-900">
-                    {rosterAnalysis?.overall_grade || 'N/A'}
+                    {rosterAnalysis?.overall_grade?.grade || 'N/A'}
                   </p>
                 </div>
               </div>
