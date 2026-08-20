@@ -42,5 +42,18 @@ Baseline commit before this audit: `8ae3635` (repo had no git history prior to t
 - `npm run lint` → **143 problems (134 errors, 9 warnings)**
 
 **After:**
+- `pytest` (bare, as documented) → **9 passed, 0 failed** (was 7 failed / 2 passed; also bare `pytest` didn't even run at baseline — see P1).
+- `npm run build` → **passes** (`tsc -b && vite build` green).
 - `npm run lint` → **1 problem (1 error, 0 warnings)**, down from 145 (136 errors, 9 warnings) measured at the start of the ESLint cleanup pass; remaining error is the pre-existing `react-refresh/only-export-components` in `src/hooks/useAuth.tsx`, deliberately left (see P2 above).
-- `npm run build` → still green after the cleanup.
+- `alembic check` against the live local Postgres dev DB → no destructive diff remains (previously would have generated a migration dropping 4 live tables; see P0 above).
+
+## Remaining open items (deliberately not touched this pass)
+
+- Yahoo league connect is a demo stub (P1).
+- Draft-state polling for Sleeper/ESPN/Yahoo returns mock data despite being documented as a real feature (P1).
+- `content_generation_service.py` silently no-ops on unimplemented content types instead of a 4xx (P1).
+- No test coverage for draft assistant, league management, waiver wire, content generation, or any frontend code (P2).
+- Newer models (`LeagueScoring`, `PlayerScoringCalculation`, `DefensiveMatchupRanking`) were coded but never migrated — needs `alembic revision --autogenerate` + review + `alembic upgrade head` (P0 follow-up, safe/additive).
+- Pydantic v1-style validators and SQLAlchemy's deprecated `declarative_base()` import will break on a future major-version bump (P3).
+
+All five items above share the same reason for being left alone: each requires a product/scope decision (build a real integration, write a test strategy, decide on a migration timing) rather than a bug fix with one obviously correct answer.
