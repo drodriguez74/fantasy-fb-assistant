@@ -142,7 +142,9 @@ Good luck in Week {week}!
                     "week": week,
                     "position": position,
                     "content_type": "simplified_rankings"
-                }
+                },
+                "ai_generated": False,
+                "ai_model_used": None
             }
 
         except Exception as e:
@@ -174,10 +176,10 @@ Good luck in Week {week}!
             # Generate multi-perspective analysis
             perspectives_data = []
             for perspective in self.perspectives:
-                analysis = await ai_service.generate_multi_perspective_analysis(
+                analysis = await ai_service.generate_multi_perspective_content(
                     topic=f"{player.name} Fantasy Analysis",
-                    perspectives=[perspective],
-                    context_data=player_context
+                    source_articles=[player_context],
+                    perspectives=[perspective]
                 )
                 perspectives_data.extend(analysis.get("perspectives", []))
 
@@ -210,7 +212,9 @@ Good luck in Week {week}!
                     "position": player.position.value,
                     "team": player.team,
                     "analysis_depth": "comprehensive"
-                }
+                },
+                "ai_generated": True,
+                "ai_model_used": await self._get_ai_model_name()
             }
 
         except Exception as e:
@@ -269,7 +273,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "metadata": {
                     "week": week,
                     "content_type": "simplified_waiver_analysis"
-                }
+                },
+                "ai_generated": False,
+                "ai_model_used": None
             }
 
         except Exception as e:
@@ -284,12 +290,16 @@ Remember to consider your league's waiver wire priority and budget constraints w
             injured_players = self.player_service.get_injury_report()
             
             if not injured_players:
+                # No AI call is made on this early-return path -- there's
+                # nothing to analyze.
                 return {
                     "success": True,
-                    "content_type": "injury_report", 
+                    "content_type": "injury_report",
                     "title": "Weekly Injury Report",
                     "content": "No significant injuries to report this week. All key fantasy players are healthy.",
-                    "metadata": {"injured_players": 0}
+                    "metadata": {"injured_players": 0},
+                    "ai_generated": False,
+                    "ai_model_used": None
                 }
 
             # Analyze impact of each injury
@@ -316,12 +326,27 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 })
 
             # Generate perspectives on injury landscape
+            # Player ORM objects aren't JSON-serializable, so summarize them
+            # into plain dicts before handing them to the AI prompt builder.
+            injuries_summary = [
+                {
+                    "player_name": i["player"].name,
+                    "team": i["player"].team,
+                    "position": i["player"].position.value if i["player"].position else None,
+                    "injury_status": i["player"].injury_status.value if i["player"].injury_status else None,
+                    "injury_body_part": i["player"].injury_body_part,
+                    "fantasy_impact": i["fantasy_impact"],
+                    "timeline": i["timeline"]
+                }
+                for i in injury_analyses
+            ]
+
             perspectives_data = []
             for perspective in self.perspectives[:3]:
-                analysis = await ai_service.generate_multi_perspective_analysis(
+                analysis = await ai_service.generate_multi_perspective_content(
                     topic="Weekly Fantasy Injury Landscape",
-                    perspectives=[perspective],
-                    context_data={"injuries": injury_analyses}
+                    source_articles=injuries_summary,
+                    perspectives=[perspective]
                 )
                 perspectives_data.extend(analysis.get("perspectives", []))
 
@@ -339,11 +364,28 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "metadata": {
                     "injured_players": len(injured_players),
                     "high_impact_injuries": len([i for i in injury_analyses if i["fantasy_impact"] == "HIGH"])
-                }
+                },
+                "ai_generated": True,
+                "ai_model_used": await self._get_ai_model_name()
             }
 
         except Exception as e:
             return {"error": f"Failed to generate injury report: {str(e)}"}
+
+    async def _get_ai_model_name(self) -> Optional[str]:
+        """Best-effort label for whichever model an AI-backed content path
+        actually attempts. ai_service tries OpenAI first (its default
+        provider and the model _generate_openai defaults to is "gpt-4"),
+        falling back to Anthropic's "claude-3-sonnet-20240229" only if
+        OpenAI isn't configured. This mirrors that same precedence so the
+        label reflects what's really configured instead of a hardcoded
+        guess."""
+        status = await ai_service.get_ai_status()
+        if status.get("openai_available"):
+            return "gpt-4"
+        if status.get("anthropic_available"):
+            return "claude-3-sonnet-20240229"
+        return None
 
     async def _build_player_context(self, player: Player) -> Dict[str, Any]:
         """Build comprehensive context for player analysis"""
@@ -594,6 +636,14 @@ Remember to consider your league's waiver wire priority and budget constraints w
             if existing_post:
                 slug = f"{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
+            # Honor what the generator actually did rather than stamping
+            # every saved post as AI-authored. Most _generate_* methods are
+            # static templates with no LLM call in them at all; only the
+            # ones that genuinely invoked ai_service set ai_generated=True
+            # and a real model name.
+            created_by_ai = bool(content_data.get("ai_generated", False))
+            ai_model_used = content_data.get("ai_model_used") if created_by_ai else None
+
             blog_post = BlogPost(
                 title=title,
                 slug=slug,
@@ -603,8 +653,8 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 tags=json.dumps(content_data.get("metadata", {})),
                 is_published=False,
                 featured=False,
-                created_by_ai=True,
-                ai_model_used="claude-3"
+                created_by_ai=created_by_ai,
+                ai_model_used=ai_model_used
             )
             
             self.db.add(blog_post)
@@ -690,7 +740,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "content_type": "start_sit",
                 "title": f"Week {week} Start/Sit - {position}",
                 "content": content,
-                "metadata": {"week": week, "position": position}
+                "metadata": {"week": week, "position": position},
+                "ai_generated": False,
+                "ai_model_used": None
             }
         except Exception as e:
             return {"error": f"Failed to generate start/sit content: {str(e)}"}
@@ -707,7 +759,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "content_type": "trade_analysis", 
                 "title": f"Trade Analysis: {topic}",
                 "content": content,
-                "metadata": {}
+                "metadata": {},
+                "ai_generated": False,
+                "ai_model_used": None
             }
         except Exception as e:
             return {"error": f"Failed to generate trade analysis: {str(e)}"}
@@ -726,7 +780,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "content_type": "breakout_candidates",
                 "title": f"Breakout Candidates - {timeframe.title()}",
                 "content": content,
-                "metadata": {"timeframe": timeframe}
+                "metadata": {"timeframe": timeframe},
+                "ai_generated": False,
+                "ai_model_used": None
             }
         except Exception as e:
             return {"error": f"Failed to generate breakout candidates: {str(e)}"}
@@ -746,7 +802,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "content_type": "draft_strategy",
                 "title": f"Draft Strategy - {draft_type.title()}",
                 "content": content,
-                "metadata": {"draft_type": draft_type, "league_size": league_size}
+                "metadata": {"draft_type": draft_type, "league_size": league_size},
+                "ai_generated": False,
+                "ai_model_used": None
             }
         except Exception as e:
             return {"error": f"Failed to generate draft strategy: {str(e)}"}
@@ -765,7 +823,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "content_type": "matchup_analysis",
                 "title": f"Week {week} Matchup Analysis",
                 "content": content,
-                "metadata": {"week": week}
+                "metadata": {"week": week},
+                "ai_generated": False,
+                "ai_model_used": None
             }
         except Exception as e:
             return {"error": f"Failed to generate matchup analysis: {str(e)}"}
@@ -782,7 +842,9 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 "content_type": "season_recap",
                 "title": f"Season Recap: {topic}",
                 "content": content,
-                "metadata": {}
+                "metadata": {},
+                "ai_generated": False,
+                "ai_model_used": None
             }
         except Exception as e:
             return {"error": f"Failed to generate season recap: {str(e)}"}
