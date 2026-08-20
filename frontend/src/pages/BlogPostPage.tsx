@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { api } from '../services/api'
+import { api, getErrorMessage } from '../services/api'
 import {
   ArrowLeftIcon,
   CalendarIcon,
@@ -20,7 +20,7 @@ interface BlogPost {
   featured: boolean
   created_at: string
   updated_at?: string
-  tags: any
+  tags: Record<string, unknown> | string
 }
 
 export function BlogPostPage() {
@@ -41,8 +41,8 @@ export function BlogPostPage() {
       setLoading(true)
       const response = await api.get(`/content/blog-posts/${postId}`)
       setBlogPost(response.data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load blog post')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load blog post'))
     } finally {
       setLoading(false)
     }

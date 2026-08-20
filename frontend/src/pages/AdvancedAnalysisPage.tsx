@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import { api } from '../services/api'
+import { useState, useEffect, useCallback } from 'react'
+import { api, getErrorMessage } from '../services/api'
 import {
   MagnifyingGlassIcon,
   ChartBarIcon,
@@ -39,26 +39,111 @@ interface Player {
   ownership_percentage: number
 }
 
+interface ComparisonPlayer {
+  id: number
+  name: string
+  position: string
+  team: string
+  current_metrics: {
+    projected_points?: number
+    consistency_rating?: number
+    ceiling_score?: number
+    floor_score?: number
+    target_share?: number
+    snap_count_percentage?: number
+  }
+  risk_assessment: {
+    risk_score?: number
+    risk_level: string
+    risk_factors: string[]
+  }
+  advanced_metrics: {
+    value_score: number
+    upside_rating?: number
+    opportunity_share?: number
+  }
+}
+
 interface PlayerComparison {
-  players: any[]
+  players: ComparisonPlayer[]
   insights: string[]
-  head_to_head: any
+  head_to_head: {
+    categories?: Record<string, { winner: string }>
+    overall_winner?: string
+    score?: number | string
+  }
+  recommendation: string
+}
+
+interface ScheduleMatchup {
+  week: number
+  opponent: string
+  difficulty_score: number
+  difficulty_rating: 'EASY' | 'MODERATE' | 'DIFFICULT'
+}
+
+interface ScheduleAnalysisEntry {
+  player: { id: number; name: string }
+  upcoming_matchups: ScheduleMatchup[]
+  schedule_difficulty: { rank: number; rating: 'EASY' | 'MODERATE' | 'DIFFICULT' }
   recommendation: string
 }
 
 interface ScheduleAnalysis {
-  schedule_analysis: any[]
-  summary: any
+  schedule_analysis: ScheduleAnalysisEntry[]
+  summary: {
+    easiest_schedule: string
+    hardest_schedule: string
+    average_difficulty: number
+  }
+}
+
+interface BreakoutCandidate {
+  player: { id: number; name: string; position: string; team: string; age?: number; ownership_percentage?: number }
+  breakout_analysis: { probability: number }
+  supporting_factors: string[]
+  risk_factors: string[]
+  recommendation: string
 }
 
 interface BreakoutCandidates {
-  breakout_candidates: any[]
-  summary: any
+  breakout_candidates: BreakoutCandidate[]
+  summary: {
+    total_candidates: number
+    high_probability: number
+    medium_probability: number
+    average_probability: number
+  }
+}
+
+interface SituationAnalysisEntry {
+  player: { id: number; name: string }
+  situation_analysis: {
+    home_vs_away: { home_average: number; away_average: number; preference: string }
+    weather_impact: { outdoor_performance: number; dome_performance: number; weather_sensitivity: string }
+    game_script: { leading_games: number; trailing_games: number; close_games?: number; script_preference: string }
+  }
+  key_insights: string[]
+  upcoming_context: { outlook: string }
 }
 
 interface GameSituations {
-  situation_analysis: any[]
+  situation_analysis: SituationAnalysisEntry[]
   cross_player_insights: string[]
+}
+
+interface WeatherDataItem {
+  player: string
+  outdoor: number
+  dome: number
+  weatherSensitivity: string
+}
+
+interface GameScriptDataItem {
+  player: string
+  leading: number
+  trailing: number
+  close: number
 }
 
 export function AdvancedAnalysisPage() {
@@ -85,22 +170,22 @@ export function AdvancedAnalysisPage() {
   const [showCharts, setShowCharts] = useState(true)
   const [chartType, setChartType] = useState<'radar' | 'bar' | 'both'>('both')
 
-  useEffect(() => {
-    if (playerSearch.length >= 2) {
-      searchPlayers()
-    } else {
-      setPlayerSuggestions([])
-    }
-  }, [playerSearch])
-
-  const searchPlayers = async () => {
+  const searchPlayers = useCallback(async () => {
     try {
       const response = await api.get(`/advanced-analysis/player-suggestions?query=${encodeURIComponent(playerSearch)}&limit=8`)
       setPlayerSuggestions(response.data.suggestions || [])
     } catch (err) {
       console.error('Failed to search players:', err)
     }
-  }
+  }, [playerSearch])
+
+  useEffect(() => {
+    if (playerSearch.length >= 2) {
+      searchPlayers()
+    } else {
+      setPlayerSuggestions([])
+    }
+  }, [playerSearch, searchPlayers])
 
   const addPlayer = (player: Player) => {
     if (selectedPlayers.find(p => p.id === player.id)) return
@@ -134,8 +219,8 @@ export function AdvancedAnalysisPage() {
       })
       
       setComparisonResult(response.data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to compare players')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to compare players'))
     } finally {
       setLoading(false)
     }
@@ -157,8 +242,8 @@ export function AdvancedAnalysisPage() {
       })
       
       setScheduleResult(response.data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to analyze schedule')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to analyze schedule'))
     } finally {
       setLoading(false)
     }
@@ -176,8 +261,8 @@ export function AdvancedAnalysisPage() {
       })
       
       setBreakoutResult(response.data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to detect breakout candidates')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to detect breakout candidates'))
     } finally {
       setLoading(false)
     }
@@ -198,15 +283,15 @@ export function AdvancedAnalysisPage() {
       })
       
       setSituationResult(response.data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to analyze game situations')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to analyze game situations'))
     } finally {
       setLoading(false)
     }
   }
 
   // Transform data for charts
-  const transformPlayerComparisonData = (players: any[]): PlayerComparisonData[] => {
+  const transformPlayerComparisonData = (players: ComparisonPlayer[]): PlayerComparisonData[] => {
     return players.map(player => ({
       player: player.name,
       projectedPoints: player.current_metrics?.projected_points || 0,
@@ -245,7 +330,7 @@ export function AdvancedAnalysisPage() {
                 <label className="text-sm text-gray-700">Chart Type:</label>
                 <select
                   value={chartType}
-                  onChange={(e) => setChartType(e.target.value as any)}
+                  onChange={(e) => setChartType(e.target.value as 'radar' | 'bar' | 'both')}
                   className="text-sm border border-gray-300 rounded px-2 py-1"
                 >
                   <option value="radar">Radar Chart</option>
@@ -294,7 +379,7 @@ export function AdvancedAnalysisPage() {
           <div className="bg-white rounded-lg border border-gray-200 p-6">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">Head-to-Head Comparison</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {Object.entries(comparisonResult.head_to_head.categories || {}).map(([category, data]: [string, any]) => (
+              {Object.entries(comparisonResult.head_to_head.categories || {}).map(([category, data]) => (
                 <div key={category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                   <span className="font-medium">{category}</span>
                   <span className="text-green-600 font-semibold">{data.winner}</span>
@@ -352,7 +437,7 @@ export function AdvancedAnalysisPage() {
                   <div className="mt-3">
                     <span className="text-sm font-medium text-gray-700">Risk Factors:</span>
                     <ul className="mt-1 text-sm text-gray-600">
-                      {player.risk_assessment.risk_factors.map((factor: string, idx: number) => (
+                      {player.risk_assessment.risk_factors.map((factor, idx: number) => (
                         <li key={idx}>• {factor}</li>
                       ))}
                     </ul>
@@ -373,10 +458,10 @@ export function AdvancedAnalysisPage() {
   }
 
   // Transform schedule data for charts
-  const transformScheduleData = (scheduleAnalysis: any[]): ScheduleDifficultyData[] => {
+  const transformScheduleData = (scheduleAnalysis: ScheduleAnalysisEntry[]): ScheduleDifficultyData[] => {
     const data: ScheduleDifficultyData[] = []
     scheduleAnalysis.forEach(analysis => {
-      analysis.upcoming_matchups.forEach((matchup: any) => {
+      analysis.upcoming_matchups.forEach((matchup) => {
         data.push({
           week: matchup.week,
           opponent: matchup.opponent,
@@ -451,7 +536,7 @@ export function AdvancedAnalysisPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-                {analysis.upcoming_matchups.map((matchup: any, idx: number) => (
+                {analysis.upcoming_matchups.map((matchup, idx: number) => (
                   <div key={idx} className="text-center p-3 bg-gray-50 rounded-lg">
                     <div className="font-semibold">Week {matchup.week}</div>
                     <div className="text-sm text-gray-600">{matchup.opponent}</div>
@@ -478,14 +563,14 @@ export function AdvancedAnalysisPage() {
   }
 
   // Transform breakout data for charts
-  const transformBreakoutData = (candidates: any[]): BreakoutCandidateData[] => {
+  const transformBreakoutData = (candidates: BreakoutCandidate[]): BreakoutCandidateData[] => {
     return candidates.map(candidate => ({
       player: candidate.player.name,
       probability: candidate.breakout_analysis.probability,
       age: candidate.player.age || 25,
       ownership: candidate.player.ownership_percentage || 0,
-      targetShare: candidate.supporting_factors.find((f: string) => f.includes('target'))?.match(/\d+/)?.[0] || 15,
-      snapCount: candidate.supporting_factors.find((f: string) => f.includes('snap'))?.match(/\d+/)?.[0] || 60,
+      targetShare: Number(candidate.supporting_factors.find((f: string) => f.includes('target'))?.match(/\d+/)?.[0]) || 15,
+      snapCount: Number(candidate.supporting_factors.find((f: string) => f.includes('snap'))?.match(/\d+/)?.[0]) || 60,
       efficiency: candidate.breakout_analysis.probability * 100 // Simplified efficiency metric
     }))
   }
@@ -607,10 +692,10 @@ export function AdvancedAnalysisPage() {
   }
 
   // Transform situation data for charts
-  const transformSituationData = (situationAnalysis: any[]): {
+  const transformSituationData = (situationAnalysis: SituationAnalysisEntry[]): {
     homeAwayData: SituationalData[],
-    weatherData: any[],
-    gameScriptData: any[]
+    weatherData: WeatherDataItem[],
+    gameScriptData: GameScriptDataItem[]
   } => {
     const homeAwayData: SituationalData[] = situationAnalysis.map(analysis => ({
       situation: 'Home vs Away',
@@ -857,7 +942,7 @@ export function AdvancedAnalysisPage() {
             ].map(({ key, label, icon: Icon }) => (
               <button
                 key={key}
-                onClick={() => setActiveTab(key as any)}
+                onClick={() => setActiveTab(key as 'comparison' | 'schedule' | 'breakout' | 'situations')}
                 className={`flex items-center py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === key
                     ? 'border-blue-500 text-blue-600'

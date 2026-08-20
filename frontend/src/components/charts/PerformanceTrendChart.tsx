@@ -9,6 +9,18 @@ interface PerformanceTrendChartProps {
   chartType?: 'line' | 'area' | 'composed'
 }
 
+interface TrendTooltipEntry {
+  dataKey: string
+  color: string
+  value: number
+}
+
+interface TrendTooltipProps {
+  active?: boolean
+  payload?: TrendTooltipEntry[]
+  label?: string | number
+}
+
 export function PerformanceTrendChart({ 
   data, 
   height = 300, 
@@ -34,7 +46,7 @@ export function PerformanceTrendChart({
   // Create chart data structure
   const weeks = Array.from(new Set(data.map(d => d.week))).sort((a, b) => a - b)
   const chartData = weeks.map(week => {
-    const weekData: any = { week }
+    const weekData: Record<string, number> = { week }
     
     Object.keys(playerData).forEach(player => {
       const playerWeekData = playerData[player].find(d => d.week === week)
@@ -66,12 +78,12 @@ export function PerformanceTrendChart({
     return colors[index % colors.length]
   })
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: TrendTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-semibold text-gray-900 mb-2">Week {label}</p>
-          {payload.map((entry: any, index: number) => {
+          {payload.map((entry, index: number) => {
             if (entry.dataKey === 'average') {
               return (
                 <p key={`tooltip-avg-${index}`} style={{ color: entry.color }} className="text-sm">

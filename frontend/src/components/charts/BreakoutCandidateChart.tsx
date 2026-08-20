@@ -8,6 +8,11 @@ interface BreakoutCandidateChartProps {
   yAxis?: 'probability' | 'snapCount' | 'targetShare'
 }
 
+interface BreakoutTooltipProps {
+  active?: boolean
+  payload?: Array<{ payload: BreakoutCandidateData & { x: number; y: number; z: number; index: number } }>
+}
+
 export function BreakoutCandidateChart({ 
   data, 
   height = 400, 
@@ -18,8 +23,8 @@ export function BreakoutCandidateChart({
   // Transform data for scatter plot
   const chartData = data.map((candidate, index) => ({
     ...candidate,
-    x: (candidate as any)[xAxis],
-    y: (candidate as any)[yAxis],
+    x: candidate[xAxis],
+    y: candidate[yAxis],
     z: candidate.targetShare || 10, // Size for bubble chart
     index
   }))
@@ -42,7 +47,7 @@ export function BreakoutCandidateChart({
     return RISK_COLORS.HIGH                           // Low probability = red
   }
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: BreakoutTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
@@ -115,7 +120,7 @@ export function BreakoutCandidateBubbleChart({ data, height = 400 }: BreakoutCan
     index
   }))
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: BreakoutTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (

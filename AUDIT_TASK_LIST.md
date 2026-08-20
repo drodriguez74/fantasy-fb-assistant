@@ -27,7 +27,7 @@ Baseline commit before this audit: `8ae3635` (repo had no git history prior to t
 
 ## P2 — Medium (refactors, edge cases, missing coverage)
 
-- [~] **134 ESLint problems** (134 errors / 9 warnings), overwhelmingly `@typescript-eslint/no-explicit-any` across ~15 page/service files (`api.ts`, `LeagueDetailPage.tsx`, `HistoricalPage.tsx`, `WaiverWirePage.tsx`, etc.), plus a handful of unused-var errors and `react-hooks/exhaustive-deps` warnings. Dispatched to a background cleanup pass — see final evidence report for what landed.
+- [x] **134 ESLint problems** (134 errors / 9 warnings), overwhelmingly `@typescript-eslint/no-explicit-any` across ~15 page/service files (`api.ts`, `LeagueDetailPage.tsx`, `HistoricalPage.tsx`, `WaiverWirePage.tsx`, etc.), plus a handful of unused-var errors and `react-hooks/exhaustive-deps` warnings. Re-measured before this pass at **145 problems (136 errors, 9 warnings)** — a couple of files had drifted since the baseline was recorded. Replaced `any` with real interfaces inferred from actual property access (and, where genuinely dynamic/passthrough, `unknown`/`Record<string, unknown>`); added a shared `getErrorMessage()` helper in `api.ts` for the repeated `catch (err: any) { err.response?.data?.detail }` axios pattern; fixed unused `catch` bindings by dropping the binding (`catch { ... }`, valid under this project's target) where the error was never read; and resolved `react-hooks/exhaustive-deps` warnings by wrapping the referenced loader functions in `useCallback` with correct dependency arrays (verified no infinite-render loops introduced). **After: 0 errors, 0 warnings** except one pre-existing `react-refresh/only-export-components` error in `src/hooks/useAuth.tsx` (it exports both the `AuthProvider` component and the `useAuth` hook from the same file) — left as-is since fixing it requires splitting the file, which is a structural refactor outside a mechanical lint-cleanup pass. `npm run build` verified green after the change.
 - [ ] No test coverage exists for: draft assistant recommendations, league management (ESPN/Yahoo/Sleeper), waiver wire, content generation, or any frontend component/page. The only backend tests are `test_auth.py` and `test_players.py` (9 tests total); there is no frontend test runner configured at all (no vitest/jest in `package.json`).
 
 ## P3 — Low
@@ -41,4 +41,6 @@ Baseline commit before this audit: `8ae3635` (repo had no git history prior to t
 - `npm run build` → **fails** (`tsc -b` type errors, see P0 above)
 - `npm run lint` → **143 problems (134 errors, 9 warnings)**
 
-**After:** see updates below as each item is closed out.
+**After:**
+- `npm run lint` → **1 problem (1 error, 0 warnings)**, down from 145 (136 errors, 9 warnings) measured at the start of the ESLint cleanup pass; remaining error is the pre-existing `react-refresh/only-export-components` in `src/hooks/useAuth.tsx`, deliberately left (see P2 above).
+- `npm run build` → still green after the cleanup.

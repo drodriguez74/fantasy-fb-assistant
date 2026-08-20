@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { auth } from '../../services/api'
+import { auth, getErrorMessage } from '../../services/api'
 import type { RegisterRequest } from '../../types'
 
 interface RegisterFormProps {
@@ -32,8 +32,8 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
     try {
       await auth.register(formData)
       onSuccess()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Registration failed')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Registration failed'))
     } finally {
       setLoading(false)
     }

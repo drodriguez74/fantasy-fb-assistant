@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { api } from '../services/api'
+import { api, getErrorMessage } from '../services/api'
 import {
   PlusIcon,
   DocumentTextIcon,
@@ -11,16 +11,22 @@ import {
   ExclamationTriangleIcon
 } from '@heroicons/react/24/outline'
 
+interface ContentTemplateParameter {
+  type: string
+  description: string
+  default?: string | number
+}
+
 interface ContentTemplate {
   name: string
   description: string
-  parameters: Record<string, any>
+  parameters: Record<string, ContentTemplateParameter>
 }
 
 interface ContentGenerationRequest {
   content_type: string
   topic: string
-  parameters: Record<string, any>
+  parameters: Record<string, unknown>
 }
 
 interface BlogPost {
@@ -33,7 +39,7 @@ interface BlogPost {
   featured: boolean
   created_at: string
   updated_at?: string
-  tags: Record<string, any>
+  tags: Record<string, unknown>
 }
 
 export function ContentPage() {
@@ -43,7 +49,7 @@ export function ContentPage() {
   const [blogPosts, setBlogPosts] = useState<BlogPost[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [selectedTemplate, setSelectedTemplate] = useState<string>('')
-  const [generationParams, setGenerationParams] = useState<Record<string, any>>({})
+  const [generationParams, setGenerationParams] = useState<Record<string, unknown>>({})
   const [customTopic, setCustomTopic] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -60,7 +66,7 @@ export function ContentPage() {
     try {
       const response = await api.get('/content/templates')
       setTemplates(response.data.templates)
-    } catch (err) {
+    } catch {
       setError('Failed to load content templates')
     }
   }
@@ -70,7 +76,7 @@ export function ContentPage() {
       setLoading(true)
       const response = await api.get('/content/blog-posts/?limit=20&published_only=false')
       setBlogPosts(response.data.blog_posts)
-    } catch (err) {
+    } catch {
       setError('Failed to load blog posts')
     } finally {
       setLoading(false)
@@ -102,14 +108,14 @@ export function ContentPage() {
         setSelectedTemplate('')
         await loadBlogPosts() // Reload blog posts
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to generate content')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to generate content'))
     } finally {
       setIsGenerating(false)
     }
   }
 
-  const handleQuickGenerate = async (type: 'weekly_rankings' | 'waiver_wire' | 'injury_report', params: any = {}) => {
+  const handleQuickGenerate = async (type: 'weekly_rankings' | 'waiver_wire' | 'injury_report', params: { week?: number; position?: string } = {}) => {
     try {
       setIsGenerating(true)
       setError('')
@@ -127,8 +133,8 @@ export function ContentPage() {
         setSuccess(`${type.replace('_', ' ')} content generated successfully!`)
         await loadBlogPosts()
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || `Failed to generate ${type}`)
+    } catch (err) {
+      setError(getErrorMessage(err, `Failed to generate ${type}`))
     } finally {
       setIsGenerating(false)
     }
@@ -143,7 +149,7 @@ export function ContentPage() {
       })
       setSuccess(`Post ${!isPublished ? 'published' : 'unpublished'} successfully`)
       await loadBlogPosts()
-    } catch (err) {
+    } catch {
       setError('Failed to update post status')
     }
   }
@@ -155,13 +161,13 @@ export function ContentPage() {
       await api.delete(`/content/blog-posts/${postId}`)
       setSuccess('Post deleted successfully')
       await loadBlogPosts()
-    } catch (err) {
+    } catch {
       setError('Failed to delete post')
     }
   }
 
-  const renderParameterInput = (paramName: string, paramConfig: any) => {
-    const value = generationParams[paramName] || paramConfig.default || ''
+  const renderParameterInput = (paramName: string, paramConfig: ContentTemplateParameter) => {
+    const value = (generationParams[paramName] as string | number | undefined) ?? paramConfig.default ?? ''
     
     return (
       <div key={paramName} className="space-y-1">

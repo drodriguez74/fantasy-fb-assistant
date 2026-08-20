@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { PlusIcon, SparklesIcon } from '@heroicons/react/24/outline'
-import { api } from '../../services/api'
+import { api, getErrorMessage } from '../../services/api'
 
 interface ContentTemplate {
   name: string
   description: string
-  parameters: Record<string, any>
+  parameters: Record<string, unknown>
 }
 
 interface ContentGeneratorProps {
@@ -31,8 +31,8 @@ export function ContentGenerator({ templates, onContentGenerated }: ContentGener
       await api.post('/content/generate-and-save', requestData)
       onContentGenerated()
       
-    } catch (err: any) {
-      setError(err.response?.data?.detail || `Failed to generate ${templateName}`)
+    } catch (err) {
+      setError(getErrorMessage(err, `Failed to generate ${templateName}`))
     } finally {
       setGeneratingContent(null)
     }

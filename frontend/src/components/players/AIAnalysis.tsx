@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { players } from '../../services/api'
+import { players, getErrorMessage } from '../../services/api'
 import type { Player } from '../../types'
 
 interface AIAnalysisProps {
@@ -19,8 +19,8 @@ export function AIAnalysis({ player, showButton = true }: AIAnalysisProps) {
       
       const response = await players.generateAnalysis(player.sleeper_id || player.id.toString())
       setAnalysis(response.data.ai_analysis)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to generate analysis')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to generate analysis'))
     } finally {
       setLoading(false)
     }

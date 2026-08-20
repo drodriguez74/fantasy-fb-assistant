@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { api } from '../services/api'
+import { api, getErrorMessage } from '../services/api'
 
 interface DraftSession {
   session_id: string
@@ -32,6 +32,11 @@ interface TeamAnalysis {
   positional_strength: Record<string, number>
   next_best_pick: string
 }
+
+type DraftWebSocketMessage =
+  | { type: 'recommendations_update'; data: { recommendations: DraftRecommendation[] } }
+  | { type: 'pick_update' }
+  | { type: 'error'; message: string }
 
 interface League {
   id: number
@@ -92,7 +97,7 @@ export function LiveDraftPage() {
     }
   }
 
-  const handleWebSocketMessage = (data: any) => {
+  const handleWebSocketMessage = (data: DraftWebSocketMessage) => {
     switch (data.type) {
       case 'recommendations_update':
         setRecommendations(data.data.recommendations || [])
@@ -135,9 +140,9 @@ export function LiveDraftPage() {
       
       // Load initial data
       await fetchDraftData()
-      
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to start draft session')
+
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to start draft session'))
     } finally {
       setLoading(false)
     }
@@ -159,7 +164,7 @@ export function LiveDraftPage() {
       setUserRoster(analysisResponse.data.current_roster || [])
       setTeamAnalysis(analysisResponse.data.team_analysis || null)
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to fetch draft data:', err)
     }
   }
@@ -175,8 +180,8 @@ export function LiveDraftPage() {
       })
       
       // Data will be updated via WebSocket
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to record pick')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to record pick'))
     }
   }
 
@@ -196,8 +201,8 @@ export function LiveDraftPage() {
       if (wsRef.current) {
         wsRef.current.close()
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to end session')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to end session'))
     }
   }
 
@@ -218,7 +223,7 @@ export function LiveDraftPage() {
       if (leagues.length > 0) {
         setSelectedLeague(leagues[0])
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to load leagues:', err)
       setError('Failed to load available leagues')
     }

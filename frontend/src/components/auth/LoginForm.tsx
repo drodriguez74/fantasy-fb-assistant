@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { auth } from '../../services/api'
+import { auth, getErrorMessage } from '../../services/api'
 
 interface LoginRequest {
   username: string
@@ -29,8 +29,8 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
       const { access_token } = response.data
       localStorage.setItem('access_token', access_token)
       onSuccess(access_token)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Login failed'))
     } finally {
       setLoading(false)
     }

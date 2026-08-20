@@ -64,7 +64,7 @@ export interface DraftSession {
   platform: string
   league_id: string
   user_team_id?: string
-  draft_settings?: any
+  draft_settings?: Record<string, unknown>
   is_active: boolean
   is_completed: boolean
   user_roster?: Player[]

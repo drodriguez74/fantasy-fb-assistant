@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react'
 import { auth } from '../services/api'
 import type { User } from '../types'
 
@@ -25,12 +25,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
     await refreshUser()
   }
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem('access_token')
     setUser(null)
-  }
+  }, [])
 
-  const refreshUser = async () => {
+  const refreshUser = useCallback(async () => {
     try {
       const response = await auth.getProfile()
       setUser(response.data)
@@ -38,7 +38,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       console.error('Failed to refresh user:', error)
       logout()
     }
-  }
+  }, [logout])
 
   useEffect(() => {
     const initAuth = async () => {
@@ -50,7 +50,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
     }
 
     initAuth()
-  }, [])
+  }, [refreshUser])
 
   const value = {
     user,

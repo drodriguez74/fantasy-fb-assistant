@@ -32,7 +32,7 @@ export function DraftSettings({
           </label>
           <select 
             value={settings.scoringFormat}
-            onChange={(e) => updateSettings({ scoringFormat: e.target.value as any })}
+            onChange={(e) => updateSettings({ scoringFormat: e.target.value as DraftSettings['scoringFormat'] })}
             className="w-full rounded-md border-gray-300 focus:border-blue-500 focus:ring-blue-500"
           >
             <option value="PPR">PPR (Point Per Reception)</option>

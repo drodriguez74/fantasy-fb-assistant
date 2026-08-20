@@ -26,9 +26,18 @@ interface PredictionResult {
   data_points_used: number
 }
 
+interface LineupPlayer {
+  player_id: number
+  name: string
+  position: string
+  projected_points: number
+  salary: number
+  variance: number
+}
+
 interface OptimizationResult {
   optimization_type: string
-  selected_players: any[]
+  selected_players: LineupPlayer[]
   total_salary: number
   salary_cap: number
   projected_points: number
@@ -112,8 +121,8 @@ export function AnalyticsPage() {
 
       const data = await response.json()
       setPredictionResult(data)
-    } catch (err: any) {
-      setError(err.message || 'Failed to generate prediction')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate prediction')
     } finally {
       setLoading(false)
     }
@@ -146,8 +155,8 @@ export function AnalyticsPage() {
 
       const data = await response.json()
       setOptimizationResult(data)
-    } catch (err: any) {
-      setError(err.message || 'Failed to optimize lineup')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to optimize lineup')
     } finally {
       setLoading(false)
     }
@@ -177,8 +186,8 @@ export function AnalyticsPage() {
 
       const data = await response.json()
       setCorrelationResult(data)
-    } catch (err: any) {
-      setError(err.message || 'Failed to analyze correlations')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to analyze correlations')
     } finally {
       setLoading(false)
     }
@@ -245,7 +254,7 @@ export function AnalyticsPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'predictions' | 'optimization' | 'correlations' | 'clustering' | 'visualization')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'

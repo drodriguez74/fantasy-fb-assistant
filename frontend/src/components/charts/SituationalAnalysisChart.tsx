@@ -7,6 +7,18 @@ interface SituationalAnalysisChartProps {
   chartType?: 'bar' | 'radial' | 'comparison'
 }
 
+type SituationalChartDatum = SituationalData & {
+  difference: number
+  homeAdvantage: boolean
+  total: number
+}
+
+interface SituationalTooltipProps {
+  active?: boolean
+  payload?: Array<{ payload: SituationalChartDatum }>
+  label?: string | number
+}
+
 export function SituationalAnalysisChart({ 
   data, 
   height = 300,
@@ -21,7 +33,7 @@ export function SituationalAnalysisChart({
     total: item.home + item.away
   }))
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: SituationalTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
@@ -172,6 +184,8 @@ export function WeatherImpactChart({
     domeAdvantage: item.dome > item.outdoor
   }))
 
+  type WeatherChartDatum = (typeof chartData)[number]
+
   const getSensitivityColor = (sensitivity: string) => {
     switch (sensitivity.toUpperCase()) {
       case 'LOW': return CHART_COLORS.success
@@ -199,8 +213,8 @@ export function WeatherImpactChart({
           />
           <Bar dataKey="outdoor" fill="#94A3B8" name="Outdoor" />
           <Bar dataKey="dome" fill="#3B82F6" name="Dome" />
-          <Tooltip 
-            content={({ active, payload, label }: any) => {
+          <Tooltip
+            content={({ active, payload, label }: { active?: boolean; payload?: Array<{ payload: WeatherChartDatum }>; label?: string | number }) => {
               if (active && payload && payload.length) {
                 const data = payload[0].payload
                 return (
@@ -265,8 +279,8 @@ export function GameScriptChart({
               <Cell key={`cell-${index}`} fill={entry.fill} />
             ))}
           </Pie>
-          <Tooltip 
-            formatter={(value: any) => [`${value.toFixed(1)} pts`, '']}
+          <Tooltip
+            formatter={(value: number) => [`${value.toFixed(1)} pts`, '']}
           />
           <Legend />
         </PieChart>

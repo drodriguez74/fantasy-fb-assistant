@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { api } from '../services/api'
+import { api, getErrorMessage } from '../services/api'
 import {
   TrophyIcon,
   ExclamationTriangleIcon,
@@ -22,11 +22,42 @@ interface RosterPlayer {
   pick?: number
 }
 
+interface PlayerEvaluation {
+  player_info: {
+    name: string
+    position: string
+    team: string
+    draft_round?: number
+  }
+  value_analysis: {
+    value_grade: string
+    value_category: string
+  }
+  season_outlook: {
+    outlook: string
+  }
+  risk_assessment: {
+    risk_level: string
+    risk_factors?: string[]
+  }
+}
+
 interface RosterAnalysis {
-  composition: any
-  player_evaluations: any[]
-  strengths_weaknesses: any
-  overall_grade: any
+  // The backend returns arbitrary roster-composition data that this page never renders;
+  // kept as `unknown` rather than guessing at a shape nothing here depends on.
+  composition: unknown
+  player_evaluations: PlayerEvaluation[]
+  strengths_weaknesses: {
+    strengths?: string[]
+    weaknesses?: string[]
+  }
+  overall_grade: {
+    grade: string
+    description: string
+    score: number
+    player_count: number
+    avg_player_value: number
+  }
 }
 
 interface WaiverTarget {
@@ -82,9 +113,9 @@ export function PostDraftAnalysisPage() {
       const response = await api.get(`/post-draft/import-roster/${leagueId}`)
       setRoster(response.data.roster)
       setShowImportOptions(false)
-      
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to import roster')
+
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to import roster'))
     } finally {
       setLoading(false)
     }
@@ -106,9 +137,9 @@ export function PostDraftAnalysisPage() {
       })
       
       setAnalysis(response.data.analysis.roster_analysis)
-      
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to analyze roster')
+
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to analyze roster'))
     } finally {
       setLoading(false)
     }
@@ -129,9 +160,9 @@ export function PostDraftAnalysisPage() {
       })
       
       setWaiverTargets(response.data.personalized_recommendations.personalized_targets || [])
-      
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to get waiver recommendations')
+
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to get waiver recommendations'))
     } finally {
       setLoading(false)
     }
@@ -482,7 +513,7 @@ export function PostDraftAnalysisPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {analysis.player_evaluations.map((evaluation: any, index: number) => (
+            {analysis.player_evaluations.map((evaluation, index: number) => (
               <div key={index} className="border border-gray-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="font-medium text-gray-900">{evaluation.player_info.name}</h3>
@@ -499,11 +530,11 @@ export function PostDraftAnalysisPage() {
                   <p><strong>Risk:</strong> {evaluation.risk_assessment.risk_level}</p>
                 </div>
 
-                {evaluation.risk_assessment.risk_factors?.length > 0 && (
+                {(evaluation.risk_assessment.risk_factors?.length ?? 0) > 0 && (
                   <div className="mt-3 pt-3 border-t border-gray-200">
                     <p className="text-xs text-gray-500 font-medium mb-1">Risk Factors:</p>
                     <ul className="text-xs text-gray-600 space-y-1">
-                      {evaluation.risk_assessment.risk_factors.slice(0, 2).map((factor: string, i: number) => (
+                      {evaluation.risk_assessment.risk_factors?.slice(0, 2).map((factor: string, i: number) => (
                         <li key={i}>• {factor}</li>
                       ))}
                     </ul>

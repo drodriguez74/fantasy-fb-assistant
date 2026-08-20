@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { api } from '../services/api'
+import { api, getErrorMessage } from '../services/api'
 import {
   ChartBarIcon,
   UserGroupIcon,
@@ -24,15 +24,29 @@ interface LeagueInfo {
   league_size: number
 }
 
+interface RosterPlayer {
+  name: string
+  position?: string
+  team?: string
+  total_points?: number
+  projected_points?: number
+}
+
+interface PositionAnalysisEntry {
+  grade: string
+  summary?: string
+  recommendations?: string[]
+}
+
 interface RosterAnalysis {
   team_name?: string
   owner?: string
   roster_size?: number
   total_players: number
-  position_analysis?: Record<string, any>
+  position_analysis?: Record<string, PositionAnalysisEntry>
   composition?: {
-    starting_lineup: any[]
-    bench_players: any[]
+    starting_lineup: RosterPlayer[]
+    bench_players: RosterPlayer[]
     composition_score: number
   }
   overall_grade: {
@@ -48,38 +62,76 @@ interface RosterAnalysis {
   }
   strengths?: string[]
   weaknesses?: string[]
-  players?: any[]
-  injury_concerns?: any[]
+  players?: RosterPlayer[]
+  injury_concerns?: unknown[]
   last_updated?: string
 }
 
+interface WaiverRecommendationItem {
+  player: {
+    name: string
+    position?: { value?: string }
+    projected_points?: number
+  }
+  reason?: string
+  priority?: number
+}
+
 interface WaiverRecommendation {
-  recommendations: any[]
+  recommendations: WaiverRecommendationItem[]
   position_needs: Record<string, number>
   total_available: number
   updated_at: string
 }
 
+interface TradeSuggestion {
+  target?: { name?: string }
+  target_player?: string
+  offer_players: string[]
+  likelihood?: string
+  reasoning?: string
+}
+
 interface TradeRecommendation {
-  suggestions: any[]
+  suggestions: TradeSuggestion[]
   trade_deadline: string
   updated_at: string
 }
 
+interface MatchupTeam {
+  name?: string
+  points?: number
+}
+
 interface MatchupData {
   week: number
-  user_team: any
-  opponent_team: any
+  user_team: MatchupTeam
+  opponent_team: MatchupTeam
   ai_analysis: string
   updated_at: string
 }
 
+interface StandingsTeam {
+  rank: number
+  name?: string
+  team_name?: string
+  wins?: number
+  losses?: number
+  points_for?: number
+  points_against?: number
+}
+
 interface StandingsData {
-  teams: any[]
+  teams: StandingsTeam[]
   user_team_rank: number
   total_teams: number
   playoff_teams: number
   updated_at: string
+}
+
+interface LeagueInsights {
+  weekly_outlook?: { key_points?: string[] }
+  pickup_targets?: Array<{ player: string; position?: string }>
 }
 
 export function LeagueDetailPage() {
@@ -94,21 +146,15 @@ export function LeagueDetailPage() {
   const [tradeRecs, setTradeRecs] = useState<TradeRecommendation | null>(null)
   const [matchupData, setMatchupData] = useState<MatchupData | null>(null)
   const [standingsData, setStandingsData] = useState<StandingsData | null>(null)
-  const [insights, setInsights] = useState<any>(null)
+  const [insights, setInsights] = useState<LeagueInsights | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
-  useEffect(() => {
-    if (user && leagueId) {
-      loadLeagueData()
-    }
-  }, [user, leagueId])
-
-  const loadLeagueData = async () => {
+  const loadLeagueData = useCallback(async () => {
     try {
       setLoading(true)
       setError('')
-      
+
       // Load data from specific endpoints that have real ESPN data
       const [
         rosterResponse,
@@ -119,23 +165,24 @@ export function LeagueDetailPage() {
         api.get(`/leagues/${leagueId}/standings?season=2025`),
         api.get(`/leagues/${leagueId}/insights`)
       ])
-      
+
       // Set league info from roster analysis
       setLeagueInfo(rosterResponse.data.league_info)
       setRosterAnalysis(rosterResponse.data.roster_analysis)
-      
+
       // Set standings data
+      const teams: StandingsTeam[] = standingsResponse.data.teams
       setStandingsData({
-        teams: standingsResponse.data.teams,
-        user_team_rank: standingsResponse.data.teams.find((team: any) => team.team_name === "LaMarvelous Saquads")?.rank || null,
-        total_teams: standingsResponse.data.teams.length,
+        teams,
+        user_team_rank: teams.find((team) => team.team_name === "LaMarvelous Saquads")?.rank ?? 0,
+        total_teams: teams.length,
         playoff_teams: 6,
         updated_at: new Date().toISOString()
       })
-      
+
       // Set insights
       setInsights(insightsResponse.data.insights)
-      
+
       // Set placeholder data for missing endpoints
       setWaiverRecs({
         recommendations: [],
@@ -143,21 +190,27 @@ export function LeagueDetailPage() {
         total_available: 0,
         updated_at: new Date().toISOString()
       })
-      
+
       setTradeRecs({
         suggestions: [],
         trade_deadline: "Week 13",
         updated_at: new Date().toISOString()
       })
-      
+
       setMatchupData(null) // No matchup data for now
-      
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load league data')
+
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load league data'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [leagueId])
+
+  useEffect(() => {
+    if (user && leagueId) {
+      loadLeagueData()
+    }
+  }, [user, leagueId, loadLeagueData])
 
   const refreshData = async () => {
     await loadLeagueData()
@@ -277,7 +330,7 @@ export function LeagueDetailPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
@@ -365,7 +418,7 @@ export function LeagueDetailPage() {
                 <div>
                   <h4 className="font-medium text-gray-700 mb-2">Top Pickup Targets</h4>
                   <div className="space-y-2">
-                    {insights.pickup_targets?.slice(0, 3).map((target: any, index: number) => (
+                    {insights.pickup_targets?.slice(0, 3).map((target, index: number) => (
                       <div key={`pickup-${target.player}-${index}`} className="flex items-center justify-between">
                         <span className="text-sm font-medium text-gray-900">{target.player}</span>
                         <span className="text-xs text-gray-500">{target.position}</span>
@@ -447,7 +500,7 @@ export function LeagueDetailPage() {
               <div>
                 <h4 className="font-medium text-blue-700 mb-2">Starting Lineup</h4>
                 <div className="space-y-2">
-                  {(rosterAnalysis.composition?.starting_lineup || []).map((player: any, index: number) => (
+                  {(rosterAnalysis.composition?.starting_lineup || []).map((player, index: number) => (
                     <div key={`starter-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-blue-50 rounded">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{player.name}</p>
@@ -461,7 +514,7 @@ export function LeagueDetailPage() {
               <div>
                 <h4 className="font-medium text-gray-700 mb-2">Bench Players</h4>
                 <div className="space-y-2">
-                  {(rosterAnalysis.composition?.bench_players || rosterAnalysis.players || []).slice(0, 6).map((player: any, index: number) => (
+                  {(rosterAnalysis.composition?.bench_players || rosterAnalysis.players || []).slice(0, 6).map((player, index: number) => (
                     <div key={`bench-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-gray-50 rounded">
                       <div>
                         <p className="text-sm font-medium text-gray-900">{player.name}</p>
@@ -480,7 +533,7 @@ export function LeagueDetailPage() {
             <div className="bg-white rounded-lg shadow p-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Position-by-Position Analysis</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(rosterAnalysis.position_analysis).map(([position, analysis]: [string, any]) => (
+                {Object.entries(rosterAnalysis.position_analysis).map(([position, analysis]) => (
                   <div key={position} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
                       <h4 className="font-medium text-gray-900">{position}</h4>
@@ -511,7 +564,7 @@ export function LeagueDetailPage() {
             </p>
             
             <div className="space-y-4">
-              {waiverRecs.recommendations.slice(0, 10).map((rec: any, index: number) => (
+              {waiverRecs.recommendations.slice(0, 10).map((rec, index: number) => (
                 <div key={`waiver-${rec.player.name}-${index}`} className="border rounded-lg p-4 hover:bg-gray-50">
                   <div className="flex items-center justify-between">
                     <div>
@@ -546,7 +599,7 @@ export function LeagueDetailPage() {
             </p>
             
             <div className="space-y-4">
-              {tradeRecs.suggestions.map((suggestion: any, index: number) => (
+              {tradeRecs.suggestions.map((suggestion, index: number) => (
                 <div key={`trade-suggestion-${index}-${suggestion.target?.name || index}`} className="border rounded-lg p-4">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
@@ -598,7 +651,7 @@ export function LeagueDetailPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {standingsData.teams.map((team: any) => (
+                  {standingsData.teams.map((team) => (
                     <tr key={`team-${team.name || team.team_name}-${team.rank}`} className={team.rank <= standingsData.playoff_teams ? 'bg-green-50' : ''}>
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {team.rank}

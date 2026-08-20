@@ -7,6 +7,18 @@ interface PlayerComparisonChartProps {
   showLegend?: boolean
 }
 
+interface ComparisonTooltipEntry {
+  dataKey: string
+  color: string
+  value: number
+}
+
+interface ComparisonTooltipProps {
+  active?: boolean
+  payload?: ComparisonTooltipEntry[]
+  label?: string | number
+}
+
 export function PlayerComparisonChart({ data, height = 400, showLegend = true }: PlayerComparisonChartProps) {
   // Transform data for radar chart
   const radarData = [
@@ -74,12 +86,12 @@ export function PlayerComparisonChart({ data, height = 400, showLegend = true }:
     return colors[index % colors.length]
   })
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: ComparisonTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
           <p className="font-semibold text-gray-900">{label}</p>
-          {payload.map((entry: any, index: number) => (
+          {payload.map((entry, index: number) => (
             <p key={`tooltip-${entry.dataKey}-${index}`} style={{ color: entry.color }} className="text-sm">
               {entry.dataKey}: {entry.value.toFixed(1)}
             </p>
@@ -134,7 +146,11 @@ export function PlayerComparisonChart({ data, height = 400, showLegend = true }:
 // Bar chart for side-by-side comparison
 export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
   // Transform data for bar chart comparison
-  const metrics = [
+  const metrics: Array<{
+    key: 'projectedPoints' | 'consistency' | 'valueScore' | 'upsideRating'
+    name: string
+    color: string
+  }> = [
     { key: 'projectedPoints', name: 'Projected Points', color: CHART_COLORS.primary },
     { key: 'consistency', name: 'Consistency (x10)', color: CHART_COLORS.success },
     { key: 'valueScore', name: 'Value Score', color: CHART_COLORS.warning },
@@ -148,12 +164,12 @@ export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
           <h4 className="text-sm font-medium text-gray-900 mb-3">{metric.name}</h4>
           <div className="space-y-2">
             {data.map((player) => {
-              let value = (player as any)[metric.key] || 0
+              let value = player[metric.key] || 0
               if (metric.key === 'consistency' || metric.key === 'upsideRating') {
                 value *= 10 // Scale for display
               }
               const maxValue = Math.max(...data.map(p => {
-                let v = (p as any)[metric.key] || 0
+                let v = p[metric.key] || 0
                 if (metric.key === 'consistency' || metric.key === 'upsideRating') {
                   v *= 10
                 }

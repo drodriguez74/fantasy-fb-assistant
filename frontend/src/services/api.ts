@@ -2,6 +2,18 @@ import axios from 'axios'
 
 const API_BASE_URL = 'http://localhost:8000/api/v1'
 
+// Narrow an unknown error (typically from an axios request) down to a
+// human-readable message, falling back to a caller-supplied default when the
+// error doesn't carry a recognizable `detail` string.
+export function getErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const detail = err.response?.data?.detail
+    if (typeof detail === 'string') return detail
+  }
+  if (err instanceof Error && err.message) return err.message
+  return fallback
+}
+
 // Create axios instance with default config
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -41,7 +53,7 @@ export const auth = {
   
   getProfile: () => api.get('/auth/me'),
   
-  updateProfile: (data: any) => api.put('/auth/me', data),
+  updateProfile: (data: Record<string, unknown>) => api.put('/auth/me', data),
 }
 
 // League endpoints
@@ -106,10 +118,10 @@ export const players = {
 
 // Draft endpoints
 export const draft = {
-  startSession: (data: { platform: string; league_id: string; settings?: any }) =>
+  startSession: (data: { platform: string; league_id: string; settings?: Record<string, unknown> }) =>
     api.post('/draft/start', data),
-  
-  getRecommendations: (sessionId: string, params?: any) =>
+
+  getRecommendations: (sessionId: string, params?: Record<string, unknown>) =>
     api.get(`/draft/${sessionId}/recommendations`, { params }),
   
   recordPick: (sessionId: string, data: { player_id: number; team_id: string; round: number; pick: number }) =>
@@ -121,7 +133,7 @@ export const draft = {
 
   // Direct draft recommendations (non-session based)
   getDraftRecommendations: (data: {
-    available_players: any[];
+    available_players: unknown[];
     team_needs: string[];
     draft_position: number;
     scoring_format?: string;
@@ -151,7 +163,7 @@ export const content = {
   
   getBlogPost: (slug: string) => api.get(`/content/blog-posts/${slug}`),
   
-  generateContent: (data: { topic: string; content_type: string; settings?: any }) =>
+  generateContent: (data: { topic: string; content_type: string; settings?: Record<string, unknown> }) =>
     api.post('/content/generate', data),
 }
 

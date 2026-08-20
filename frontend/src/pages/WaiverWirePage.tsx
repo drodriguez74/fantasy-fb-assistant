@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { waiverWire } from '../services/api'
+import { waiverWire, getErrorMessage } from '../services/api'
 import {
   PlusIcon,
   FireIcon,
@@ -63,6 +63,21 @@ interface TrendingPlayer {
   upcoming_matchup_rating: number
 }
 
+interface RosterAddDropCandidate {
+  player_id: number
+  player_name: string
+  priority?: string
+  reason?: string
+  confidence?: number
+  projected_points?: number
+  drop_score?: number
+}
+
+interface AddDropAnalysis {
+  add_candidates?: RosterAddDropCandidate[]
+  drop_candidates?: RosterAddDropCandidate[]
+}
+
 // Helper function to get current NFL week
 function getCurrentNFLWeek(): number {
   // Simple calculation - NFL season typically starts first week of September
@@ -99,78 +114,78 @@ export function WaiverWirePage() {
   
   // Roster analyzer
   const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
-  const [addDropAnalysis, setAddDropAnalysis] = useState<any>(null)
+  const [addDropAnalysis, setAddDropAnalysis] = useState<AddDropAnalysis | null>(null)
+
+  const loadRecommendations = useCallback(async () => {
+    try {
+      setLoading(true)
+      setError('')
+
+      const params: { week: number; position?: string } = { week: currentWeek }
+      if (selectedPosition) {
+        params.position = selectedPosition
+      }
+
+      const response = await waiverWire.getRecommendations(params)
+      setRecommendations(response.data.recommendations || [])
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load waiver recommendations'))
+    } finally {
+      setLoading(false)
+    }
+  }, [currentWeek, selectedPosition])
+
+  const loadTrendingPlayers = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const params: { week: number; trend_direction: string; position?: string } = {
+        week: currentWeek,
+        trend_direction: trendDirection
+      }
+      if (selectedPosition) {
+        params.position = selectedPosition
+      }
+
+      const response = await waiverWire.getTrending(params)
+      setTrendingPlayers(response.data.trending_players || [])
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load trending players'))
+    } finally {
+      setLoading(false)
+    }
+  }, [currentWeek, trendDirection, selectedPosition])
+
+  const loadAlerts = useCallback(async () => {
+    try {
+      setLoading(true)
+
+      const response = await waiverWire.getAlerts()
+      setAlerts(response.data.alerts || [])
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load alerts'))
+    } finally {
+      setLoading(false)
+    }
+  }, [])
 
   useEffect(() => {
     if (user) {
       loadRecommendations()
     }
-  }, [user, selectedPosition, selectedPriority, currentWeek])
+  }, [user, loadRecommendations])
 
   useEffect(() => {
     if (user && activeTab === 'trending') {
       loadTrendingPlayers()
     }
-  }, [user, activeTab, trendDirection, selectedPosition, currentWeek])
+  }, [user, activeTab, loadTrendingPlayers])
 
   useEffect(() => {
     if (user && activeTab === 'alerts') {
       loadAlerts()
     }
-  }, [user, activeTab])
-
-  const loadRecommendations = async () => {
-    try {
-      setLoading(true)
-      setError('')
-      
-      const params: any = { week: currentWeek }
-      if (selectedPosition) {
-        params.position = selectedPosition
-      }
-      
-      const response = await waiverWire.getRecommendations(params)
-      setRecommendations(response.data.recommendations || [])
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to load waiver recommendations')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadTrendingPlayers = async () => {
-    try {
-      setLoading(true)
-      
-      const params: any = { 
-        week: currentWeek, 
-        trend_direction: trendDirection 
-      }
-      if (selectedPosition) {
-        params.position = selectedPosition
-      }
-      
-      const response = await waiverWire.getTrending(params)
-      setTrendingPlayers(response.data.trending_players || [])
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to load trending players')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const loadAlerts = async () => {
-    try {
-      setLoading(true)
-      
-      const response = await waiverWire.getAlerts()
-      setAlerts(response.data.alerts || [])
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to load alerts')
-    } finally {
-      setLoading(false)
-    }
-  }
+  }, [user, activeTab, loadAlerts])
 
   const analyzeRoster = async () => {
     try {
@@ -191,8 +206,8 @@ export function WaiverWirePage() {
       })
       
       setAddDropAnalysis(response.data.roster_analysis)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to analyze roster')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to analyze roster'))
     } finally {
       setLoading(false)
     }
@@ -209,8 +224,8 @@ export function WaiverWirePage() {
       })
 
       await loadRecommendations()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'Failed to generate recommendations')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to generate recommendations'))
     } finally {
       setLoading(false)
     }
@@ -324,7 +339,7 @@ export function WaiverWirePage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'recommendations' | 'trending' | 'alerts' | 'analyzer')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
@@ -663,17 +678,17 @@ export function WaiverWirePage() {
                 <div>
                   <h4 className="font-medium text-gray-900 mb-3">Top Add Candidates</h4>
                   <div className="space-y-3">
-                    {addDropAnalysis.add_candidates?.slice(0, 5).map((player: any) => (
+                    {addDropAnalysis.add_candidates?.slice(0, 5).map((player) => (
                       <div key={player.player_id} className="border border-gray-200 rounded p-3">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium">{player.player_name}</span>
-                          <span className={`px-2 py-1 rounded text-xs ${getPriorityBadgeColor(player.priority)}`}>
+                          <span className={`px-2 py-1 rounded text-xs ${getPriorityBadgeColor(player.priority || '')}`}>
                             {player.priority}
                           </span>
                         </div>
                         <p className="text-sm text-gray-600">{player.reason}</p>
                         <div className="mt-2 text-xs text-gray-500">
-                          Confidence: {(player.confidence * 100).toFixed(0)}% • 
+                          Confidence: {((player.confidence ?? 0) * 100).toFixed(0)}% •
                           Projected: {player.projected_points?.toFixed(1) || 'N/A'} pts
                         </div>
                       </div>
@@ -685,12 +700,12 @@ export function WaiverWirePage() {
                 <div>
                   <h4 className="font-medium text-gray-900 mb-3">Drop Candidates</h4>
                   <div className="space-y-3">
-                    {addDropAnalysis.drop_candidates?.map((player: any) => (
+                    {addDropAnalysis.drop_candidates?.map((player) => (
                       <div key={player.player_id} className="border border-red-200 rounded p-3 bg-red-50">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium">{player.player_name}</span>
                           <span className="text-xs text-red-600">
-                            Drop Score: {(player.drop_score * 100).toFixed(0)}%
+                            Drop Score: {((player.drop_score ?? 0) * 100).toFixed(0)}%
                           </span>
                         </div>
                         <p className="text-sm text-gray-600">{player.reason}</p>

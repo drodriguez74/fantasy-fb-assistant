@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
-import { players } from '../services/api'
+import { players, getErrorMessage } from '../services/api'
 import { PlayerCard } from '../components/players/PlayerCard'
 import type { Player, Position } from '../types'
 
@@ -28,14 +28,9 @@ export function PlayersPage() {
 
   useEffect(() => {
     setCurrentPage(1) // Reset to first page when position changes
-    loadPlayers()
   }, [selectedPosition])
 
-  useEffect(() => {
-    loadPlayers()
-  }, [currentPage, pageSize])
-
-  const loadPlayers = async () => {
+  const loadPlayers = useCallback(async () => {
     try {
       setLoading(true)
       const params = {
@@ -46,12 +41,16 @@ export function PlayersPage() {
       const response = await players.getAll(params)
       setPlayerList(response.data?.players || [])
       setPagination(response.data?.pagination || null)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load players')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load players'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedPosition, currentPage, pageSize])
+
+  useEffect(() => {
+    loadPlayers()
+  }, [loadPlayers])
 
   const filteredPlayers = playerList.filter(player =>
     player.name.toLowerCase().includes(searchQuery.toLowerCase()) ||

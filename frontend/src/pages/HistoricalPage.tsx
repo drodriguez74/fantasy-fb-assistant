@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { historical, players } from '../services/api'
+import { historical, players, getErrorMessage } from '../services/api'
 import {
   ChartBarIcon,
   ArrowTrendingUpIcon,
@@ -68,6 +68,15 @@ interface DataOverview {
   }
 }
 
+interface PlayerSearchResult {
+  id?: number
+  sleeper_id?: string
+  full_name?: string
+  name?: string
+  position?: string
+  team?: string
+}
+
 interface TrendingPlayer {
   player_id: number
   player_name: string
@@ -88,32 +97,32 @@ function TrendsTab() {
   const [selectedPosition, setSelectedPosition] = useState<string>('all')
   const [trendType, setTrendType] = useState<string>('career')
 
-  useEffect(() => {
-    loadTrendingPlayers()
-  }, [selectedPosition, trendType])
-
-  const loadTrendingPlayers = async () => {
+  const loadTrendingPlayers = useCallback(async () => {
     try {
       setLoading(true)
       setError('')
-      
-      const params: any = {
+
+      const params: { trend_type: string; limit: number; position?: string } = {
         trend_type: trendType,
         limit: 50
       }
-      
+
       if (selectedPosition !== 'all') {
         params.position = selectedPosition
       }
-      
+
       const response = await historical.getLeagueTrends(params)
       setTrendingPlayers(response.data.trending_players || [])
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load trending players')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load trending players'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [selectedPosition, trendType])
+
+  useEffect(() => {
+    loadTrendingPlayers()
+  }, [loadTrendingPlayers])
 
   const getTrendIcon = (direction: string) => {
     switch (direction) {
@@ -308,7 +317,7 @@ export function HistoricalPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'players' | 'trends' | 'analysis'>('overview')
   const [dataOverview, setDataOverview] = useState<DataOverview | null>(null)
   const [playerSummary, setPlayerSummary] = useState<HistoricalSummary | null>(null)
-  const [playerSearchResults, setPlayerSearchResults] = useState<any[]>([])
+  const [playerSearchResults, setPlayerSearchResults] = useState<PlayerSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [syncing, setSyncing] = useState(false)
@@ -325,8 +334,8 @@ export function HistoricalPage() {
       setLoading(true)
       const response = await historical.getOverview()
       setDataOverview(response.data)
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load data overview')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load data overview'))
     } finally {
       setLoading(false)
     }
@@ -358,9 +367,9 @@ export function HistoricalPage() {
       const response = await historical.getPlayerSummary(playerId, 3)
       console.log('Player summary response:', response.data)
       setPlayerSummary(response.data)
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error loading player summary:', err)
-      setError(err.response?.data?.detail || 'Failed to load player summary')
+      setError(getErrorMessage(err, 'Failed to load player summary'))
       setPlayerSummary(null)
     } finally {
       setLoading(false)
@@ -379,8 +388,8 @@ export function HistoricalPage() {
         setSyncing(false)
       }, 3000)
       
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to start historical sync')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to start historical sync'))
       setSyncing(false)
     }
   }
@@ -473,7 +482,7 @@ export function HistoricalPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'players' | 'trends' | 'analysis')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
@@ -647,7 +656,7 @@ export function HistoricalPage() {
                     <button
                       key={player.id || player.sleeper_id}
                       onClick={async () => {
-                        setSearchQuery(player.full_name || player.name)
+                        setSearchQuery(player.full_name || player.name || '')
                         setPlayerSearchResults([])
                         
                         if (player.id) {
@@ -666,8 +675,8 @@ export function HistoricalPage() {
                             } else {
                               setError('Player was added but summary could not be loaded')
                             }
-                          } catch (err: any) {
-                            setError(err.response?.data?.detail || 'Failed to add player to database')
+                          } catch (err) {
+                            setError(getErrorMessage(err, 'Failed to add player to database'))
                             setLoading(false)
                           }
                         }

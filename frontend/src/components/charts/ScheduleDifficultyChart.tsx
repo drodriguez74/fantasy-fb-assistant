@@ -7,6 +7,19 @@ interface ScheduleDifficultyChartProps {
   showAverage?: boolean
 }
 
+interface ScheduleTooltipEntry {
+  dataKey: string
+  color: string
+  value: number
+  payload: Record<string, string | number>
+}
+
+interface ScheduleTooltipProps {
+  active?: boolean
+  payload?: ScheduleTooltipEntry[]
+  label?: string | number
+}
+
 export function ScheduleDifficultyChart({ data, height = 300, showAverage = true }: ScheduleDifficultyChartProps) {
   // Group data by player
   const playerData = data.reduce((acc, item) => {
@@ -21,7 +34,7 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
   const chartData = Array.from(new Set(data.map(d => d.week)))
     .sort((a, b) => a - b)
     .map(week => {
-      const weekData: any = { week: `Week ${week}` }
+      const weekData: Record<string, string | number> = { week: `Week ${week}` }
       
       Object.keys(playerData).forEach(player => {
         const playerWeekData = playerData[player].find(d => d.week === week)
@@ -51,12 +64,12 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
     return colors[index % colors.length]
   })
 
-  const CustomTooltip = ({ active, payload, label }: any) => {
+  const CustomTooltip = ({ active, payload, label }: ScheduleTooltipProps) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg max-w-xs">
           <p className="font-semibold text-gray-900 mb-2">{label}</p>
-          {payload.map((entry: any, index: number) => {
+          {payload.map((entry, index: number) => {
             if (entry.dataKey === 'average') {
               return (
                 <p key={`tooltip-avg-${index}`} style={{ color: entry.color }} className="text-sm">

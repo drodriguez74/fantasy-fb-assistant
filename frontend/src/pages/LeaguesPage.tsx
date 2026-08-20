@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { leagues } from '../services/api'
+import { leagues, getErrorMessage } from '../services/api'
 import { useAuth } from '../hooks/useAuth'
 
 interface League {
@@ -43,8 +43,8 @@ export function LeaguesPage() {
       setLoading(true)
       const response = await leagues.getAll()
       setUserLeagues(response.data || [])
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load leagues')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load leagues'))
     } finally {
       setLoading(false)
     }
@@ -76,8 +76,8 @@ export function LeaguesPage() {
       
       window.addEventListener('message', handleCallback)
       
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to start Yahoo connection')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to start Yahoo connection'))
       setConnecting(false)
     }
   }
@@ -93,8 +93,8 @@ export function LeaguesPage() {
         setError('Failed to connect Yahoo leagues')
         setConnecting(false)
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to connect Yahoo leagues')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to connect Yahoo leagues'))
       setConnecting(false)
     }
   }
@@ -105,8 +105,8 @@ export function LeaguesPage() {
     try {
       await leagues.disconnect(leagueId)
       await loadUserLeagues()
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to disconnect league')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to disconnect league'))
     }
   }
 
@@ -135,8 +135,8 @@ export function LeaguesPage() {
         setError(response.data.error || 'Failed to connect to ESPN league')
         return false
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to test ESPN connection')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to test ESPN connection'))
       return false
     } finally {
       setTestingConnection(false)
@@ -165,8 +165,8 @@ export function LeaguesPage() {
       } else {
         setError('Failed to connect ESPN league')
       }
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to connect ESPN league')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to connect ESPN league'))
     } finally {
       setConnecting(false)
     }

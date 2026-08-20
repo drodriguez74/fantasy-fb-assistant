@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { PlusIcon, StarIcon } from '@heroicons/react/24/outline'
 import { draft } from '../services/api'
 
@@ -48,7 +48,7 @@ export function DraftPage() {
   const positions = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF']
   
   // Calculate team needs based on drafted players
-  const getTeamNeeds = (): string[] => {
+  const getTeamNeeds = useCallback((): string[] => {
     const positionCounts = draftedPlayers.reduce((acc, player) => {
       acc[player.position] = (acc[player.position] || 0) + 1
       return acc
@@ -56,7 +56,7 @@ export function DraftPage() {
 
     const needs: string[] = []
     const idealCounts = { RB: 2, WR: 2, QB: 1, TE: 1 }
-    
+
     Object.entries(idealCounts).forEach(([pos, ideal]) => {
       const current = positionCounts[pos] || 0
       if (current < ideal) {
@@ -65,7 +65,7 @@ export function DraftPage() {
     })
 
     return needs.length > 0 ? needs : ['RB', 'WR']
-  }
+  }, [draftedPlayers])
 
   // Load initial data
   useEffect(() => {
@@ -106,20 +106,18 @@ export function DraftPage() {
     loadInitialData()
   }, [])
 
-  // Get recommendations when settings or drafted players change
-  useEffect(() => {
-    if (availablePlayers.length > 0) {
-      generateRecommendations()
-    }
-  }, [settings, draftedPlayers, availablePlayers])
+  const getCurrentPick = useCallback((): number => {
+    const roundPick = ((currentRound - 1) * settings.teamCount) + settings.draftPosition
+    return roundPick
+  }, [currentRound, settings])
 
-  const generateRecommendations = async () => {
+  const generateRecommendations = useCallback(async () => {
     if (availablePlayers.length === 0) return
 
     try {
       const teamNeeds = getTeamNeeds()
       const currentPick = getCurrentPick()
-      
+
       // Filter out already drafted players
       const draftedIds = new Set(draftedPlayers.map(p => p.sleeper_id))
       const available = availablePlayers
@@ -150,12 +148,14 @@ export function DraftPage() {
         }))
       setRecommendations(topAvailable)
     }
-  }
+  }, [availablePlayers, draftedPlayers, settings, getTeamNeeds, getCurrentPick])
 
-  const getCurrentPick = (): number => {
-    const roundPick = ((currentRound - 1) * settings.teamCount) + settings.draftPosition
-    return roundPick
-  }
+  // Get recommendations when settings or drafted players change
+  useEffect(() => {
+    if (availablePlayers.length > 0) {
+      generateRecommendations()
+    }
+  }, [availablePlayers, generateRecommendations])
 
   const draftPlayer = (player: Player) => {
     const pick = getCurrentPick()
@@ -314,7 +314,7 @@ export function DraftPage() {
                 </label>
                 <select 
                   value={settings.scoringFormat}
-                  onChange={(e) => setSettings({...settings, scoringFormat: e.target.value as any})}
+                  onChange={(e) => setSettings({...settings, scoringFormat: e.target.value as DraftSettings['scoringFormat']})}
                   className="w-full rounded-md border-gray-300"
                 >
                   <option value="PPR">PPR</option>

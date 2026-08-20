@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { api } from '../services/api'
+import { api, getErrorMessage } from '../services/api'
 import {
   PlusIcon,
   MagnifyingGlassIcon,
@@ -31,7 +31,7 @@ interface BlogPost {
 interface ContentTemplate {
   name: string
   description: string
-  parameters: Record<string, any>
+  parameters: Record<string, { type: string; description: string; default?: string | number }>
 }
 
 export function BlogPage() {
@@ -55,8 +55,8 @@ export function BlogPage() {
       setLoading(true)
       const response = await api.get('/content/blog-posts/?limit=20&published_only=false')
       setBlogPosts(response.data.blog_posts || [])
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to load blog posts')
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to load blog posts'))
     } finally {
       setLoading(false)
     }
@@ -90,8 +90,8 @@ export function BlogPage() {
       // Reload blog posts to show new content
       await loadBlogPosts()
       
-    } catch (err: any) {
-      setError(err.response?.data?.detail || `Failed to generate ${templateName}`)
+    } catch (err) {
+      setError(getErrorMessage(err, `Failed to generate ${templateName}`))
     } finally {
       setGeneratingContent(null)
     }
