@@ -119,4 +119,4 @@ jspm_packages/
 .DS_Store
 
 # Docker
-.dockerignore
+.dockerignorebackend/connected_league.json
