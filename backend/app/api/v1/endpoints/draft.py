@@ -110,6 +110,25 @@ async def get_trending_draft_candidates(
         raise HTTPException(status_code=500, detail=f"Failed to get trending candidates: {str(e)}")
 
 
+def _is_on_active_roster(player_data: dict) -> bool:
+    """Determine whether a Sleeper player record represents someone currently
+    rosterable in fantasy drafts (i.e. not retired/free agent/unaffiliated).
+
+    Sleeper's `status` field alone is unreliable: long-retired players (e.g.
+    Frank Gore, Adrian Peterson) are still tagged `status: "Active"` in
+    Sleeper's dataset. The reliable signal is that they also have `team: null`
+    once they're no longer on an NFL roster, so require both a real team and
+    an active status.
+    """
+    return bool(player_data.get("team")) and player_data.get("status") == "Active"
+
+
+# Sleeper uses 9999999 as a sentinel for "unranked" players; treat missing
+# search_rank the same way so unranked players sort to the bottom instead of
+# the top.
+_UNRANKED_SENTINEL = 9999999
+
+
 @router.get("/positional-rankings/{position}")
 async def get_positional_rankings(
     position: str,
@@ -120,23 +139,28 @@ async def get_positional_rankings(
         valid_positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
         if position.upper() not in valid_positions:
             raise HTTPException(status_code=400, detail=f"Invalid position. Must be one of: {valid_positions}")
-        
+
         # Get all players and filter by position
         all_players = await sleeper_service.get_all_players()
-        
+
         if "error" in all_players:
             raise HTTPException(status_code=500, detail=all_players["error"])
-        
+
         position_players = []
         for player_id, player_data in all_players.items():
-            if isinstance(player_data, dict) and player_data.get("position") == position.upper():
+            if (
+                isinstance(player_data, dict)
+                and player_data.get("position") == position.upper()
+                and _is_on_active_roster(player_data)
+            ):
                 player_data["sleeper_id"] = player_id
                 position_players.append(player_data)
-        
-        # Sort by some ranking criteria (could be enhanced with actual rankings)
-        # For now, we'll sort by years of experience as a proxy, handling None values
-        position_players.sort(key=lambda x: x.get("years_exp") or 0, reverse=True)
-        
+
+        # Rank using Sleeper's own search_rank (roughly a popularity/relevance
+        # rank across all players). Lower is better; missing/unranked players
+        # use Sleeper's 9999999 sentinel so they sort last, not first.
+        position_players.sort(key=lambda x: x.get("search_rank") or _UNRANKED_SENTINEL)
+
         return {
             "position": position.upper(),
             "players": position_players[:limit],

@@ -42,6 +42,7 @@ export function DraftPage() {
   const [draftedPlayers, setDraftedPlayers] = useState<DraftedPlayer[]>([])
   const [trendingPlayers, setTrendingPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(false)
+  const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [selectedPosition, setSelectedPosition] = useState<string>('ALL')
   const [currentRound, setCurrentRound] = useState(1)
 
@@ -114,6 +115,8 @@ export function DraftPage() {
   const generateRecommendations = useCallback(async () => {
     if (availablePlayers.length === 0) return
 
+    setRecommendationsError(null)
+
     try {
       const teamNeeds = getTeamNeeds()
       const currentPick = getCurrentPick()
@@ -134,19 +137,12 @@ export function DraftPage() {
 
       setRecommendations(result.data.recommendations || [])
     } catch (error) {
+      // Don't fabricate recommendations when the real call fails -- a made-up
+      // confidence score and templated reasoning would look identical to a
+      // genuine AI recommendation. Surface the failure instead.
       console.error('Error generating recommendations:', error)
-      // Fallback to showing top available players
-      const draftedIds = new Set(draftedPlayers.map(p => p.sleeper_id))
-      const topAvailable = availablePlayers
-        .filter(p => !draftedIds.has(p.sleeper_id))
-        .slice(0, 3)
-        .map(p => ({
-          player_name: p.full_name,
-          position: p.position,
-          reasoning: `Top available ${p.position} with strong projections`,
-          confidence: 75
-        }))
-      setRecommendations(topAvailable)
+      setRecommendations([])
+      setRecommendationsError("Couldn't load recommendations. Try refreshing.")
     }
   }, [availablePlayers, draftedPlayers, settings, getTeamNeeds, getCurrentPick])
 
@@ -242,7 +238,11 @@ export function DraftPage() {
                     </button>
                   </div>
                 </div>
-              )) : (
+              )) : recommendationsError ? (
+                <div className="text-center py-8 text-red-600">
+                  <p>{recommendationsError}</p>
+                </div>
+              ) : (
                 <div className="text-center py-8 text-gray-500">
                   <p>Configure your draft settings to get AI recommendations</p>
                 </div>
