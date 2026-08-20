@@ -13,7 +13,7 @@ An AI-powered fantasy football assistant that helps PPR league users with draft 
 
 ## 🛠 Tech Stack
 
-- **Backend**: Python 3.9+ • FastAPI • SQLAlchemy • PostgreSQL • Alembic
+- **Backend**: Python 3.11+ • FastAPI • SQLAlchemy • PostgreSQL • Alembic
 - **Frontend**: React 19 • TypeScript • Vite • Tailwind CSS • Heroicons
 - **AI**: OpenAI/Anthropic APIs for content generation
 - **Auth**: JWT with secure password hashing
@@ -50,7 +50,7 @@ fantasy-football-assistant/
 ## 🚀 Quick Start
 
 ### Prerequisites
-- **Python 3.9+** ([Download](https://python.org))
+- **Python 3.11+** ([Download](https://python.org))
 - **Node.js 18+** ([Download](https://nodejs.org))
 - **PostgreSQL 14+** (Install via [Homebrew](https://brew.sh): `brew install postgresql`)
 

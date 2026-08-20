@@ -209,7 +209,7 @@ docker run -p 5173:5173 ff-frontend
 # Check Python virtual environment
 cd backend
 source venv/bin/activate
-python --version  # Should be 3.9+
+python --version  # Should be 3.11+
 
 # Check database connection
 python -c "
