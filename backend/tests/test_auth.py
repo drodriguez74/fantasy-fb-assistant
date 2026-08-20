@@ -23,10 +23,23 @@ def override_get_db():
     finally:
         db.close()
 
-app.dependency_overrides[get_db] = override_get_db
+@pytest.fixture(autouse=True)
+def override_db_dependency():
+    # Scoped to each test (not a bare module-level assignment) so the override
+    # is removed afterwards. Without teardown, this permanently redirected the
+    # shared `app`'s get_db to this file's SQLite engine for every test that
+    # ran later in the same pytest session — including other test files —
+    # which broke once setup_database (below) dropped its tables.
+    app.dependency_overrides[get_db] = override_get_db
+    yield
+    app.dependency_overrides.pop(get_db, None)
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def setup_database():
+    # Function-scoped (not module-scoped) so each test starts from a clean,
+    # empty database. Module scope let earlier tests' users (e.g. the shared
+    # test_user_data fixture) leak into later tests in the same file, making
+    # test_duplicate_registration fail/pass depending on test execution order.
     Base.metadata.create_all(bind=engine)
     yield
     Base.metadata.drop_all(bind=engine)
@@ -40,7 +53,7 @@ def test_user_data():
     return {
         "email": "test@example.com",
         "username": "testuser",
-        "password": "testpassword123",
+        "password": "TestPassword123",
         "full_name": "Test User"
     }
 
@@ -63,7 +76,7 @@ def test_user_login(client, setup_database, test_user_data):
         "email": test_user_data["email"],
         "password": test_user_data["password"]
     }
-    response = client.post("/api/v1/auth/token", json=login_data)
+    response = client.post("/api/v1/auth/login", json=login_data)
     assert response.status_code == 200
     data = response.json()
     assert "access_token" in data
@@ -86,14 +99,14 @@ def test_invalid_login(client, setup_database):
         "email": "nonexistent@example.com",
         "password": "wrongpassword"
     }
-    response = client.post("/api/v1/auth/token", json=login_data)
+    response = client.post("/api/v1/auth/login", json=login_data)
     assert response.status_code == 401
 
 def test_get_current_user(client, setup_database, test_user_data):
     """Test getting current user info"""
     # Register and login
     client.post("/api/v1/auth/register", json=test_user_data)
-    login_response = client.post("/api/v1/auth/token", json={
+    login_response = client.post("/api/v1/auth/login", json={
         "email": test_user_data["email"],
         "password": test_user_data["password"]
     })
