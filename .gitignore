@@ -120,3 +120,6 @@ jspm_packages/
 
 # Docker
 .dockerignorebackend/connected_league.json
+
+# Claude Code worktree metadata
+.claude/worktrees/
