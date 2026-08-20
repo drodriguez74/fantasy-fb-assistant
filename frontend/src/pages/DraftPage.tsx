@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { PlusIcon, StarIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { draft } from '../services/api'
+import { DraftPickLog, type PickLogEntry } from '../components/draft'
 
 interface DraftSettings {
   scoringFormat: 'PPR' | 'Half PPR' | 'Standard'
   teamCount: number
   draftPosition: number
+  totalRounds: number
 }
 
 interface Player {
@@ -17,6 +19,7 @@ interface Player {
   projected_points?: number
   adp?: number
   trending_count?: number
+  search_rank?: number
 }
 
 interface DraftedPlayer extends Player {
@@ -29,6 +32,110 @@ interface Recommendation {
   position: string
   reasoning: string
   confidence: number
+}
+
+type DraftStatus = 'setup' | 'drafting' | 'complete'
+
+// Roster construction a team is trying to fill before it starts taking best
+// player available. Shared by the user's own "Team Needs" panel and the bot
+// pick logic below, so both use one real definition of "need" rather than
+// two that could drift apart.
+const IDEAL_POSITION_COUNTS: Record<string, number> = { RB: 2, WR: 2, QB: 1, TE: 1 }
+
+function getPositionNeeds(roster: { position: string }[]): string[] {
+  const positionCounts = roster.reduce((acc, player) => {
+    acc[player.position] = (acc[player.position] || 0) + 1
+    return acc
+  }, {} as Record<string, number>)
+
+  const needs = Object.entries(IDEAL_POSITION_COUNTS)
+    .filter(([pos, ideal]) => (positionCounts[pos] || 0) < ideal)
+    .map(([pos]) => pos)
+
+  return needs.length > 0 ? needs : ['RB', 'WR']
+}
+
+// Sleeper's own sentinel for "unranked" -- mirrors the backend's
+// _UNRANKED_SENTINEL in draft.py so bots sort unranked players last, not
+// first, exactly like the real positional-rankings endpoint already does.
+const UNRANKED_SENTINEL = 9999999
+
+function turnTeamForPick(overallPick: number, teamCount: number): number {
+  const round = Math.floor((overallPick - 1) / teamCount) + 1
+  const posInRound = ((overallPick - 1) % teamCount) + 1
+  // Standard snake draft: odd rounds go 1..N, even rounds go N..1.
+  return round % 2 === 1 ? posInRound : teamCount - posInRound + 1
+}
+
+// Bots draft the highest real-search_rank player at a position they still
+// need, falling back to best-player-available once their needs are filled.
+// No fabricated "bot intelligence" -- same ranking data and the same
+// active-roster-filtered pool the real recommendations endpoint uses.
+function pickBotPlayer(
+  team: number,
+  log: PickLogEntry[],
+  pool: Player[]
+): { player: Player; reason: string } | undefined {
+  if (pool.length === 0) return undefined
+
+  const roster = log.filter((entry) => entry.team === team).map((entry) => entry.player)
+  const needs = getPositionNeeds(roster)
+  const needPool = pool.filter((p) => needs.includes(p.position))
+  const usingNeedPool = needPool.length > 0
+  const candidates = usingNeedPool ? needPool : pool
+
+  const ranked = [...candidates].sort(
+    (a, b) => (a.search_rank ?? UNRANKED_SENTINEL) - (b.search_rank ?? UNRANKED_SENTINEL)
+  )
+  const player = ranked[0]
+  const rankLabel = player.search_rank ? `#${player.search_rank} overall` : 'unranked'
+  const reason = usingNeedPool
+    ? `Highest-ranked available ${player.position} (${rankLabel}) -- filling a roster need`
+    : `Best player available (${rankLabel})`
+
+  return { player, reason }
+}
+
+interface SimStepResult {
+  log: PickLogEntry[]
+  changed: boolean
+  ranOut: boolean
+}
+
+// Advances the draft log by exactly one pick if (and only if) it is
+// currently a bot's turn. Returns changed: false untouched once it's the
+// user's turn or the draft is over, so it's safe to call repeatedly/eagerly
+// from both the auto-advance timer and the "simulate to my pick" button
+// without ever double-picking.
+function simulateOneBotPickIfNeeded(
+  log: PickLogEntry[],
+  settings: DraftSettings,
+  availablePlayers: Player[]
+): SimStepResult {
+  const totalPicks = settings.teamCount * settings.totalRounds
+  const pickNum = log.length + 1
+  if (pickNum > totalPicks) return { log, changed: false, ranOut: false }
+
+  const team = turnTeamForPick(pickNum, settings.teamCount)
+  if (team === settings.draftPosition) return { log, changed: false, ranOut: false }
+
+  const draftedIds = new Set(log.map((entry) => entry.player.sleeper_id))
+  const pool = availablePlayers.filter((p) => !draftedIds.has(p.sleeper_id))
+  const botPick = pickBotPlayer(team, log, pool)
+  if (!botPick) return { log, changed: false, ranOut: true }
+
+  const round = Math.floor((pickNum - 1) / settings.teamCount) + 1
+  const pickInRound = ((pickNum - 1) % settings.teamCount) + 1
+  const entry: PickLogEntry = {
+    overallPick: pickNum,
+    round,
+    pickInRound,
+    team,
+    player: botPick.player,
+    reason: botPick.reason,
+    isUser: false,
+  }
+  return { log: [...log, entry], changed: true, ranOut: false }
 }
 
 export function DraftPage() {
@@ -48,38 +155,61 @@ export function DraftPage() {
   const [settings, setSettings] = useState<DraftSettings>({
     scoringFormat: 'PPR',
     teamCount: 12,
-    draftPosition: 6
+    draftPosition: 6,
+    totalRounds: 15
   })
-  
+
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([])
-  const [draftedPlayers, setDraftedPlayers] = useState<DraftedPlayer[]>([])
   const [trendingPlayers, setTrendingPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(false)
   const [recommendationsError, setRecommendationsError] = useState<string | null>(null)
   const [selectedPosition, setSelectedPosition] = useState<string>('ALL')
-  const [currentRound, setCurrentRound] = useState(1)
+
+  // The entire draft, in overall-pick order -- both the user's picks and
+  // every simulated bot pick. This is the single source of truth for whose
+  // turn it is, what's still available, and what the pick-by-pick board
+  // shows; there's no separate "current round" counter to fall out of sync.
+  const [pickLog, setPickLog] = useState<PickLogEntry[]>([])
+  const [draftStatus, setDraftStatus] = useState<DraftStatus>('setup')
+  const [botSimError, setBotSimError] = useState<string | null>(null)
 
   const positions = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF']
-  
+
+  const totalPicks = settings.teamCount * settings.totalRounds
+  const currentPick = Math.min(pickLog.length + 1, totalPicks)
+  const currentRound = Math.min(
+    Math.floor((currentPick - 1) / settings.teamCount) + 1,
+    settings.totalRounds
+  )
+  const currentTurnTeam = turnTeamForPick(currentPick, settings.teamCount)
+  const draftFinished = draftStatus === 'complete' || pickLog.length >= totalPicks
+  const isUsersTurnNow =
+    draftStatus === 'drafting' && !draftFinished && currentTurnTeam === settings.draftPosition
+  const canDraftNow = draftStatus === 'drafting' && isUsersTurnNow
+  const showRecommendationsPanel = draftStatus === 'setup' || isUsersTurnNow
+
+  // Memoized against pickLog specifically (not recreated on every render) --
+  // getTeamNeeds/generateRecommendations below depend on this array's
+  // identity, and an unmemoized derive-from-pickLog-every-render here would
+  // give them a new identity every render regardless of whether pickLog
+  // actually changed, retriggering the recommendations effect in a loop.
+  const draftedPlayers: DraftedPlayer[] = useMemo(
+    () =>
+      pickLog
+        .filter((entry) => entry.isUser)
+        .map((entry) => ({ ...entry.player, round: entry.round, pick: entry.overallPick })),
+    [pickLog]
+  )
+
+  const draftedIds = useMemo(
+    () => new Set(pickLog.map((entry) => entry.player.sleeper_id)),
+    [pickLog]
+  )
+
   // Calculate team needs based on drafted players
   const getTeamNeeds = useCallback((): string[] => {
-    const positionCounts = draftedPlayers.reduce((acc, player) => {
-      acc[player.position] = (acc[player.position] || 0) + 1
-      return acc
-    }, {} as Record<string, number>)
-
-    const needs: string[] = []
-    const idealCounts = { RB: 2, WR: 2, QB: 1, TE: 1 }
-
-    Object.entries(idealCounts).forEach(([pos, ideal]) => {
-      const current = positionCounts[pos] || 0
-      if (current < ideal) {
-        needs.push(pos)
-      }
-    })
-
-    return needs.length > 0 ? needs : ['RB', 'WR']
+    return getPositionNeeds(draftedPlayers)
   }, [draftedPlayers])
 
   // Load initial data
@@ -91,17 +221,27 @@ export function DraftPage() {
         const trending = await draft.getTrendingCandidates({ hours: 48, limit: 25 })
         setTrendingPlayers(trending.data.candidates || [])
 
-        // Get positional rankings to populate available players
-        const rbRankings = await draft.getPositionalRankings('RB', { limit: 20 })
-        const wrRankings = await draft.getPositionalRankings('WR', { limit: 20 })
-        const qbRankings = await draft.getPositionalRankings('QB', { limit: 15 })
-        
+        // Get positional rankings to populate available players. Limits are
+        // sized generously (well beyond a single team's needs) because this
+        // pool now has to sustain every team's picks for a full draft, not
+        // just the user's -- e.g. 12 teams x 15 rounds needs ~180 real
+        // players across these four positions. Each request reuses the
+        // same active-roster-filtered, search_rank-sorted endpoint the real
+        // recommendation engine relies on.
+        const [rbRankings, wrRankings, qbRankings, teRankings] = await Promise.all([
+          draft.getPositionalRankings('RB', { limit: 100 }),
+          draft.getPositionalRankings('WR', { limit: 100 }),
+          draft.getPositionalRankings('QB', { limit: 40 }),
+          draft.getPositionalRankings('TE', { limit: 40 })
+        ])
+
         const allPlayers = [
           ...(rbRankings.data.players || []),
           ...(wrRankings.data.players || []),
-          ...(qbRankings.data.players || [])
+          ...(qbRankings.data.players || []),
+          ...(teRankings.data.players || [])
         ]
-        
+
         // Remove duplicates based on sleeper_id
         const uniquePlayers = allPlayers.reduce((acc: Player[], player) => {
           if (!acc.find(p => p.sleeper_id === player.sleeper_id)) {
@@ -109,7 +249,7 @@ export function DraftPage() {
           }
           return acc
         }, [] as Player[])
-        
+
         setAvailablePlayers(uniquePlayers)
       } catch (error) {
         console.error('Error loading draft data:', error)
@@ -121,11 +261,6 @@ export function DraftPage() {
     loadInitialData()
   }, [])
 
-  const getCurrentPick = useCallback((): number => {
-    const roundPick = ((currentRound - 1) * settings.teamCount) + settings.draftPosition
-    return roundPick
-  }, [currentRound, settings])
-
   const generateRecommendations = useCallback(async () => {
     if (availablePlayers.length === 0) return
 
@@ -133,10 +268,8 @@ export function DraftPage() {
 
     try {
       const teamNeeds = getTeamNeeds()
-      const currentPick = getCurrentPick()
 
-      // Filter out already drafted players
-      const draftedIds = new Set(draftedPlayers.map(p => p.sleeper_id))
+      // Filter out players already drafted by ANY team, not just the user.
       const available = availablePlayers
         .filter(p => !draftedIds.has(p.sleeper_id))
         .slice(0, 20) // Top 20 available
@@ -158,36 +291,106 @@ export function DraftPage() {
       setRecommendations([])
       setRecommendationsError("Couldn't load recommendations. Try refreshing.")
     }
-  }, [availablePlayers, draftedPlayers, settings, getTeamNeeds, getCurrentPick])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [availablePlayers, pickLog, settings, getTeamNeeds, currentPick])
 
-  // Get recommendations when settings or drafted players change
+  // Get recommendations whenever it's actually relevant to see them: before
+  // the draft starts (a live preview) or when it's the user's turn to pick.
+  // While bots are picking there's nothing to recommend against yet, so we
+  // skip the network call entirely rather than fetching and discarding it.
   useEffect(() => {
-    if (availablePlayers.length > 0) {
+    if (availablePlayers.length > 0 && showRecommendationsPanel) {
       generateRecommendations()
+    } else if (!showRecommendationsPanel) {
+      setRecommendations([])
     }
-  }, [availablePlayers, generateRecommendations])
+  }, [availablePlayers, showRecommendationsPanel, generateRecommendations])
 
-  const draftPlayer = (player: Player) => {
-    const pick = getCurrentPick()
-    const draftedPlayer: DraftedPlayer = {
-      ...player,
-      round: currentRound,
-      pick: pick
+  // Auto-advance bot picks one at a time with a short pause between each,
+  // so the board visibly fills in rather than jumping straight to the
+  // user's next turn. Recomputes from the latest pickLog on every run and
+  // only ever commits if that snapshot is still current at fire time, so a
+  // "Simulate to my next pick" click can't race with a pending timer and
+  // double up a pick.
+  useEffect(() => {
+    if (draftStatus !== 'drafting' || availablePlayers.length === 0) return
+
+    const result = simulateOneBotPickIfNeeded(pickLog, settings, availablePlayers)
+
+    if (result.ranOut) {
+      setBotSimError('Ran out of available players to simulate the rest of the draft.')
+      return
     }
-    
-    setDraftedPlayers([...draftedPlayers, draftedPlayer])
-    
-    // Advance to next round if this was your pick
-    if ((pick - 1) % settings.teamCount === settings.draftPosition - 1) {
-      setCurrentRound(prev => prev + 1)
+
+    if (!result.changed) {
+      if (pickLog.length >= totalPicks) {
+        setDraftStatus('complete')
+      }
+      return
     }
+
+    const timer = setTimeout(() => {
+      setPickLog(prev => (prev === pickLog ? result.log : prev))
+    }, 550)
+    return () => clearTimeout(timer)
+  }, [draftStatus, pickLog, availablePlayers, settings, totalPicks])
+
+  const startDraft = () => {
+    setPickLog([])
+    setBotSimError(null)
+    setRecommendationsError(null)
+    setDraftStatus('drafting')
   }
 
-  const filteredPlayers = selectedPosition === 'ALL' 
-    ? availablePlayers 
+  const resetDraft = () => {
+    setPickLog([])
+    setBotSimError(null)
+    setDraftStatus('setup')
+  }
+
+  // Fast-forwards synchronously through consecutive bot picks until it's
+  // the user's turn (or the draft ends), for anyone who doesn't want to
+  // wait out the animated delay. Reuses the exact same per-pick function as
+  // the auto-advance effect above -- this is not a second, different bot.
+  const simulateToMyPick = () => {
+    let log = pickLog
+    let iterations = 0
+    while (iterations < 1000) {
+      const result = simulateOneBotPickIfNeeded(log, settings, availablePlayers)
+      if (result.ranOut) {
+        setBotSimError('Ran out of available players to simulate the rest of the draft.')
+        break
+      }
+      if (!result.changed) break
+      log = result.log
+      iterations++
+    }
+    if (log !== pickLog) setPickLog(log)
+    if (log.length >= totalPicks) setDraftStatus('complete')
+  }
+
+  const draftPlayer = (player: Player) => {
+    if (!canDraftNow) return
+
+    const pickNum = pickLog.length + 1
+    const round = Math.floor((pickNum - 1) / settings.teamCount) + 1
+    const pickInRound = ((pickNum - 1) % settings.teamCount) + 1
+    const entry: PickLogEntry = {
+      overallPick: pickNum,
+      round,
+      pickInRound,
+      team: settings.draftPosition,
+      player,
+      isUser: true
+    }
+
+    setPickLog(prev => [...prev, entry])
+  }
+
+  const filteredPlayers = selectedPosition === 'ALL'
+    ? availablePlayers
     : availablePlayers.filter(p => p.position === selectedPosition)
 
-  const draftedIds = new Set(draftedPlayers.map(p => p.sleeper_id))
   const availableFilteredPlayers = filteredPlayers.filter(p => !draftedIds.has(p.sleeper_id))
 
   if (loading) {
@@ -232,21 +435,70 @@ export function DraftPage() {
         </p>
       </div>
 
+      {draftStatus === 'drafting' && !isUsersTurnNow && !draftFinished && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-amber-600"></div>
+            <p className="text-sm text-amber-900">
+              Team {currentTurnTeam} is picking (Round {currentRound}, overall pick {currentPick})...
+            </p>
+          </div>
+          <button
+            onClick={simulateToMyPick}
+            className="px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded hover:bg-amber-700 shrink-0"
+          >
+            Simulate to my next pick
+          </button>
+        </div>
+      )}
+
+      {botSimError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+          {botSimError}
+        </div>
+      )}
+
+      {draftFinished && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 flex items-center justify-between gap-4">
+          <p className="text-sm text-green-900">
+            <span className="font-semibold">Draft complete!</span> You drafted {draftedPlayers.length}{' '}
+            players across {settings.totalRounds} rounds. Grade your roster next.
+          </p>
+          <Link
+            to="/post-draft"
+            className="px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 shrink-0"
+          >
+            Grade my draft
+          </Link>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content */}
         <div className="lg:col-span-2 space-y-6">
-          
+
           {/* AI Recommendations */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">AI Recommendations</h2>
               <span className="text-sm text-gray-500">
-                Round {currentRound}, Pick {getCurrentPick()}
+                {draftStatus === 'setup' ? 'Preview' : `Round ${currentRound}`}, Pick {currentPick} overall
+                {draftStatus === 'drafting' && isUsersTurnNow && (
+                  <span className="ml-2 font-medium text-blue-600">Your turn!</span>
+                )}
               </span>
             </div>
-            
+
             <div className="space-y-3">
-              {recommendations.length > 0 ? recommendations.map((rec, index) => (
+              {draftFinished ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Draft complete -- see your final roster in the sidebar.</p>
+                </div>
+              ) : !showRecommendationsPanel ? (
+                <div className="text-center py-8 text-gray-500">
+                  <p>Waiting for the other teams to pick...</p>
+                </div>
+              ) : recommendations.length > 0 ? recommendations.map((rec, index) => (
                 <div key={`rec-${rec.player_name}-${index}`} className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -262,13 +514,14 @@ export function DraftPage() {
                     </div>
                     <button
                       onClick={() => {
-                        const player = availablePlayers.find(p => 
-                          p.full_name === rec.player_name || 
+                        const player = availablePlayers.find(p =>
+                          p.full_name === rec.player_name ||
                           p.full_name.includes(rec.player_name)
                         )
                         if (player) draftPlayer(player)
                       }}
-                      className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700"
+                      disabled={!canDraftNow}
+                      className="mt-2 px-3 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       Draft
                     </button>
@@ -286,11 +539,14 @@ export function DraftPage() {
             </div>
           </div>
 
+          {/* Draft Board / pick-by-pick log */}
+          <DraftPickLog picks={pickLog} />
+
           {/* Available Players */}
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold">Available Players</h2>
-              <select 
+              <select
                 value={selectedPosition}
                 onChange={(e) => setSelectedPosition(e.target.value)}
                 className="rounded-md border-gray-300 text-sm"
@@ -300,7 +556,7 @@ export function DraftPage() {
                 ))}
               </select>
             </div>
-            
+
             <div className="max-h-96 overflow-y-auto">
               <div className="space-y-2">
                 {availableFilteredPlayers.slice(0, 50).map((player) => (
@@ -324,8 +580,9 @@ export function DraftPage() {
                       )}
                       <button
                         onClick={() => draftPlayer(player)}
-                        className="p-1 text-blue-600 hover:text-blue-800"
-                        title="Draft player"
+                        disabled={!canDraftNow}
+                        className="p-1 text-blue-600 hover:text-blue-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                        title={canDraftNow ? 'Draft player' : 'Not your turn'}
                       >
                         <PlusIcon className="w-5 h-5" />
                       </button>
@@ -339,7 +596,7 @@ export function DraftPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          
+
           {/* Draft Settings */}
           <div className="card">
             <h2 className="text-lg font-semibold mb-4">Draft Settings</h2>
@@ -348,25 +605,27 @@ export function DraftPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Scoring Format
                 </label>
-                <select 
+                <select
                   value={settings.scoringFormat}
                   onChange={(e) => setSettings({...settings, scoringFormat: e.target.value as DraftSettings['scoringFormat']})}
-                  className="w-full rounded-md border-gray-300"
+                  disabled={draftStatus === 'drafting'}
+                  className="w-full rounded-md border-gray-300 disabled:bg-gray-100 disabled:text-gray-500"
                 >
                   <option value="PPR">PPR</option>
                   <option value="Half PPR">Half PPR</option>
                   <option value="Standard">Standard</option>
                 </select>
               </div>
-              
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Team Count
                 </label>
-                <select 
+                <select
                   value={settings.teamCount}
                   onChange={(e) => setSettings({...settings, teamCount: Number(e.target.value)})}
-                  className="w-full rounded-md border-gray-300"
+                  disabled={draftStatus === 'drafting'}
+                  className="w-full rounded-md border-gray-300 disabled:bg-gray-100 disabled:text-gray-500"
                 >
                   <option value={8}>8 Teams</option>
                   <option value={10}>10 Teams</option>
@@ -379,10 +638,11 @@ export function DraftPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Your Draft Position
                 </label>
-                <select 
+                <select
                   value={settings.draftPosition}
                   onChange={(e) => setSettings({...settings, draftPosition: Number(e.target.value)})}
-                  className="w-full rounded-md border-gray-300"
+                  disabled={draftStatus === 'drafting'}
+                  className="w-full rounded-md border-gray-300 disabled:bg-gray-100 disabled:text-gray-500"
                 >
                   {Array.from({length: settings.teamCount}, (_, i) => (
                     <option key={i + 1} value={i + 1}>Position {i + 1}</option>
@@ -390,9 +650,35 @@ export function DraftPage() {
                 </select>
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Total Rounds
+                </label>
+                <select
+                  value={settings.totalRounds}
+                  onChange={(e) => setSettings({...settings, totalRounds: Number(e.target.value)})}
+                  disabled={draftStatus === 'drafting'}
+                  className="w-full rounded-md border-gray-300 disabled:bg-gray-100 disabled:text-gray-500"
+                >
+                  <option value={10}>10 Rounds</option>
+                  <option value={12}>12 Rounds</option>
+                  <option value={15}>15 Rounds</option>
+                </select>
+              </div>
+
+              {draftStatus === 'setup' && (
+                <button
+                  onClick={startDraft}
+                  className="w-full bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 font-medium"
+                >
+                  Start Mock Draft
+                </button>
+              )}
+
               <button
                 onClick={generateRecommendations}
-                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700"
+                disabled={!showRecommendationsPanel}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Refresh Recommendations
               </button>
@@ -404,7 +690,7 @@ export function DraftPage() {
             <h2 className="text-lg font-semibold mb-4">
               Your Team ({draftedPlayers.length})
             </h2>
-            
+
             {draftedPlayers.length > 0 ? (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {draftedPlayers.map((player) => (
@@ -427,17 +713,16 @@ export function DraftPage() {
                   Your drafted players will appear here
                 </p>
                 <p className="text-xs text-gray-400 mt-1">
-                  Click the + button next to players to draft them
+                  {draftStatus === 'setup'
+                    ? 'Start the mock draft to begin picking'
+                    : 'Click the + button next to players to draft them'}
                 </p>
               </div>
             )}
 
-            {draftedPlayers.length > 0 && (
+            {pickLog.length > 0 && (
               <button
-                onClick={() => {
-                  setDraftedPlayers([])
-                  setCurrentRound(1)
-                }}
+                onClick={resetDraft}
                 className="w-full mt-4 text-sm text-gray-600 hover:text-gray-800"
               >
                 Reset Draft
