@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { Navbar } from './components/common/Navbar'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
+import { ErrorBoundary } from './components/common/ErrorBoundary'
 import { HomePage } from './pages/HomePage'
 import { AuthPage } from './pages/AuthPage'
 import { DraftPage } from './pages/DraftPage'
@@ -23,6 +24,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <ErrorBoundary>
         <div className="min-h-screen bg-gray-50">
           <Navbar />
           <main className="container mx-auto px-4 py-8">
@@ -116,6 +118,7 @@ function App() {
             </Routes>
           </main>
         </div>
+        </ErrorBoundary>
       </Router>
     </AuthProvider>
   )

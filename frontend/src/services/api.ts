@@ -2,15 +2,48 @@ import axios from 'axios'
 
 const API_BASE_URL = 'http://localhost:8000/api/v1'
 
+// Backend error details are sometimes raw exception/traceback text (e.g. a
+// leaked SQLAlchemy/psycopg2 error) rather than a friendly message. We never
+// want to render that verbatim to end users, so treat anything that "looks"
+// like internal/technical error output as unsafe to display.
+function looksLikeRawServerError(text: string): boolean {
+  if (text.length > 300) return true
+  const rawErrorSignals = [
+    'Traceback',
+    'File "',
+    'psycopg2',
+    'sqlalchemy',
+    'SQLAlchemy',
+    '[SQL:',
+    'Background on this error at:',
+    'sqlalche.me',
+    'StatementError',
+  ]
+  return rawErrorSignals.some((signal) => text.includes(signal))
+}
+
 // Narrow an unknown error (typically from an axios request) down to a
 // human-readable message, falling back to a caller-supplied default when the
-// error doesn't carry a recognizable `detail` string.
+// error doesn't carry a recognizable `detail` string, or when that string
+// looks like raw/technical server internals that shouldn't be shown to users.
 export function getErrorMessage(err: unknown, fallback: string): string {
   if (axios.isAxiosError(err)) {
     const detail = err.response?.data?.detail
-    if (typeof detail === 'string') return detail
+    if (typeof detail === 'string' && detail) {
+      if (looksLikeRawServerError(detail)) {
+        console.error('Suppressed raw backend error detail from UI:', detail)
+        return fallback
+      }
+      return detail
+    }
   }
-  if (err instanceof Error && err.message) return err.message
+  if (err instanceof Error && err.message) {
+    if (looksLikeRawServerError(err.message)) {
+      console.error('Suppressed raw error message from UI:', err.message)
+      return fallback
+    }
+    return err.message
+  }
   return fallback
 }
 

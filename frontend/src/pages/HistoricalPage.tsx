@@ -335,7 +335,8 @@ export function HistoricalPage() {
       const response = await historical.getOverview()
       setDataOverview(response.data)
     } catch (err) {
-      setError(getErrorMessage(err, 'Failed to load data overview'))
+      console.error('Error loading historical data overview:', err)
+      setError(getErrorMessage(err, "Historical performance data isn't available right now"))
     } finally {
       setLoading(false)
     }
