@@ -3,11 +3,19 @@ import { auth, getErrorMessage } from '../../services/api'
 import type { RegisterRequest } from '../../types'
 
 interface RegisterFormProps {
-  onSuccess: () => void
+  // Called once the account exists AND we were able to sign the user
+  // straight in with the credentials they just typed -- this is the
+  // reliable "just registered" moment onboarding hangs off of.
+  onAutoLoginSuccess: (token: string) => void
+  // Called when the account was created but the immediate follow-up login
+  // call failed for some reason (network blip, etc). Falls back to the
+  // previous "please sign in manually" flow rather than losing the account
+  // creation or pretending the user is signed in when they aren't.
+  onRegisteredWithoutLogin: () => void
   onSwitchToLogin: () => void
 }
 
-export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) {
+export function RegisterForm({ onAutoLoginSuccess, onRegisteredWithoutLogin, onSwitchToLogin }: RegisterFormProps) {
   const [formData, setFormData] = useState<RegisterRequest>({
     email: '',
     username: '',
@@ -31,9 +39,24 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
 
     try {
       await auth.register(formData)
-      onSuccess()
     } catch (err) {
       setError(getErrorMessage(err, 'Registration failed'))
+      setLoading(false)
+      return
+    }
+
+    // Registration succeeded. Sign the user straight in with the same
+    // credentials so we can carry them into a real first moment of value
+    // instead of dumping them back on a login form for an account they
+    // just created. If this specific call fails, the account still
+    // exists -- fall back to the old "please sign in" flow rather than
+    // losing that or faking a signed-in state.
+    try {
+      const loginResponse = await auth.login({ username: formData.email, password: formData.password })
+      onAutoLoginSuccess(loginResponse.data.access_token)
+    } catch (err) {
+      console.error('Auto-login after registration failed:', err)
+      onRegisteredWithoutLogin()
     } finally {
       setLoading(false)
     }

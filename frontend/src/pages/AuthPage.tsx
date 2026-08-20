@@ -15,7 +15,20 @@ export function AuthPage() {
     navigate('/')
   }
 
-  const handleRegisterSuccess = () => {
+  // Fresh registration + immediate auto-login: this is the one reliable
+  // signal we have for "genuinely new user, right now" (as opposed to an
+  // existing user just logging in again). Send them to the Draft Assistant
+  // -- it works with zero connected leagues -- with a one-time welcome
+  // banner instead of the generic marketing homepage.
+  const handleRegisterAutoLogin = async (token: string) => {
+    await login(token)
+    navigate('/draft?welcome=1')
+  }
+
+  // Account was created but the auto-login call itself failed (rare --
+  // e.g. a network blip between the two requests). Fall back to asking the
+  // user to sign in manually rather than pretending they're logged in.
+  const handleRegisteredWithoutLogin = () => {
     setShowSuccess(true)
     setIsLogin(true)
   }
@@ -43,7 +56,8 @@ export function AuthPage() {
           />
         ) : (
           <RegisterForm
-            onSuccess={handleRegisterSuccess}
+            onAutoLoginSuccess={handleRegisterAutoLogin}
+            onRegisteredWithoutLogin={handleRegisteredWithoutLogin}
             onSwitchToLogin={() => setIsLogin(true)}
           />
         )}

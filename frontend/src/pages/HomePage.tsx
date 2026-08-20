@@ -1,8 +1,10 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
-import { 
-  ChartBarIcon, 
-  CpuChipIcon, 
+import { leagues as leaguesApi } from '../services/api'
+import {
+  ChartBarIcon,
+  CpuChipIcon,
   DocumentTextIcon,
   UserGroupIcon,
   TrophyIcon,
@@ -11,6 +13,28 @@ import {
 
 export function HomePage() {
   const { user } = useAuth()
+  // Real account state for the "Welcome back" box below, instead of always
+  // showing the same static copy regardless of whether this account has
+  // ever connected a league. null = still loading / unknown.
+  const [leagueCount, setLeagueCount] = useState<number | null>(null)
+  const [leagueCountFailed, setLeagueCountFailed] = useState(false)
+
+  useEffect(() => {
+    if (!user) return
+    let cancelled = false
+
+    leaguesApi.getAll()
+      .then((res) => {
+        if (!cancelled) setLeagueCount((res.data || []).length)
+      })
+      .catch(() => {
+        if (!cancelled) setLeagueCountFailed(true)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [user])
 
   return (
     <div className="space-y-12">
@@ -97,8 +121,33 @@ export function HomePage() {
             </div>
             <div className="text-center">
               <TrophyIcon className="h-8 w-8 text-green-600 mx-auto mb-2" />
-              <h3 className="text-lg font-semibold">Season Progress</h3>
-              <p className="text-gray-600 mt-2">Track your league performance and get insights</p>
+              <h3 className="text-lg font-semibold">Your Leagues</h3>
+              {leagueCountFailed && (
+                <p className="text-gray-600 mt-2">Couldn't load your league status right now.</p>
+              )}
+              {!leagueCountFailed && leagueCount === null && (
+                <p className="text-gray-600 mt-2">Checking your connected leagues&hellip;</p>
+              )}
+              {!leagueCountFailed && leagueCount !== null && leagueCount > 0 && (
+                <>
+                  <p className="text-gray-600 mt-2">
+                    You have {leagueCount} league{leagueCount === 1 ? '' : 's'} connected.
+                  </p>
+                  <Link to="/leagues" className="inline-block mt-2 text-blue-600 hover:text-blue-800 font-medium">
+                    View your leagues
+                  </Link>
+                </>
+              )}
+              {!leagueCountFailed && leagueCount === 0 && (
+                <>
+                  <p className="text-gray-600 mt-2">
+                    Connect a league to get advice based on your actual roster.
+                  </p>
+                  <Link to="/leagues" className="inline-block mt-2 text-blue-600 hover:text-blue-800 font-medium">
+                    Connect your league &rarr;
+                  </Link>
+                </>
+              )}
             </div>
             <div className="text-center">
               <SparklesIcon className="h-8 w-8 text-purple-600 mx-auto mb-2" />

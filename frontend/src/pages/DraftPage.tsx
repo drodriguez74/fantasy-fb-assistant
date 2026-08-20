@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { PlusIcon, StarIcon } from '@heroicons/react/24/outline'
+import { Link, useSearchParams } from 'react-router-dom'
+import { PlusIcon, StarIcon, XMarkIcon } from '@heroicons/react/24/outline'
 import { draft } from '../services/api'
 
 interface DraftSettings {
@@ -31,6 +32,19 @@ interface Recommendation {
 }
 
 export function DraftPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Set by AuthPage right after a brand-new user registers and is
+  // auto-signed-in -- a one-time welcome, not a persistent state. Dismissing
+  // it (or navigating away and back) clears the query param for good.
+  const [showWelcome, setShowWelcome] = useState(searchParams.get('welcome') === '1')
+
+  const dismissWelcome = useCallback(() => {
+    setShowWelcome(false)
+    const next = new URLSearchParams(searchParams)
+    next.delete('welcome')
+    setSearchParams(next, { replace: true })
+  }, [searchParams, setSearchParams])
+
   const [settings, setSettings] = useState<DraftSettings>({
     scoringFormat: 'PPR',
     teamCount: 12,
@@ -189,6 +203,28 @@ export function DraftPage() {
 
   return (
     <div className="space-y-6">
+      {showWelcome && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start justify-between gap-4">
+          <p className="text-sm text-blue-900">
+            <span className="font-semibold">Welcome!</span> Here's a live look at AI draft
+            recommendations below, built from real player data -- try adjusting the settings
+            on the right to see them change. These aren't tied to a specific league yet;{' '}
+            <Link to="/leagues" className="font-medium underline hover:text-blue-700">
+              connect your league
+            </Link>{' '}
+            to get advice based on your actual roster and draft slot.
+          </p>
+          <button
+            type="button"
+            onClick={dismissWelcome}
+            className="text-blue-400 hover:text-blue-600 shrink-0"
+            aria-label="Dismiss welcome message"
+          >
+            <XMarkIcon className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold text-gray-900">Draft Assistant</h1>
         <p className="text-gray-600 mt-2">
