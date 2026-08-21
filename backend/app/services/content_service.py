@@ -1,5 +1,5 @@
 from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 import asyncio
 import json
 from app.services.ai_service import ai_service
@@ -173,11 +173,50 @@ class ContentGenerationService:
         """Save generated content as a blog post"""
         try:
             db = SessionLocal()
-            
+
+            # De-dup guard: this is called from both the Celery content
+            # tasks (content_tasks.py, which can be retried/re-queued) and
+            # blog.py's /save-post endpoint, and previously always inserted
+            # a new row -- "uniqueness" was only enforced on `slug`, which
+            # got a fresh uuid4 suffix appended on every single call, so it
+            # could never actually collide and never actually blocked a
+            # duplicate. Same fix and same reasoning as the sibling bug in
+            # content_generation_service.py::save_generated_content (title
+            # already encodes the parameters that distinguish one post from
+            # another, e.g. week number, so title+category is a reliable
+            # identity key): if a post with this title+category was created
+            # in the last day, update it in place instead of inserting a
+            # duplicate.
+            dedup_window_start = datetime.utcnow() - timedelta(days=1)
+            existing_recent = (
+                db.query(BlogPost)
+                .filter(
+                    BlogPost.title == post_data["title"],
+                    BlogPost.category == category,
+                    BlogPost.created_at >= dedup_window_start,
+                )
+                .order_by(BlogPost.created_at.desc())
+                .first()
+            )
+
+            if existing_recent:
+                existing_recent.content = post_data["content"]
+                existing_recent.summary = post_data.get("consensus", {}).get("consensus_recommendation", "")[:200]
+                existing_recent.source_urls = json.dumps([s["url"] for s in post_data.get("sources", [])])
+                existing_recent.perspectives_count = len(post_data.get("perspectives", []))
+                existing_recent.consensus_score = post_data.get("consensus", {}).get("confidence_score", 5)
+                existing_recent.updated_at = datetime.utcnow()
+
+                db.commit()
+                db.refresh(existing_recent)
+                db.close()
+
+                return existing_recent
+
             # Generate slug from title
             slug = post_data["title"].lower().replace(" ", "-").replace(":", "")
             slug = "".join(c for c in slug if c.isalnum() or c == "-")
-            
+
             blog_post = BlogPost(
                 title=post_data["title"],
                 slug=f"{slug}-{uuid.uuid4().hex[:8]}",
