@@ -627,14 +627,42 @@ Remember to consider your league's waiver wire priority and budget constraints w
                 return {"error": "Cannot save failed content generation"}
 
             title = content_data.get("title", "Generated Content")
-            # Generate slug from title
-            slug = title.lower().replace(" ", "-").replace("'", "").replace('"', "")
-            slug = "".join(c for c in slug if c.isalnum() or c == "-")[:50]  # Limit to 50 chars
-            
-            # Ensure slug is unique
-            existing_post = self.db.query(BlogPost).filter(BlogPost.slug == slug).first()
-            if existing_post:
-                slug = f"{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            category = content_data.get("content_type", "general")
+
+            # De-dup guard: the /weekly-rankings, /waiver-wire,
+            # /injury-report, and /generate-and-save endpoints (content.py)
+            # all funnel here, and every _generate_* method above is a
+            # static template that produces byte-identical output for the
+            # same (content_type, parameters) -- title already bakes in the
+            # parameters that distinguish one post from another (week,
+            # position, timeframe, draft_type, ...), so title+category is a
+            # reliable identity key. The only "uniqueness" ever enforced
+            # here was on `slug`, and a slug collision just got a
+            # timestamp suffix appended instead of being treated as "this
+            # already exists" -- so re-clicking Generate (or a retried
+            # request) silently inserted a fresh row every time. That's
+            # exactly what produced 7 duplicate "Week 1 ALL Fantasy
+            # Rankings" rows (plus smaller waiver_wire/injury_report
+            # duplicate groups) in the dev DB, all created seconds apart.
+            #
+            # Window: 1 day. This content is meant to be generated at most
+            # once per day for a given title+category (weekly content
+            # naturally gets a new, distinct title next week since week
+            # number is baked into the title), so a same-title/category
+            # save within the last 24h is almost certainly an accidental
+            # re-trigger, not deliberately fresh content -- update the
+            # existing row in place instead of creating a duplicate.
+            dedup_window_start = datetime.utcnow() - timedelta(days=1)
+            existing_recent = (
+                self.db.query(BlogPost)
+                .filter(
+                    BlogPost.title == title,
+                    BlogPost.category == category,
+                    BlogPost.created_at >= dedup_window_start,
+                )
+                .order_by(BlogPost.created_at.desc())
+                .first()
+            )
 
             # Honor what the generator actually did rather than stamping
             # every saved post as AI-authored. Most _generate_* methods are
@@ -643,6 +671,33 @@ Remember to consider your league's waiver wire priority and budget constraints w
             # and a real model name.
             created_by_ai = bool(content_data.get("ai_generated", False))
             ai_model_used = content_data.get("ai_model_used") if created_by_ai else None
+
+            if existing_recent:
+                existing_recent.content = content_data.get("content", existing_recent.content)
+                existing_recent.tags = json.dumps(content_data.get("metadata", {}))
+                existing_recent.created_by_ai = created_by_ai
+                existing_recent.ai_model_used = ai_model_used
+                existing_recent.updated_at = datetime.utcnow()
+
+                self.db.commit()
+                self.db.refresh(existing_recent)
+
+                return {
+                    "success": True,
+                    "blog_post_id": existing_recent.id,
+                    "title": existing_recent.title,
+                    "created_at": existing_recent.created_at.isoformat(),
+                    "deduplicated": True,
+                }
+
+            # Generate slug from title
+            slug = title.lower().replace(" ", "-").replace("'", "").replace('"', "")
+            slug = "".join(c for c in slug if c.isalnum() or c == "-")[:50]  # Limit to 50 chars
+
+            # Ensure slug is unique
+            existing_post = self.db.query(BlogPost).filter(BlogPost.slug == slug).first()
+            if existing_post:
+                slug = f"{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
             blog_post = BlogPost(
                 title=title,
