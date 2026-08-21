@@ -376,7 +376,7 @@ Remember to consider your league's waiver wire priority and budget constraints w
         """Best-effort label for whichever model an AI-backed content path
         actually attempts. ai_service tries OpenAI first (its default
         provider and the model _generate_openai defaults to is "gpt-4"),
-        falling back to Anthropic's "claude-3-sonnet-20240229" only if
+        falling back to Anthropic's "claude-sonnet-5" only if
         OpenAI isn't configured. This mirrors that same precedence so the
         label reflects what's really configured instead of a hardcoded
         guess."""
@@ -384,7 +384,7 @@ Remember to consider your league's waiver wire priority and budget constraints w
         if status.get("openai_available"):
             return "gpt-4"
         if status.get("anthropic_available"):
-            return "claude-3-sonnet-20240229"
+            return "claude-sonnet-5"
         return None
 
     async def _build_player_context(self, player: Player) -> Dict[str, Any]:

@@ -308,7 +308,7 @@ class AIService:
     async def _generate_openai(self, prompt: str, model: str = "gpt-4") -> str:
         if not self.openai_client:
             return "OpenAI client not configured"
-        
+
         try:
             response = await self.openai_client.chat.completions.create(
                 model=model,
@@ -320,25 +320,63 @@ class AIService:
                 max_tokens=1000
             )
             return response.choices[0].message.content
-        except Exception as e:
+        # Most-specific-first: every branch below is a subclass of
+        # openai.APIStatusError (itself a subclass of openai.APIError), so
+        # order matters -- a broader except above a narrower one would
+        # swallow it and produce a less useful message.
+        except openai.AuthenticationError as e:
+            return f"OpenAI API error: authentication failed - check OPENAI_API_KEY ({e.message})"
+        except openai.PermissionDeniedError as e:
+            return f"OpenAI API error: permission denied ({e.message})"
+        except openai.RateLimitError as e:
+            return f"OpenAI API error: rate limited ({e.message})"
+        except openai.APIConnectionError as e:
+            return f"OpenAI API error: connection failed ({e.message})"
+        except openai.APIStatusError as e:
+            return f"OpenAI API error: {e.status_code} {e.message}"
+        except openai.OpenAIError as e:
             return f"OpenAI API error: {str(e)}"
 
-    async def _generate_anthropic(self, prompt: str, model: str = "claude-3-sonnet-20240229") -> str:
+    async def _generate_anthropic(self, prompt: str, model: str = "claude-sonnet-5") -> str:
         if not self.anthropic_client:
             return "Anthropic client not configured"
-        
+
         try:
             response = await self.anthropic_client.messages.create(
                 model=model,
                 max_tokens=1000,
-                temperature=0.7,
+                # `temperature` was removed from messages.create() entirely
+                # in current anthropic SDK versions (it's no longer even an
+                # accepted keyword argument, not just rejected server-side
+                # for certain models) -- prompting is the recommended way
+                # to steer output instead.
                 system="You are an expert fantasy football analyst.",
                 messages=[
                     {"role": "user", "content": prompt}
                 ]
             )
-            return response.content[0].text
-        except Exception as e:
+            # response.content is a list of content blocks (TextBlock,
+            # ThinkingBlock, ...) -- guard on .type before reading .text
+            # rather than indexing content[0] unconditionally.
+            for block in response.content:
+                if block.type == "text":
+                    return block.text
+            return "Anthropic API error: response contained no text content"
+        # Most-specific-first: every branch below is a subclass of
+        # anthropic.APIStatusError (itself a subclass of anthropic.APIError),
+        # so order matters -- a broader except above a narrower one would
+        # swallow it and produce a less useful message.
+        except anthropic.AuthenticationError as e:
+            return f"Anthropic API error: authentication failed - check ANTHROPIC_API_KEY ({e.message})"
+        except anthropic.PermissionDeniedError as e:
+            return f"Anthropic API error: permission denied ({e.message})"
+        except anthropic.RateLimitError as e:
+            return f"Anthropic API error: rate limited ({e.message})"
+        except anthropic.APIConnectionError as e:
+            return f"Anthropic API error: connection failed ({e.message})"
+        except anthropic.APIStatusError as e:
+            return f"Anthropic API error: {e.status_code} {e.message}"
+        except anthropic.AnthropicError as e:
             return f"Anthropic API error: {str(e)}"
 
     async def get_ai_status(self) -> Dict[str, Any]:
