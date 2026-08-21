@@ -8,10 +8,7 @@ Derived from the current state of the published "Fourth Down, Long Yardage" UX r
 
 ## Near-Term — scoped and built this pass
 
-- [ ] **Keeper league support (MVP)**
-  - Product decision made explicitly, not guessed silently: default keeper cost = drafted round minus one (the same default ESPN/Yahoo/Sleeper ship), user-editable per league, clearly labeled as a default rather than the only correct one.
-  - Backend: a way to mark specific players as a user's keepers for a given league/season, and compute their keeper-round cost.
-  - Frontend: a place to select/manage keepers (natural fit: Post-Draft Analysis or League Detail), showing the computed cost.
+- [x] ~~Keeper league support (MVP)~~ — **out of scope, per the founder directly**: "i don't care about keeper or dynasty leagues on traditional fantasy ppr ot standard." This product is scoped to traditional redraft PPR/Standard leagues; keeper/dynasty support is not being built. The agent building this was stopped immediately (it had only just started reading context, no code was written).
 
 - [ ] **Push alerts (MVP, scoped to in-app notifications)**
   - Product decision made explicitly: true browser/device push (service workers, VAPID keys, a new secret to manage) is the largest possible first slice for an app with zero existing notification infrastructure. Building an in-app notification center instead delivers the real ask ("tell me when something changed") without inventing push infra from scratch. Device push stays explicit future scope, not silently dropped.
