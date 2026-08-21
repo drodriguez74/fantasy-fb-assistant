@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
-from app.api.deps import get_db, get_current_active_user, get_optional_current_user
+from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.services.yahoo_service import yahoo_service
 from app.services.sleeper_service import sleeper_service
@@ -464,40 +464,37 @@ async def get_league_standings(
 
 
 @router.get("/{league_id}/comprehensive-analysis")
-async def get_comprehensive_league_analysis(league_id: int):
-    """Get comprehensive league analysis using real league data"""
+async def get_comprehensive_league_analysis(
+    league_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get comprehensive league analysis for the current user's own league"""
     try:
-        from app.utils.league_data_loader import get_league_info
-        league_info = get_league_info(league_id)
-        
-        return {
-            "league_info": {
-                "id": league_info["id"],
-                "league_name": league_info["name"],
-                "platform": league_info["platform"],
-                "league_size": league_info["league_size"],
-                "scoring_format": league_info["scoring_format"],
-                "season": league_info["season"],
-                "current_week": 1
-            },
-            "roster_analysis": {
-                "starting_lineup": [],
-                "bench_players": [],
-                "team_strengths": ["Strong WR corps"],
-                "team_weaknesses": ["Weak RB depth"],
-                "overall_grade": "B+"
-            },
-            "waiver_recommendations": {
-                "priority_adds": [],
-                "sleeper_picks": [],
-                "streaming_options": []
-            },
-            "trade_recommendations": {
-                "buy_low_candidates": [],
-                "sell_high_candidates": [],
-                "trade_targets": []
-            }
-        }
+        # Scope to the requesting user's own league -- this endpoint used to
+        # read connected_league.json (a single shared file on disk, see
+        # app.utils.league_data_loader.get_league_info) and hand back the
+        # same hardcoded roster/waiver/trade placeholders ("Strong WR
+        # corps", "Weak RB depth", empty lists) to any caller for any
+        # league_id, with no ownership check at all.
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        # Reuse the same real analysis service already powering
+        # /waiver-recommendations and /trade-suggestions instead of the
+        # hand-rolled fake response this endpoint returned before.
+        league_service = LeagueManagementService(db)
+        analysis = await league_service.get_comprehensive_league_analysis(current_user.id, league_id)
+
+        if "error" in analysis:
+            raise HTTPException(status_code=400, detail=analysis["error"])
+
+        return analysis
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get comprehensive analysis: {str(e)}")
 
@@ -505,143 +502,66 @@ async def get_comprehensive_league_analysis(league_id: int):
 @router.get("/{league_id}/insights")
 async def get_league_insights(
     league_id: int,
-    current_user: User = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get weekly insights and recommendations for a league"""
+    """Get weekly insights for the current user's own league"""
     try:
-        # Get league info from our connected league data
-        from app.utils.league_data_loader import get_league_info
-        league_info = get_league_info(league_id)
-        
-        # If this is our connected ESPN league, use real ESPN data with insights
-        if league_id == 1 and league_info.get("espn_league_id"):
-            # Generate insights based on real ESPN league data
-            from app.services.espn_service_enhanced import espn_service_enhanced
-            
-            try:
-                # Try to get 2025 league info specifically
-                espn_league_data = await espn_service_enhanced.get_league_info(
-                    league_id=league_info["espn_league_id"],
-                    season=2025,  # Force 2025 season
-                    swid=league_info.get("espn_swid"),
-                    espn_s2=league_info.get("espn_s2")
-                )
-                
-                if "error" not in espn_league_data:
-                    # Generate insights based on real league data
-                    insights_data = {
-                        "league_name": f"ESPN League {league_info['espn_league_id']} ({league_info['season']})",
-                        "insights": {
-                            "weekly_outlook": {
-                                "outlook": "Positive",
-                                "key_points": [
-                                    f"Your {league_info['scoring_format']} league (Season {league_info['season']}) has favorable matchups",
-                                    f"{league_info['league_size']}-team league provides good waiver wire depth", 
-                                    "Real-time ESPN data shows competitive landscape"
-                                ],
-                                "confidence": "High"
-                            },
-                            "start_sit": [
-                                {
-                                    "player": "Lamar Jackson",
-                                    "position": "QB",
-                                    "recommendation": "START",
-                                    "reasoning": f"Elite dual-threat QB in {league_info['scoring_format']} format",
-                                    "confidence": "High"
-                                },
-                                {
-                                    "player": "Derrick Henry", 
-                                    "position": "RB",
-                                    "recommendation": "START",
-                                    "reasoning": "High-volume runner with goal line upside",
-                                    "confidence": "Medium"
-                                }
-                            ],
-                            "pickup_targets": [
-                                {
-                                    "player": "Justice Hill",
-                                    "position": "RB", 
-                                    "reason": "Handcuff for Derrick Henry with standalone value",
-                                    "priority": 3
-                                },
-                                {
-                                    "player": "Rashod Bateman",
-                                    "position": "WR",
-                                    "reason": "WR2 for Ravens with big play potential",
-                                    "priority": 2
-                                }
-                            ],
-                            "lineup_optimization": {
-                                "projected_points": 155.8,
-                                "lineup_changes": [
-                                    {
-                                        "position": "FLEX",
-                                        "current": "Cooper Kupp",
-                                        "recommended": "Travis Kelce",
-                                        "point_gain": 3.1
-                                    }
-                                ],
-                                "confidence": "Medium"
-                            }
-                        },
-                        "league_details": {
-                            "espn_league_id": league_info["espn_league_id"],
-                            "season": league_info["season"],
-                            "scoring_format": league_info["scoring_format"],
-                            "league_size": league_info["league_size"],
-                            "current_week": espn_league_data.get("current_week", 1)
-                        },
-                        "generated_at": datetime.now().isoformat()
-                    }
-                    
-                    return insights_data
-                    
-            except Exception as api_error:
-                # If ESPN API fails, fall back to insights based on connected data
-                pass
-        
-        # Fallback insights using connected league data 
+        # Scope to the requesting user's own league. This endpoint used to
+        # accept an optional/unused current_user, read connected_league.json
+        # (a single shared file, see app.utils.league_data_loader), and
+        # return hardcoded specific-player advice ("Lamar Jackson" to
+        # start, "Justice Hill"/"Rashod Bateman" to pick up) for every
+        # league_id and every caller -- real or anonymous -- regardless of
+        # who actually owned that league or what was on their roster.
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        league_info = {
+            "id": user_league.id,
+            "name": user_league.league_name,
+            "platform": user_league.platform.value.upper(),
+            "season": user_league.season,
+            "scoring_format": user_league.scoring_format,
+            "league_size": user_league.league_size,
+        }
+
+        # There is no real per-player start/sit, matchup, or waiver
+        # projection engine wired up for league insights (the AI-analysis
+        # endpoints that do exist, e.g. /analysis and /waiver-recommendations,
+        # depend on roster/matchup data this endpoint doesn't have). Rather
+        # than keep fabricating specific-player picks that were never
+        # actually computed for this league, return real league metadata
+        # and an honest "not yet available" outlook.
         insights_data = {
-            "league_name": league_info["name"],
+            "league_name": user_league.league_name,
+            "league_info": league_info,
             "insights": {
                 "weekly_outlook": {
-                    "outlook": "Positive", 
+                    "outlook": "Not available",
                     "key_points": [
-                        f"Your {league_info['scoring_format']} league has favorable matchups this week",
-                        "Strong waiver wire options available for depth",
-                        "Monitor injury reports for optimal lineup decisions"
+                        "Player-specific start/sit and waiver-wire recommendations are not yet computed for this league."
                     ],
-                    "confidence": "Medium"
+                    "confidence": "N/A"
                 },
-                "start_sit": [
-                    {
-                        "player": "Lamar Jackson",
-                        "position": "QB",
-                        "recommendation": "START", 
-                        "reasoning": "Consistent dual-threat production",
-                        "confidence": "High"
-                    }
-                ],
-                "pickup_targets": [
-                    {
-                        "player": "Available Player",
-                        "position": "WR",
-                        "reason": "Monitor waiver wire for emerging options",
-                        "priority": 2
-                    }
-                ],
+                "start_sit": [],
+                "pickup_targets": [],
                 "lineup_optimization": {
-                    "projected_points": 145.0,
+                    "projected_points": None,
                     "lineup_changes": [],
-                    "confidence": "Low"
+                    "confidence": "N/A"
                 }
             },
             "generated_at": datetime.now().isoformat()
         }
-        
+
         return insights_data
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get league insights: {str(e)}")
 
