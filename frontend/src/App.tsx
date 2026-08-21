@@ -1,25 +1,32 @@
+import { lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { Navbar } from './components/common/Navbar'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
-import { HomePage } from './pages/HomePage'
-import { AuthPage } from './pages/AuthPage'
-import { DraftPage } from './pages/DraftPage'
-import { PlayersPage } from './pages/PlayersPage'
-import { BlogPage } from './pages/BlogPage'
-import { BlogPostPage } from './pages/BlogPostPage'
-import { LeaguesPage } from './pages/LeaguesPage'
-import { LeagueDetailPage } from './pages/LeagueDetailPage'
-import { YahooCallbackPage } from './pages/YahooCallbackPage'
-import { LiveDraftPage } from './pages/LiveDraftPage'
-import { ContentPage } from './pages/ContentPage'
-import { HistoricalPage } from './pages/HistoricalPage'
-import { AnalyticsPage } from './pages/AnalyticsPage'
-import { WaiverWirePage } from './pages/WaiverWirePage'
-import { AdvancedAnalysisPage } from './pages/AdvancedAnalysisPage'
-import { PostDraftAnalysisPage } from './pages/PostDraftAnalysisPage'
-import { TradeAnalyzerPage } from './pages/TradeAnalyzerPage'
+import { PageLoader } from './components/common/PageLoader'
+
+// Route-level code splitting: each page becomes its own chunk that's only
+// downloaded when a user actually navigates to it, instead of all pages
+// (plus their dependencies, e.g. recharts/d3 pulled in only by
+// AdvancedAnalysisPage) being bundled into one ~1MB chunk loaded upfront.
+const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
+const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })))
+const DraftPage = lazy(() => import('./pages/DraftPage').then(m => ({ default: m.DraftPage })))
+const PlayersPage = lazy(() => import('./pages/PlayersPage').then(m => ({ default: m.PlayersPage })))
+const BlogPage = lazy(() => import('./pages/BlogPage').then(m => ({ default: m.BlogPage })))
+const BlogPostPage = lazy(() => import('./pages/BlogPostPage').then(m => ({ default: m.BlogPostPage })))
+const LeaguesPage = lazy(() => import('./pages/LeaguesPage').then(m => ({ default: m.LeaguesPage })))
+const LeagueDetailPage = lazy(() => import('./pages/LeagueDetailPage').then(m => ({ default: m.LeagueDetailPage })))
+const YahooCallbackPage = lazy(() => import('./pages/YahooCallbackPage').then(m => ({ default: m.YahooCallbackPage })))
+const LiveDraftPage = lazy(() => import('./pages/LiveDraftPage').then(m => ({ default: m.LiveDraftPage })))
+const ContentPage = lazy(() => import('./pages/ContentPage').then(m => ({ default: m.ContentPage })))
+const HistoricalPage = lazy(() => import('./pages/HistoricalPage').then(m => ({ default: m.HistoricalPage })))
+const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
+const WaiverWirePage = lazy(() => import('./pages/WaiverWirePage').then(m => ({ default: m.WaiverWirePage })))
+const AdvancedAnalysisPage = lazy(() => import('./pages/AdvancedAnalysisPage').then(m => ({ default: m.AdvancedAnalysisPage })))
+const PostDraftAnalysisPage = lazy(() => import('./pages/PostDraftAnalysisPage').then(m => ({ default: m.PostDraftAnalysisPage })))
+const TradeAnalyzerPage = lazy(() => import('./pages/TradeAnalyzerPage').then(m => ({ default: m.TradeAnalyzerPage })))
 
 function App() {
   return (
@@ -29,6 +36,7 @@ function App() {
         <div className="min-h-screen bg-ink-50">
           <Navbar />
           <main className="container mx-auto px-4 py-8">
+            <Suspense fallback={<PageLoader />}>
             <Routes>
               <Route path="/" element={<HomePage />} />
               <Route path="/auth" element={<AuthPage />} />
@@ -125,6 +133,7 @@ function App() {
                 }
               />
             </Routes>
+            </Suspense>
           </main>
         </div>
         </ErrorBoundary>
