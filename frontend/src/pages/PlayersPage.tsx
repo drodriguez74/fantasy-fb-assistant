@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { players, getErrorMessage } from '../services/api'
 import { PlayerCard } from '../components/players/PlayerCard'
@@ -30,6 +31,7 @@ function injuryBadgeClasses(status: string): string {
 }
 
 export function PlayersPage() {
+  const navigate = useNavigate()
   const [playerList, setPlayerList] = useState<Player[]>([])
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [loading, setLoading] = useState(true)
@@ -72,6 +74,14 @@ export function PlayersPage() {
     player.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     player.team.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  // Navigate to the focused per-player view, handing along the already-
+  // fetched Player object so the detail page renders instantly with no
+  // extra request. AI insights are generated there, on demand, for this one
+  // player -- not as a button rendered on every one of the 4,000+ rows here.
+  const openPlayer = (player: Player) => {
+    navigate(`/players/${player.sleeper_id ?? player.id}`, { state: { player } })
+  }
 
   if (loading) {
     return (
@@ -160,6 +170,7 @@ export function PlayersPage() {
               key={player.id}
               player={player}
               showDetails={true}
+              onClick={openPlayer}
             />
           ))}
         </div>
@@ -191,7 +202,11 @@ export function PlayersPage() {
               </thead>
               <tbody className="bg-white divide-y divide-ink-200">
                 {filteredPlayers.map((player) => (
-                  <tr key={player.id} className="hover:bg-ink-50">
+                  <tr
+                    key={player.id}
+                    className="hover:bg-ink-50 cursor-pointer"
+                    onClick={() => openPlayer(player)}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div>
