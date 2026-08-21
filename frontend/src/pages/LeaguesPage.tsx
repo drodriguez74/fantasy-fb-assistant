@@ -186,7 +186,7 @@ export function LeaguesPage() {
         <div>
           <h1 className="text-3xl font-bold text-ink-900">My Fantasy Leagues</h1>
           <p className="text-ink-600 mt-2">
-            Connect your fantasy leagues to get AI-powered insights
+            Connect your fantasy leagues to get personalized insights
           </p>
         </div>
 
@@ -237,7 +237,7 @@ export function LeaguesPage() {
               <div className="text-ink-400 text-6xl mb-4">🏈</div>
               <h3 className="text-xl font-semibold text-ink-900 mb-2">No Leagues Connected</h3>
               <p className="text-ink-500 mb-6">
-                Connect your fantasy leagues from Yahoo or ESPN to get started with AI-powered analysis
+                Connect your fantasy leagues from Yahoo or ESPN to get started with personalized analysis
               </p>
               <div className="flex space-x-3 justify-center">
                 <button
@@ -330,11 +330,12 @@ export function LeaguesPage() {
 
       {/* Instructions */}
       <div className="bg-accent-50 border border-accent-200 rounded-lg p-6">
-        <h3 className="font-semibold text-accent-900 mb-2">🤖 AI-Powered League Analysis</h3>
+        <h3 className="font-semibold text-accent-900 mb-2">📊 League Analysis</h3>
         <p className="text-accent-800 text-sm">
           Once connected, you'll get personalized insights including roster analysis,
-          start/sit recommendations, waiver wire targets, and trade suggestions powered by AI.
-          Works with both Yahoo Fantasy and ESPN Fantasy Football leagues.
+          start/sit recommendations, waiver wire targets, and trade suggestions based on
+          your roster and league data. Works with both Yahoo Fantasy and ESPN Fantasy
+          Football leagues.
         </p>
       </div>
 
