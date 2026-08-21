@@ -1,5 +1,5 @@
 from typing import Optional, List, Any
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 from datetime import datetime
 
 
@@ -9,16 +9,18 @@ class UserCreate(BaseModel):
     username: str
     password: str
     full_name: Optional[str] = None
-    
-    @validator('username')
+
+    @field_validator('username')
+    @classmethod
     def username_alphanumeric(cls, v):
         if not v.replace('_', '').replace('-', '').isalnum():
             raise ValueError('Username must contain only letters, numbers, hyphens, and underscores')
         if len(v) < 3 or len(v) > 20:
             raise ValueError('Username must be between 3 and 20 characters')
         return v
-    
-    @validator('password')
+
+    @field_validator('password')
+    @classmethod
     def password_strength(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -52,8 +54,9 @@ class UserUpdate(BaseModel):
 class PasswordChange(BaseModel):
     current_password: str
     new_password: str
-    
-    @validator('new_password')
+
+    @field_validator('new_password')
+    @classmethod
     def password_strength(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -75,8 +78,9 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     token: str
     new_password: str
-    
-    @validator('new_password')
+
+    @field_validator('new_password')
+    @classmethod
     def password_strength(cls, v):
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
@@ -110,9 +114,8 @@ class UserResponse(BaseModel):
     notifications_enabled: bool
     created_at: datetime
     last_login: Optional[datetime]
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # User Public Profile (limited info)
@@ -123,9 +126,8 @@ class UserPublic(BaseModel):
     avatar_url: Optional[str]
     bio: Optional[str]
     created_at: datetime
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # Authentication Token Response
@@ -199,6 +201,5 @@ class UserLeagueResponse(BaseModel):
     last_synced: Optional[datetime]
     espn_swid: Optional[str] = None
     espn_s2: Optional[str] = None
-    
-    class Config:
-        from_attributes = True
+
+    model_config = ConfigDict(from_attributes=True)
