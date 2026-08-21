@@ -14,6 +14,7 @@ const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.H
 const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })))
 const DraftPage = lazy(() => import('./pages/DraftPage').then(m => ({ default: m.DraftPage })))
 const PlayersPage = lazy(() => import('./pages/PlayersPage').then(m => ({ default: m.PlayersPage })))
+const PlayerDetailPage = lazy(() => import('./pages/PlayerDetailPage').then(m => ({ default: m.PlayerDetailPage })))
 const BlogPage = lazy(() => import('./pages/BlogPage').then(m => ({ default: m.BlogPage })))
 const BlogPostPage = lazy(() => import('./pages/BlogPostPage').then(m => ({ default: m.BlogPostPage })))
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage').then(m => ({ default: m.LeaguesPage })))
@@ -41,6 +42,7 @@ function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/auth" element={<AuthPage />} />
               <Route path="/players" element={<PlayersPage />} />
+              <Route path="/players/:playerId" element={<PlayerDetailPage />} />
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/blog/:id" element={<BlogPostPage />} />
               <Route path="/yahoo/callback" element={<YahooCallbackPage />} />
