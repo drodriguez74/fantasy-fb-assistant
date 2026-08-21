@@ -171,7 +171,8 @@ export function BlogPage() {
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Fantasy Football Blog</h1>
           <p className="text-gray-600 mt-2">
-            AI-generated insights with multi-perspective analysis and consensus recommendations
+            Fantasy insights and analysis — player deep-dives and injury reports are AI-generated;
+            rankings, waiver targets, and other content are built from live data
           </p>
         </div>
         
@@ -329,11 +330,11 @@ export function BlogPage() {
         </div>
       )}
 
-      {/* AI Insights Sidebar */}
+      {/* Insights Sidebar */}
       <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
         <div className="flex items-center mb-4">
           <SparklesIcon className="h-6 w-6 text-purple-600 mr-2" />
-          <h2 className="text-xl font-semibold text-gray-900">Latest AI Insights</h2>
+          <h2 className="text-xl font-semibold text-gray-900">Quick Hits</h2>
         </div>
         <div className="space-y-4">
           <div className="border-l-4 border-blue-500 pl-4">

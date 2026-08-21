@@ -595,7 +595,7 @@ export function LeagueDetailPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Trade Suggestions</h3>
             <p className="text-sm text-gray-600 mb-6">
-              AI-powered trade recommendations based on roster analysis. Trade deadline: {tradeRecs.trade_deadline}
+              Trade recommendations based on roster analysis. Trade deadline: {tradeRecs.trade_deadline}
             </p>
             
             <div className="space-y-4">

@@ -98,9 +98,9 @@ export function HomePage() {
           <div className="w-12 h-12 bg-purple-100 rounded-lg mx-auto mb-4 flex items-center justify-center">
             <DocumentTextIcon className="h-6 w-6 text-purple-600" />
           </div>
-          <h3 className="text-xl font-semibold mb-2">AI-Powered Content</h3>
+          <h3 className="text-xl font-semibold mb-2">Fantasy Content Library</h3>
           <p className="text-gray-600">
-            Multi-perspective analysis and consensus recommendations for waiver picks
+            Rankings, waiver targets, and more, plus AI analysis for player deep-dives and injury reports
           </p>
         </div>
       </div>
