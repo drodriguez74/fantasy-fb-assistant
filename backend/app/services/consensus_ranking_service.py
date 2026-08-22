@@ -135,10 +135,21 @@ def _blend(*percentiles: Optional[float]) -> float:
 
 class ConsensusRankingService:
     """Computes a real, inspectable consensus rank from whichever of
-    Sleeper's search_rank, ESPN's percent_owned, and FantasyPros' rank_ecr
-    are actually available for a given batch of players. See module
-    docstring for the blending method and why it's an unweighted percentile
-    average, not a raw one.
+    Sleeper's search_rank, ESPN's percent_owned, Yahoo's ownership_percentage,
+    and FantasyPros' rank_ecr are actually available for a given batch of
+    players. See module docstring for the blending method and why it's an
+    unweighted percentile average, not a raw one.
+
+    Yahoo has no publicly-fetchable player pool the way Sleeper does (every
+    Yahoo Fantasy endpoint is per-user OAuth2-authenticated), so unlike
+    Sleeper/ESPN it can't be supplied as a cross-reference source for a
+    *different* platform's session -- it only ever contributes when `players`
+    already carries its own `ownership_percentage` field, i.e. when the
+    batch being ranked is itself a live Yahoo session's available players
+    (see draft_assistant_service._get_yahoo_draft_state's reshape). This is
+    the same "degrades to whatever's actually present" behavior as every
+    other source here, just without a same-name `other_source_players`-style
+    parameter, because there's nothing real to pass one from.
     """
 
     def rank_players(
@@ -178,6 +189,7 @@ class ConsensusRankingService:
         """
         own_sleeper_pct = self._percentiles_by_index(players, "search_rank", reverse=False)
         own_espn_pct = self._percentiles_by_index(players, "percent_owned", reverse=True)
+        own_yahoo_pct = self._percentiles_by_index(players, "ownership_percentage", reverse=True)
 
         other_sleeper_by_name: Dict[str, Tuple[float, Any]] = {}
         other_espn_by_name: Dict[str, Tuple[float, Any]] = {}
@@ -199,6 +211,7 @@ class ConsensusRankingService:
         for idx, player in enumerate(players):
             sleeper_pct = own_sleeper_pct.get(idx)
             espn_pct = own_espn_pct.get(idx)
+            yahoo_pct = own_yahoo_pct.get(idx)
             fantasypros_pct = None
             sources: Dict[str, Any] = {}
 
@@ -206,6 +219,8 @@ class ConsensusRankingService:
                 sources["sleeper_rank"] = player.get("search_rank")
             if espn_pct is not None:
                 sources["espn_ownership_pct"] = round(player.get("percent_owned", 0.0), 1)
+            if yahoo_pct is not None:
+                sources["yahoo_ownership_pct"] = round(player.get("ownership_percentage", 0.0), 1)
 
             if other_source_players or fantasypros_players:
                 name = normalize_player_name(player.get("full_name") or player.get("name"))
@@ -224,9 +239,10 @@ class ConsensusRankingService:
             source_count = (
                 (1 if sleeper_pct is not None else 0)
                 + (1 if espn_pct is not None else 0)
+                + (1 if yahoo_pct is not None else 0)
                 + (1 if fantasypros_pct is not None else 0)
             )
-            consensus_score = _blend(sleeper_pct, espn_pct, fantasypros_pct)
+            consensus_score = _blend(sleeper_pct, espn_pct, yahoo_pct, fantasypros_pct)
 
             new_player = dict(player)
             new_player["consensus"] = {
