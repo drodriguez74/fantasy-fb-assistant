@@ -11,7 +11,7 @@ from app.services.ai_service import ai_service
 from app.services.league_management_service import LeagueManagementService
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
-from datetime import datetime
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -50,7 +50,6 @@ async def test_yahoo_credentials():
         "client_id_set": bool(yahoo_service.client_id),
         "client_secret_set": bool(yahoo_service.client_secret),
         "client_id_preview": yahoo_service.client_id[:10] + "..." if yahoo_service.client_id else None,
-        "access_token_set": bool(yahoo_service.access_token)
     }
 
 
@@ -80,22 +79,116 @@ class YahooConnectRequest(BaseModel):
     redirect_uri: str = "http://localhost:3001/yahoo/callback"
 
 @router.post("/yahoo/connect")
-async def connect_yahoo_league(request: YahooConnectRequest):
-    """Connect to Yahoo Fantasy Sports (demo mode)"""
-    return {
-        "success": True,
-        "leagues_connected": 1,
-        "leagues": [
-            {
-                "id": 2,
-                "league_name": "Demo Yahoo League",
-                "league_key": "yahoo123",
+async def connect_yahoo_league(
+    request: YahooConnectRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Connect to Yahoo Fantasy Sports.
+
+    Real flow:
+    1. Exchange the real OAuth authorization_code (from the Yahoo consent
+       screen, relayed through YahooCallbackPage's postMessage) for a real
+       access/refresh token pair via yahoo_service.authenticate().
+    2. Use that access token to fetch this user's real Yahoo leagues via
+       yahoo_service.get_user_leagues() -- no token is ever stored on the
+       yahoo_service singleton; it's threaded through explicitly.
+    3. Persist a UserLeague row per Yahoo league, scoped to current_user,
+       carrying the access token, refresh token, and expiry -- mirroring
+       exactly how POST /espn/connect persists espn_swid/espn_s2 on
+       current_user's own UserLeague rows instead of shared/global state.
+    """
+    if not yahoo_service.credentials_configured:
+        raise HTTPException(
+            status_code=400,
+            detail="Yahoo API credentials not configured. Please set YAHOO_CLIENT_ID and YAHOO_CLIENT_SECRET in your .env file."
+        )
+
+    try:
+        token_result = await yahoo_service.authenticate(
+            request.authorization_code, request.redirect_uri
+        )
+
+        if "error" in token_result:
+            raise HTTPException(status_code=400, detail=token_result["error"])
+
+        access_token = token_result.get("access_token")
+        refresh_token = token_result.get("refresh_token")
+        expires_in = token_result.get("expires_in")
+
+        if not access_token:
+            raise HTTPException(
+                status_code=400,
+                detail="Yahoo did not return an access token"
+            )
+
+        expires_at = None
+        if expires_in is not None:
+            try:
+                expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
+            except (TypeError, ValueError):
+                expires_at = None
+
+        # Fetch this user's real Yahoo fantasy football leagues for the
+        # current season using the freshly-issued access token.
+        season = datetime.utcnow().year
+        yahoo_leagues = await yahoo_service.get_user_leagues(access_token, season=season)
+
+        if (
+            isinstance(yahoo_leagues, list)
+            and len(yahoo_leagues) > 0
+            and isinstance(yahoo_leagues[0], dict)
+            and "error" in yahoo_leagues[0]
+        ):
+            raise HTTPException(status_code=400, detail=yahoo_leagues[0]["error"])
+
+        user_service = UserService(db)
+        connected_leagues = []
+
+        for yl in yahoo_leagues:
+            league_key = yl.get("league_key")
+            league_id = yl.get("league_id")
+            if not league_id:
+                continue
+
+            user_league = user_service.add_user_league(
+                user_id=current_user.id,
+                platform="yahoo",
+                league_id=str(league_id),
+                league_data={
+                    "league_key": league_key,
+                    "league_name": yl.get("name") or f"Yahoo League {league_id}",
+                    "season": season,
+                    "scoring_format": yl.get("scoring_type") or "PPR",
+                    "league_size": yl.get("num_teams"),
+                    "yahoo_access_token": access_token,
+                    "yahoo_refresh_token": refresh_token,
+                    "yahoo_token_expires_at": expires_at,
+                }
+            )
+
+            if user_league is None:
+                continue
+
+            connected_leagues.append({
+                "id": user_league.id,
+                "league_name": user_league.league_name,
+                "league_key": user_league.league_key,
                 "platform": "YAHOO",
-                "league_size": 10,
-                "scoring_format": "PPR"
-            }
-        ]
-    }
+                "league_size": user_league.league_size,
+                "scoring_format": user_league.scoring_format,
+            })
+
+        return {
+            "success": True,
+            "leagues_connected": len(connected_leagues),
+            "leagues": connected_leagues
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect Yahoo account: {str(e)}")
 
 
 class ESPNConnectRequest(BaseModel):
@@ -261,10 +354,15 @@ async def get_league_analysis(
         if league.platform == "YAHOO":
             if not league.team_id:
                 raise HTTPException(status_code=400, detail="Team ID not set for Yahoo league")
-            
+
+            if not league.yahoo_access_token:
+                raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
+            if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
+                raise HTTPException(status_code=400, detail="Your Yahoo connection has expired. Please reconnect your Yahoo account.")
+
             # Get roster from Yahoo
-            roster_data = await yahoo_service.get_team_roster(league.team_id)
-            
+            roster_data = await yahoo_service.get_team_roster(league.yahoo_access_token, league.team_id)
+
             if "error" in roster_data:
                 raise HTTPException(status_code=400, detail=roster_data["error"])
             
@@ -362,13 +460,18 @@ async def get_league_matchups(
             raise HTTPException(status_code=404, detail="League not found")
         
         if league.platform == "YAHOO":
+            if not league.yahoo_access_token:
+                raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
+            if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
+                raise HTTPException(status_code=400, detail="Your Yahoo connection has expired. Please reconnect your Yahoo account.")
+
             # Get current week if not specified
             if not week:
-                league_info = await yahoo_service.get_league_info(league.league_key)
+                league_info = await yahoo_service.get_league_info(league.yahoo_access_token, league.league_key)
                 week = league_info.get("current_week", 1)
-            
-            matchups = await yahoo_service.get_matchups(league.league_key, week)
-            
+
+            matchups = await yahoo_service.get_matchups(league.yahoo_access_token, league.league_key, week)
+
             if matchups and "error" in matchups[0]:
                 raise HTTPException(status_code=400, detail=matchups[0]["error"])
             

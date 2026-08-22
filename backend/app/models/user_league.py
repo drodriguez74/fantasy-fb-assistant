@@ -61,7 +61,14 @@ class UserLeague(Base):
     # ESPN-specific authentication (for private leagues)
     espn_swid = Column(String)  # ESPN SWID cookie
     espn_s2 = Column(String)    # ESPN espn_s2 cookie
-    
+
+    # Yahoo-specific authentication (OAuth2 -- unlike ESPN's long-lived
+    # cookies, Yahoo access tokens expire quickly, so we persist the refresh
+    # token too and track expiry explicitly rather than assuming validity)
+    yahoo_access_token = Column(String)
+    yahoo_refresh_token = Column(String)
+    yahoo_token_expires_at = Column(DateTime(timezone=True))
+
     # Timestamps
     added_at = Column(DateTime(timezone=True), server_default=func.now())
     last_synced = Column(DateTime(timezone=True))
