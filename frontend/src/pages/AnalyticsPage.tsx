@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
+import { api, players as playersApi, getErrorMessage } from '../services/api'
 import {
   ChartBarIcon,
   BeakerIcon,
@@ -71,6 +72,7 @@ export function AnalyticsPage() {
   const [optimizationType, setOptimizationType] = useState('maximize_points')
   const [salaryCap, setSalaryCap] = useState(50000)
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null)
+  const [optimizerPoolSize, setOptimizerPoolSize] = useState<number | null>(null)
 
   // Correlation state
   const [correlationPosition, setCorrelationPosition] = useState<string>('')
@@ -84,18 +86,69 @@ export function AnalyticsPage() {
     { id: 4, name: 'Travis Kelce', position: 'TE' }
   ]
 
-  // Sample lineup data for optimization
-  const sampleLineupPlayers = [
-    { player_id: 1, name: 'Josh Allen', position: 'QB', projected_points: 22.5, salary: 8500, variance: 4.2 },
-    { player_id: 2, name: 'Christian McCaffrey', position: 'RB', projected_points: 20.1, salary: 9200, variance: 5.1 },
-    { player_id: 3, name: 'Tyreek Hill', position: 'WR', projected_points: 18.7, salary: 8000, variance: 6.3 },
-    { player_id: 4, name: 'Travis Kelce', position: 'TE', projected_points: 16.4, salary: 7500, variance: 3.8 },
-    { player_id: 5, name: 'Derrick Henry', position: 'RB', projected_points: 17.2, salary: 7200, variance: 4.9 },
-    { player_id: 6, name: 'Cooper Kupp', position: 'WR', projected_points: 17.8, salary: 7800, variance: 5.5 },
-    { player_id: 7, name: 'Stefon Diggs', position: 'WR', projected_points: 16.9, salary: 7400, variance: 4.7 },
-    { player_id: 8, name: 'Ravens', position: 'DEF', projected_points: 8.2, salary: 2800, variance: 2.1 },
-    { player_id: 9, name: 'Justin Tucker', position: 'K', projected_points: 8.5, salary: 5000, variance: 1.8 }
-  ]
+  // How many top-ranked (by real, live Sleeper search_rank) players per
+  // position to pull in as optimizer candidates -- enough for the solver to
+  // have a genuine choice while keeping the request a reasonable size.
+  const OPTIMIZER_POOL_SIZE: Record<string, number> = {
+    QB: 10, RB: 20, WR: 20, TE: 10, DEF: 10, K: 10
+  }
+
+  // Sleeper's free API (the only player data source wired into this app --
+  // see sleeper_service.py) doesn't expose real weekly fantasy-point
+  // projections or DFS salaries, and this app has no other projections/DFS
+  // integration. So projected_points/salary/variance below are estimated
+  // from each player's real Sleeper rank using typical PPR scoring tiers,
+  // not looked up from a real projections feed. The player pool itself
+  // (identity, team, position) is real, live Sleeper data -- not a
+  // hardcoded sample -- and the UI labels the estimate as such.
+  const POSITION_POINT_CURVE: Record<string, { base: number; step: number; floor: number }> = {
+    QB: { base: 26, step: 0.9, floor: 8 },
+    RB: { base: 22, step: 0.8, floor: 4 },
+    WR: { base: 20, step: 0.7, floor: 4 },
+    TE: { base: 15, step: 0.7, floor: 3 },
+    K: { base: 9, step: 0.25, floor: 4 },
+    DEF: { base: 9, step: 0.25, floor: 3 }
+  }
+
+  const estimatePlayerValue = (position: string, rankIndex: number) => {
+    const curve = POSITION_POINT_CURVE[position] ?? { base: 12, step: 0.6, floor: 3 }
+    const projected_points = Math.max(curve.floor, curve.base - rankIndex * curve.step)
+    const salary = Math.round((500 + projected_points * 380) / 100) * 100
+    const variance = Math.round((projected_points * 0.2 + rankIndex * 0.1) * 10) / 10
+    return { projected_points, salary, variance }
+  }
+
+  // Fetch a real, live player pool from Sleeper (via the same /players/
+  // endpoint PlayersPage.tsx uses), ranked per-position, to feed the
+  // optimizer -- replacing the old hardcoded sample lineup.
+  const fetchOptimizerPlayerPool = async (): Promise<LineupPlayer[]> => {
+    const positions = Object.keys(OPTIMIZER_POOL_SIZE)
+    const settled = await Promise.allSettled(
+      positions.map(position =>
+        playersApi.getAll({ position, sort: 'rank', page_size: OPTIMIZER_POOL_SIZE[position] })
+      )
+    )
+
+    const pool: LineupPlayer[] = []
+    settled.forEach((result, posIdx) => {
+      if (result.status !== 'fulfilled') return
+      const position = positions[posIdx]
+      const positionPlayers: Array<{ id: number; name: string; position: string }> =
+        result.value.data?.players ?? []
+      positionPlayers.forEach((p, rankIndex) => {
+        const { projected_points, salary, variance } = estimatePlayerValue(position, rankIndex)
+        pool.push({
+          player_id: p.id,
+          name: p.name,
+          position: p.position || position,
+          projected_points,
+          salary,
+          variance
+        })
+      })
+    })
+    return pool
+  }
 
   const runPlayerPrediction = async () => {
     try {
@@ -132,31 +185,29 @@ export function AnalyticsPage() {
     try {
       setLoading(true)
       setError('')
-      
-      const response = await fetch('/api/v1/analytics/optimize/lineup', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        },
-        body: JSON.stringify({
-          players: sampleLineupPlayers,
-          salary_cap: salaryCap,
-          optimization_type: optimizationType,
-          lineup_constraints: {
-            QB: 1, RB: 2, WR: 3, TE: 1, DEF: 1, K: 1
-          }
-        })
+
+      const poolPlayers = await fetchOptimizerPlayerPool()
+      if (poolPlayers.length === 0) {
+        throw new Error('Could not load the live player pool from Sleeper -- try again in a moment')
+      }
+      setOptimizerPoolSize(poolPlayers.length)
+
+      // Use the shared axios instance (services/api.ts) rather than a raw
+      // relative fetch(): the old '/api/v1/...' path resolved against the
+      // frontend's own dev-server origin, not the backend, so this request
+      // never actually reached the optimizer regardless of payload.
+      const response = await api.post('/analytics/optimize/lineup', {
+        players: poolPlayers,
+        salary_cap: salaryCap,
+        optimization_type: optimizationType,
+        lineup_constraints: {
+          QB: 1, RB: 2, WR: 3, TE: 1, DEF: 1, K: 1
+        }
       })
 
-      if (!response.ok) {
-        throw new Error('Optimization request failed')
-      }
-
-      const data = await response.json()
-      setOptimizationResult(data)
+      setOptimizationResult(response.data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to optimize lineup')
+      setError(getErrorMessage(err, 'Failed to optimize lineup'))
     } finally {
       setLoading(false)
     }
@@ -382,11 +433,16 @@ export function AnalyticsPage() {
       {activeTab === 'optimization' && (
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+            <h3 className="text-lg font-medium text-gray-900 mb-1 flex items-center">
               <CalculatorIcon className="h-5 w-5 mr-2" />
               Lineup Optimization Engine
             </h3>
-            
+            <p className="text-sm text-gray-500 mb-4">
+              Optimizes from the top available players (live Sleeper data), ranked per position.
+              Projected points and salary are estimated from that ranking, not a real DFS salary
+              feed or verified weekly projections -- this is not your own roster.
+            </p>
+
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Salary Cap</label>
@@ -425,7 +481,12 @@ export function AnalyticsPage() {
 
             {optimizationResult && (
               <div className="border-t pt-6">
-                <h4 className="font-medium text-gray-900 mb-4">Optimal Lineup</h4>
+                <h4 className="font-medium text-gray-900 mb-1">Optimal Lineup</h4>
+                {optimizerPoolSize !== null && (
+                  <p className="text-sm text-gray-500 mb-4">
+                    Selected from {optimizerPoolSize} live Sleeper players.
+                  </p>
+                )}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
                     <h5 className="font-medium text-gray-700 mb-2">Selected Players</h5>
