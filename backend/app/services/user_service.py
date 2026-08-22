@@ -170,10 +170,25 @@ class UserService:
             UserLeague.platform == platform_enum,
             UserLeague.league_id == league_id
         ).first()
-        
+
         if existing:
+            # Yahoo access tokens are short-lived (~1 hour, unlike ESPN's
+            # long-lived cookies), so a reconnect needs to actually refresh
+            # the stored credentials rather than silently no-op like this
+            # branch always used to. Gated to YAHOO specifically so ESPN's
+            # and Sleeper's existing reconnect behavior (return the existing
+            # row as-is) is unchanged.
+            if platform_enum == PlatformType.YAHOO:
+                if 'yahoo_access_token' in league_data:
+                    existing.yahoo_access_token = league_data.get('yahoo_access_token')
+                if 'yahoo_refresh_token' in league_data:
+                    existing.yahoo_refresh_token = league_data.get('yahoo_refresh_token')
+                if 'yahoo_token_expires_at' in league_data:
+                    existing.yahoo_token_expires_at = league_data.get('yahoo_token_expires_at')
+                self.db.commit()
+                self.db.refresh(existing)
             return existing
-        
+
         user_league = UserLeague(
             user_id=user_id,
             platform=platform_enum,
@@ -186,7 +201,10 @@ class UserService:
             league_size=league_data.get('league_size'),
             is_commissioner=league_data.get('is_commissioner', False),
             espn_swid=league_data.get('espn_swid'),
-            espn_s2=league_data.get('espn_s2')
+            espn_s2=league_data.get('espn_s2'),
+            yahoo_access_token=league_data.get('yahoo_access_token'),
+            yahoo_refresh_token=league_data.get('yahoo_refresh_token'),
+            yahoo_token_expires_at=league_data.get('yahoo_token_expires_at')
         )
 
         self.db.add(user_league)

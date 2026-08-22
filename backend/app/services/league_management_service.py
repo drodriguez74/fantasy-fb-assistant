@@ -67,15 +67,33 @@ class LeagueManagementService:
             logger.error(f"Error in comprehensive league analysis: {str(e)}")
             return {"error": str(e)}
 
+    def _get_yahoo_token(self, league: UserLeague) -> Optional[str]:
+        """Return this league's stored Yahoo access token, or None if the
+        league was never connected or the token has expired. Yahoo access
+        tokens are short-lived (~1hr), so an expired token is treated the
+        same as a missing one -- callers should report a clear "reconnect"
+        error rather than let a stale token fail with a cryptic 401 from
+        Yahoo's API.
+        """
+        if not league.yahoo_access_token:
+            return None
+        if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
+            return None
+        return league.yahoo_access_token
+
     async def _analyze_yahoo_roster(self, league: UserLeague) -> Dict[str, Any]:
         """Analyze Yahoo Fantasy roster"""
         try:
             if not league.team_id:
                 return {"error": "Team ID not configured"}
 
+            access_token = self._get_yahoo_token(league)
+            if not access_token:
+                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
+
             # Get roster from Yahoo
-            roster_data = await yahoo_service.get_team_roster(league.team_id)
-            
+            roster_data = await yahoo_service.get_team_roster(access_token, league.team_id)
+
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
 
@@ -190,10 +208,14 @@ class LeagueManagementService:
     async def _analyze_current_matchup(self, league: UserLeague) -> Dict[str, Any]:
         """Analyze current week's matchup"""
         try:
+            access_token = self._get_yahoo_token(league)
+            if not access_token:
+                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
+
             # Get current week matchups
             current_week = await self._get_current_week()
-            matchups = await yahoo_service.get_matchups(league.league_key, current_week)
-            
+            matchups = await yahoo_service.get_matchups(access_token, league.league_key, current_week)
+
             if "error" in matchups:
                 return {"error": matchups["error"]}
 
@@ -247,8 +269,12 @@ class LeagueManagementService:
     async def _get_league_standings(self, league: UserLeague) -> Dict[str, Any]:
         """Get detailed league standings with analysis"""
         try:
-            teams = await yahoo_service.get_league_teams(league.league_key)
-            
+            access_token = self._get_yahoo_token(league)
+            if not access_token:
+                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
+
+            teams = await yahoo_service.get_league_teams(access_token, league.league_key)
+
             if "error" in teams:
                 return {"error": teams["error"]}
 
@@ -293,11 +319,15 @@ class LeagueManagementService:
     async def _get_league_specific_waiver_recs(self, league: UserLeague) -> Dict[str, Any]:
         """Get waiver wire recommendations specific to league settings"""
         try:
+            access_token = self._get_yahoo_token(league)
+            if not access_token:
+                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
+
             # Get trending players
             trending_players = self.player_service.get_trending_players("UP", limit=20)
-            
+
             # Filter based on league roster needs
-            roster_data = await yahoo_service.get_team_roster(league.team_id)
+            roster_data = await yahoo_service.get_team_roster(access_token, league.team_id)
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
 
@@ -334,13 +364,17 @@ class LeagueManagementService:
     async def _get_trade_recommendations(self, league: UserLeague) -> Dict[str, Any]:
         """Get AI-powered trade recommendations"""
         try:
+            access_token = self._get_yahoo_token(league)
+            if not access_token:
+                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
+
             # Get user's roster
-            roster_data = await yahoo_service.get_team_roster(league.team_id)
+            roster_data = await yahoo_service.get_team_roster(access_token, league.team_id)
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
 
             # Get league teams for potential trade partners
-            teams = await yahoo_service.get_league_teams(league.league_key)
+            teams = await yahoo_service.get_league_teams(access_token, league.league_key)
             if "error" in teams:
                 return {"error": teams["error"]}
 
