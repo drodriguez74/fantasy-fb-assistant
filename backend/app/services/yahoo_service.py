@@ -233,6 +233,140 @@ class YahooFantasyService:
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Failed to get league info: {str(e)}"}
 
+    async def get_league_settings(self, access_token: str, league_key: str) -> Dict[str, Any]:
+        """Real, granular roster-slot counts and points-per-reception for a
+        Yahoo league, read from the league's `settings` sub-resource
+        (`/league/{league_key}/settings`) -- a separate real Yahoo Fantasy
+        API resource from the base league info `get_league_info` above
+        fetches, which doesn't carry any of this.
+
+        Per Yahoo's Fantasy Sports API (confirmed via the settings resource
+        field set several third-party API wrappers -- e.g. yfpy's Settings/
+        RosterPosition/StatModifiers/Stat model classes -- expose from real
+        Yahoo responses, since Yahoo's own developer docs are no longer
+        reachable): `settings.roster_positions` is a list of real slots,
+        each with a `position` label (e.g. "QB", "WR", "BN", "IR", or a
+        multi-eligible flex slot like "W/R/T" / superflex "Q/W/R/T") and a
+        `count`; `settings.stat_modifiers` is a list of real per-stat
+        scoring rules, each with a `name`/`display_name` (Yahoo's own
+        scoring-category label, e.g. "Receptions"/"Rec" -- see
+        help.yahoo.com's published scoring-category abbreviations) and a
+        `value`. Matched by name/display_name rather than a hardcoded
+        numeric stat_id: unlike ESPN's statId 53 (verified directly against
+        a real espn_api League.settings.scoring_format), no Yahoo stat_id
+        for receptions could be independently confirmed here, and guessing
+        a numeric id that turns out wrong would silently read some other
+        stat's value as points-per-reception -- matching the documented
+        name is the honest, verifiable option.
+
+        Returns the same {starters, bench, roster_size,
+        points_per_reception} shape sleeper_service.parse_league_settings /
+        espn_service_enhanced.get_scoring_and_roster_settings produce, so
+        draft_assistant_service can treat all three platforms identically.
+        Returns {"error": ...} on failure (missing/expired token, bad
+        league_key, Yahoo outage) -- callers should fall back to generic
+        behavior rather than fabricate real-looking numbers.
+        """
+        if not access_token:
+            return {"error": "Not authenticated"}
+
+        try:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            url = f"{self.base_url}/league/{league_key}/settings"
+
+            response = await self.client.get(url, headers=headers)
+            response.raise_for_status()
+
+            data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+
+            settings_data = data.get("fantasy_content", {}).get("league", {}).get("settings", {})
+            if not isinstance(settings_data, dict):
+                return {"error": "League settings unavailable"}
+
+            # Yahoo's flex slot is commonly "W/R/T" (RB/WR/TE-eligible) or,
+            # in a superflex league, "Q/W/R/T" (adds QB). A plain RB/WR/TE
+            # flex is folded into the same "FLEX" key
+            # draft_assistant_service._effective_position_requirements
+            # already knows how to distribute across RB/WR/TE (mirroring
+            # Sleeper's own "FLEX" slot label); a superflex slot that also
+            # includes QB is kept under its own literal key instead of
+            # being folded into RB/WR/TE, since doing so would understate
+            # real QB need.
+            letter_map = {"Q": "QB", "W": "WR", "R": "RB", "T": "TE"}
+
+            starters: Dict[str, int] = {}
+            bench = 0
+            roster_size = 0
+            raw_roster_positions = settings_data.get("roster_positions", {})
+            if isinstance(raw_roster_positions, dict):
+                for slot_key, slot_entry in raw_roster_positions.items():
+                    if not (isinstance(slot_entry, dict) and "roster_position" in slot_entry):
+                        continue
+                    slot = slot_entry["roster_position"]
+                    position = slot.get("position")
+                    try:
+                        count = int(slot.get("count") or 0)
+                    except (TypeError, ValueError):
+                        count = 0
+                    if not position or count <= 0:
+                        continue
+
+                    roster_size += count
+
+                    if position == "BN":
+                        bench += count
+                        continue
+                    if position in ("IR", "IR+"):
+                        # Real roster slots, but not real starting-lineup
+                        # need for the positions this app tracks.
+                        continue
+
+                    if "/" in position:
+                        eligible = {letter_map.get(p, p) for p in position.split("/") if p}
+                        if eligible == {"RB", "WR", "TE"}:
+                            starters["FLEX"] = starters.get("FLEX", 0) + count
+                            continue
+                        # e.g. superflex "Q/W/R/T" -- keep as its own
+                        # literal slot rather than mis-folding QB need into
+                        # RB/WR/TE.
+                        starters[position] = starters.get(position, 0) + count
+                        continue
+
+                    starters[position] = starters.get(position, 0) + count
+
+            points_per_reception = 0.0
+            raw_stat_modifiers = settings_data.get("stat_modifiers", {})
+            if isinstance(raw_stat_modifiers, dict):
+                raw_stats = raw_stat_modifiers.get("stats", {})
+                if isinstance(raw_stats, dict):
+                    for stat_key, stat_entry in raw_stats.items():
+                        if not (isinstance(stat_entry, dict) and "stat" in stat_entry):
+                            continue
+                        stat = stat_entry["stat"]
+                        name = (stat.get("name") or "").strip().lower()
+                        display_name = (stat.get("display_name") or "").strip().lower()
+                        if name == "receptions" or display_name == "rec":
+                            try:
+                                points_per_reception = float(stat.get("value") or 0.0)
+                            except (TypeError, ValueError):
+                                points_per_reception = 0.0
+                            break
+
+            if not starters and not bench:
+                return {"error": "League settings unavailable"}
+
+            return {
+                "starters": starters,
+                "bench": bench,
+                "roster_size": roster_size,
+                "points_per_reception": points_per_reception,
+                "source": "yahoo",
+            }
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            return {"error": f"Failed to get league settings: {str(e)}"}
+        except Exception as e:
+            return {"error": f"Failed to parse league settings: {str(e)}"}
+
     async def get_league_teams(self, access_token: str, league_key: str) -> List[Dict[str, Any]]:
         """Get all teams in Yahoo league"""
         if not access_token:

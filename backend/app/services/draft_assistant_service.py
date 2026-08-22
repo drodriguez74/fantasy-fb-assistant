@@ -60,7 +60,8 @@ class DraftAssistantService:
 
         platform_credentials carries whatever a platform needs to make
         authenticated calls on the caller's behalf -- for ESPN this is
-        {"swid": ..., "espn_s2": ..., "season": ...} pulled from the
+        {"swid": ..., "espn_s2": ..., "season": ...}, and for Yahoo this is
+        {"access_token": ..., "expires_at": ...}, both pulled from the
         caller's own UserLeague row (see live_draft.py's /start-session).
         It's stored on the session below so _refresh_draft_state can keep
         polling with the right credentials on every subsequent call, not
@@ -75,7 +76,7 @@ class DraftAssistantService:
             elif platform == DraftPlatform.ESPN:
                 draft_state = await self._get_espn_draft_state(league_id, platform_credentials or {})
             elif platform == DraftPlatform.YAHOO:
-                draft_state = await self._get_yahoo_draft_state(league_id)
+                draft_state = await self._get_yahoo_draft_state(league_id, platform_credentials or {})
             else:
                 return {"error": "Unsupported platform"}
 
@@ -490,26 +491,147 @@ class DraftAssistantService:
         except Exception as e:
             return {"error": f"Failed to get ESPN draft state: {str(e)}"}
 
-    async def _get_yahoo_draft_state(self, league_id: str) -> Dict[str, Any]:
-        """STUB: Yahoo live draft state is not wired to real data yet.
+    async def _get_yahoo_draft_state(self, league_id: str, credentials: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Get live draft state from Yahoo's real Fantasy API via yahoo_service.
 
-        Real Yahoo live-draft polling needs a real OAuth access token via
-        yahoo_service, which isn't configured in this environment. Rather
-        than fabricate picks/available_players, this explicitly returns an
-        empty/placeholder state. Wiring this up for real is legitimate
-        follow-up scope, not done in this pass.
+        Mirrors _get_sleeper_draft_state / _get_espn_draft_state's contract
+        (status, draft_id, current_pick, total_picks, available_players,
+        trending_players, picks, draft_info, league_info, league_settings).
+
+        Yahoo's API is OAuth2-authenticated per user; `credentials` carries
+        {"access_token": ..., "expires_at": ...} pulled from the caller's
+        own UserLeague row (see live_draft.py's /start-session, which looks
+        this up the same way it looks up ESPN's swid/espn_s2 -- never from
+        a file or shared/global state), and which _refresh_draft_state
+        re-passes on every subsequent poll so a long-running session keeps
+        authenticating as that same user. `league_id` here is actually
+        Yahoo's league_key (e.g. "449.l.12345") -- Yahoo's API addresses a
+        league by that composite key, not the bare numeric league_id
+        UserLeague.league_id stores; live_draft.py's platform=yahoo branch
+        passes the stored league_key through as league_id for this reason.
+
+        Token refresh: yahoo_service.refresh_access_token() exists but is
+        deliberately NOT called here. Doing so safely would need to persist
+        the refreshed token back onto the caller's UserLeague row so the
+        next poll (and any other endpoint reading that row) sees it too --
+        this service has no DB handle at all today (active_drafts is a
+        pure in-memory dict), so wiring that in is a real architectural
+        change (threading a DB session into a long-lived polling service),
+        not a small addition. Instead, an expired/invalid token fails this
+        poll honestly and specifically -- both proactively (`expires_at`
+        checked below before making any request) and reactively (a real
+        401 from Yahoo mid-poll, e.g. a token that outlives its stated
+        expiry or gets revoked, is detected from the underlying error text
+        and given the same clear message) -- rather than silently serving
+        stale data or a confusing generic failure.
         """
-        return {
-            "status": "not_implemented",
-            "draft_id": f"yahoo_draft_{league_id}",
-            "available_players": [],
-            "current_pick": 1,
-            "total_picks": 192,
-            "picks": [],
-            "draft_info": {"league_id": league_id},
-            "league_info": {"name": f"Yahoo League {league_id}"},
-            "note": "Yahoo live draft polling is not implemented yet; this is placeholder data, not a real draft state."
-        }
+        credentials = credentials or {}
+        access_token = credentials.get("access_token")
+        expires_at = credentials.get("expires_at")
+        reconnect_message = (
+            "Your Yahoo session has expired. Reconnect your Yahoo account "
+            "from the Leagues page, then start the draft session again."
+        )
+
+        if not access_token:
+            return {
+                "error": (
+                    "No Yahoo access token available for this draft session. "
+                    "Connect your Yahoo account from the Leagues page, then "
+                    "start the draft session again."
+                )
+            }
+
+        if expires_at:
+            # yahoo_token_expires_at is a DateTime(timezone=True) column;
+            # depending on the DB backend it may come through tz-aware or
+            # naive (mirrors the same datetime.utcnow() comparison already
+            # used for this exact check in leagues.py and
+            # league_management_service._get_yahoo_token). Compare against
+            # a "now" of matching awareness either way, rather than letting
+            # a naive/aware mismatch raise.
+            now = datetime.now(expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
+            if expires_at < now:
+                return {"error": reconnect_message}
+
+        try:
+            league_info = await yahoo_service.get_league_info(access_token, league_id)
+            if "error" in league_info:
+                return {"error": self._yahoo_error_message(league_info["error"], reconnect_message)}
+
+            raw_draft_results = await yahoo_service.get_draft_results(access_token, league_id)
+            if isinstance(raw_draft_results, list) and len(raw_draft_results) > 0 and isinstance(raw_draft_results[0], dict) and "error" in raw_draft_results[0]:
+                return {"error": self._yahoo_error_message(raw_draft_results[0]["error"], reconnect_message)}
+            picks = raw_draft_results if isinstance(raw_draft_results, list) else []
+
+            raw_available = await yahoo_service.get_available_players(access_token, league_id, count=50)
+            if isinstance(raw_available, list) and len(raw_available) > 0 and isinstance(raw_available[0], dict) and "error" in raw_available[0]:
+                return {"error": self._yahoo_error_message(raw_available[0]["error"], reconnect_message)}
+            if not isinstance(raw_available, list):
+                raw_available = []
+
+            # yahoo_service's player formatter returns {"name": ...,
+            # "ownership_percentage": ..., ...}; the shared recommendation/
+            # value-pick logic below (_find_available_player,
+            # _calculate_player_values) was built against Sleeper's
+            # {"full_name": ..., "ownership": ...} shape, same as the ESPN
+            # reshape in _get_espn_draft_state. Yahoo's free available-
+            # players endpoint carries no fantasy point projection at all,
+            # so `projected_points` is honestly absent here rather than
+            # fabricated -- value_score/sleeper detection will legitimately
+            # score every Yahoo player at/near 0 until real projections are
+            # wired in (separate follow-up scope, same honest gap
+            # _calculate_player_values already documents for ESPN/Sleeper's
+            # own reception-scoring adjustment).
+            available_players = [
+                {
+                    **player,
+                    "full_name": player.get("name") or "Unknown Player",
+                    "ownership": player.get("ownership_percentage") or 0.0,
+                }
+                for player in raw_available
+                if isinstance(player, dict) and "error" not in player
+            ]
+
+            league_settings = await yahoo_service.get_league_settings(access_token, league_id)
+            if "error" in league_settings:
+                league_settings = None
+
+            team_count = league_info.get("num_teams") or 12
+            roster_size = (league_settings or {}).get("roster_size") or 16
+            draft_status = league_info.get("draft_status")
+
+            return {
+                "status": "complete" if draft_status == "postdraft" else "drafting",
+                "draft_id": f"yahoo_{league_id}",
+                "current_pick": len(picks) + 1,
+                "total_picks": team_count * roster_size,
+                "available_players": available_players[:50],
+                # Yahoo's API doesn't expose an "add trend" feed either
+                # (same honest-empty choice as _get_espn_draft_state).
+                "trending_players": [],
+                "draft_info": {"league_id": league_id, "draft_status": draft_status},
+                "picks": picks,
+                "league_info": league_info,
+                "league_settings": league_settings,
+            }
+        except Exception as e:
+            return {"error": f"Failed to get Yahoo draft state: {str(e)}"}
+
+    def _yahoo_error_message(self, raw_error: str, reconnect_message: str) -> str:
+        """Yahoo access tokens are short-lived (~1hr) and this app doesn't
+        retry an expired token mid-poll with the stored refresh_token (see
+        _get_yahoo_draft_state's docstring on why) -- so a 401 from Yahoo
+        here usually means exactly that: a token that was valid when the
+        session started has since expired mid-draft. Give the user that
+        specific, actionable message instead of Yahoo's raw HTTP error
+        text. Any other error (bad league_key, Yahoo outage, etc) is
+        surfaced as-is, unchanged -- only the auth case gets the friendlier
+        reconnect message.
+        """
+        if "401" in raw_error or "Unauthorized" in raw_error:
+            return reconnect_message
+        return raw_error
 
     async def _refresh_draft_state(self, session: Dict[str, Any]) -> Dict[str, Any]:
         """Refresh draft state based on platform"""
@@ -521,7 +643,7 @@ class DraftAssistantService:
         elif platform == DraftPlatform.ESPN:
             return await self._get_espn_draft_state(league_id, session.get("platform_credentials", {}))
         elif platform == DraftPlatform.YAHOO:
-            return await self._get_yahoo_draft_state(league_id)
+            return await self._get_yahoo_draft_state(league_id, session.get("platform_credentials", {}))
 
         return session["current_state"]
 
