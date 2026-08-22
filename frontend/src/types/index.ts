@@ -197,3 +197,16 @@ export interface DraftFilters {
   value_threshold?: number
   exclude_bye_weeks?: number[]
 }
+
+// In-app notification center types (not device/browser push -- see
+// backend/app/models/notification.py for the scoping rationale)
+export type NotificationType = 'trending_add' | 'injury_update'
+
+export interface Notification {
+  id: number
+  type: NotificationType | string
+  title: string
+  body: string
+  is_read: boolean
+  created_at: string
+}

@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1.endpoints import players, draft, blog, auth, live_draft, users, leagues, content, historical, analytics, waiver_wire, advanced_analysis, game_situations, post_draft, league_scoring, matchup_analysis, trade
+from app.api.v1.endpoints import players, draft, blog, auth, live_draft, users, leagues, content, historical, analytics, waiver_wire, advanced_analysis, game_situations, post_draft, league_scoring, matchup_analysis, trade, notifications
 
 api_router = APIRouter()
 
@@ -20,3 +20,4 @@ api_router.include_router(post_draft.router, prefix="/post-draft", tags=["post-d
 api_router.include_router(league_scoring.router, prefix="/league-scoring", tags=["league-scoring"])
 api_router.include_router(matchup_analysis.router, prefix="/matchup-analysis", tags=["matchup-analysis"])
 api_router.include_router(trade.router, prefix="/trade", tags=["trade"])
+api_router.include_router(notifications.router, prefix="/notifications", tags=["notifications"])

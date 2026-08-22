@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.services.waiver_wire_service import WaiverWireService
+from app.services.notification_service import notify_trending_adds
 
 router = APIRouter()
 
@@ -101,6 +102,12 @@ async def get_waiver_recommendations(
         recommendations = await waiver_service.get_live_trending_recommendations(
             position=position, priority=priority, limit=limit
         )
+
+        # Lazily generate in-app notifications for genuinely new, high-signal
+        # trending adds -- derived from this same live Sleeper response, not
+        # a separate/fabricated check. See notification_service for why this
+        # is wired here (request-driven) rather than on a Celery schedule.
+        notify_trending_adds(db, current_user.id, recommendations)
 
         return {
             "week": week,
