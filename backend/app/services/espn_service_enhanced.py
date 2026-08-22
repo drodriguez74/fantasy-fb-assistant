@@ -4,6 +4,7 @@ import asyncio
 from datetime import datetime
 import logging
 from functools import wraps
+from app.services.scoring_rules import scoring_rules_from_espn
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,15 @@ class ESPNFantasyServiceEnhanced:
         identically. Returns {"error": ...} if the league/settings can't
         be loaded (e.g. bad credentials) -- callers should fall back to
         generic behavior rather than fabricate real-looking numbers.
+
+        Also attaches `scoring_rules`, the full canonical cross-platform
+        scoring-rules shape (see app.services.scoring_rules) built from
+        this same `scoring_format` list -- which carries a real per-stat
+        point value for every scoring category ESPN supports (passing/
+        rushing/receiving yards and TDs, completions, incompletions,
+        attempts, interceptions, fumbles lost, etc), addressed by ESPN's
+        internal statId scheme, not just the single reception statId (53)
+        this method already reads for points_per_reception.
         """
         try:
             league = self._get_league(league_id, season, swid, espn_s2)
@@ -252,6 +262,7 @@ class ESPNFantasyServiceEnhanced:
                 "bench": bench,
                 "roster_size": sum(raw_slots.values()),
                 "points_per_reception": points_per_reception,
+                "scoring_rules": scoring_rules_from_espn(scoring_format),
                 "scoring_type": getattr(settings, 'scoring_type', 'STANDARD'),
                 "source": "espn",
             }
@@ -535,7 +546,20 @@ class ESPNFantasyServiceEnhanced:
                 "position": getattr(player, 'position', 'UNKNOWN'),
                 "team": getattr(player, 'proTeam', 'FA'),
                 "injury_status": getattr(player, 'injuryStatus', 'ACTIVE'),
-                "projected_points": getattr(player, 'projected_points', 0.0),
+                # espn_api's base Player class (what league.free_agents() and
+                # team.roster actually return -- verified directly against
+                # espn_api 0.46.0's player.py/team.py) has no
+                # `projected_points` attribute at all; only BoxPlayer
+                # (matchup box-score players, not used by this method's
+                # callers) defines that name, for a single week. The real,
+                # season-long, real-scoring-rules projection Player DOES
+                # carry is `projected_total_points` (`appliedTotal` for
+                # statSourceId=1/scoringPeriodId=0 -- ESPN's own
+                # server-side total computed from this league's actual
+                # scoring settings). The old `projected_points` lookup was
+                # silently falling through to the 0.0 default for every
+                # ESPN player, every time.
+                "projected_points": getattr(player, 'projected_total_points', 0.0),
                 "total_points": getattr(player, 'total_points', 0.0),
                 "avg_points": getattr(player, 'avg_points', 0.0),
                 "percent_owned": getattr(player, 'percent_owned', 0.0),

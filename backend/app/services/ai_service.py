@@ -3,6 +3,7 @@ from enum import Enum
 import openai
 import anthropic
 from app.core.config import settings
+from app.services.scoring_rules import describe_scoring_rules
 import json
 import asyncio
 
@@ -109,7 +110,8 @@ class AIService:
         team_needs: List[str],
         draft_position: int,
         scoring_format: str = "PPR",
-        points_per_reception: Optional[float] = None
+        points_per_reception: Optional[float] = None,
+        scoring_rules: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         # scoring_format alone used to be the only signal handed to the
         # model, and callers frequently passed a platform's coarse label
@@ -133,15 +135,36 @@ class AIService:
         else:
             scoring_description = f"Custom PPR ({points_per_reception} points per reception) scoring"
 
+        # Reception scoring is one knob among many real ones -- a league can
+        # also reward/penalize pass completions, incompletions, attempts,
+        # yardage, TDs, interceptions, and fumbles lost independently of
+        # PPR (see app.services.scoring_rules; a real, live-verified example:
+        # some leagues set Sleeper's `pass_cmp`/`pass_att` non-zero to reward
+        # accurate, efficient QBs over high-volume ones). When the caller has
+        # the connected league's real scoring_rules dict, state the notable
+        # non-Standard rules explicitly so the model reasons about the
+        # league's actual complete scoring picture, not just PPR -- this
+        # extends scoring_description above rather than replacing it.
+        scoring_rules_note = ""
+        rules_summary = describe_scoring_rules(scoring_rules)
+        if rules_summary:
+            scoring_rules_note = (
+                f"\n        This league's real scoring also: {rules_summary}. "
+                "Factor this into player value -- e.g. a league that rewards "
+                "completions and penalizes incompletions makes accurate, "
+                "efficient QBs more valuable than high-volume, lower-accuracy "
+                "ones, independent of raw passing yardage."
+            )
+
         prompt = f"""
-        Draft Assistant for {scoring_description}:
+        Draft Assistant for {scoring_description}:{scoring_rules_note}
 
         Current draft position: {draft_position}
         Team needs: {', '.join(team_needs)}
-        
+
         Available players:
         {json.dumps(available_players[:10], indent=2)}
-        
+
         Recommend the top 3 draft picks with reasoning. Format as JSON:
         {{
             "recommendations": [
