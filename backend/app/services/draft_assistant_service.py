@@ -3,7 +3,7 @@ import asyncio
 from datetime import datetime
 from app.services.ai_service import ai_service
 from app.services.sleeper_service import sleeper_service
-from app.services.espn_service import espn_service
+from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from enum import Enum
 import json
@@ -27,34 +27,45 @@ class DraftAssistantService:
             "DEF": {"tier_1": 5, "tier_2": 10, "tier_3": 20}
         }
 
-    async def start_draft_session(self, 
-                                  platform: DraftPlatform, 
+    async def start_draft_session(self,
+                                  platform: DraftPlatform,
                                   league_id: str,
                                   user_team_id: str = None,
-                                  draft_settings: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Initialize a real-time draft assistant session"""
+                                  draft_settings: Dict[str, Any] = None,
+                                  platform_credentials: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Initialize a real-time draft assistant session
+
+        platform_credentials carries whatever a platform needs to make
+        authenticated calls on the caller's behalf -- for ESPN this is
+        {"swid": ..., "espn_s2": ..., "season": ...} pulled from the
+        caller's own UserLeague row (see live_draft.py's /start-session).
+        It's stored on the session below so _refresh_draft_state can keep
+        polling with the right credentials on every subsequent call, not
+        just this first one. Never logged.
+        """
         try:
             session_id = f"{platform.value}_{league_id}_{datetime.now().timestamp()}"
-            
+
             # Get initial draft state based on platform
             if platform == DraftPlatform.SLEEPER:
                 draft_state = await self._get_sleeper_draft_state(league_id)
             elif platform == DraftPlatform.ESPN:
-                draft_state = await self._get_espn_draft_state(league_id)
+                draft_state = await self._get_espn_draft_state(league_id, platform_credentials or {})
             elif platform == DraftPlatform.YAHOO:
                 draft_state = await self._get_yahoo_draft_state(league_id)
             else:
                 return {"error": "Unsupported platform"}
-            
+
             if "error" in draft_state:
                 return draft_state
-            
+
             # Initialize session
             self.active_drafts[session_id] = {
                 "platform": platform,
                 "league_id": league_id,
                 "user_team_id": user_team_id,
                 "draft_settings": draft_settings or {},
+                "platform_credentials": platform_credentials or {},
                 "current_state": draft_state,
                 "user_roster": [],
                 "recommendations_history": [],
@@ -271,28 +282,88 @@ class DraftAssistantService:
         except Exception as e:
             return {"error": str(e)}
 
-    async def _get_espn_draft_state(self, league_id: str) -> Dict[str, Any]:
-        """STUB: ESPN live draft state is not wired to real data yet.
+    async def _get_espn_draft_state(self, league_id: str, credentials: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Get live draft state from ESPN's real API via espn_service_enhanced.
 
-        Real ESPN live-draft polling needs authenticated session cookies
-        (espn_s2 / SWID) exchanged for draft picks via espn_service, which
-        this environment doesn't have configured end-to-end for live pick
-        polling. Rather than fabricate picks/available_players, this
-        explicitly returns an empty/placeholder state so callers (and the
-        frontend) don't mistake it for real data. Wiring this up for real is
-        legitimate follow-up scope, not done in this pass.
+        Mirrors _get_sleeper_draft_state's contract (status, draft_id,
+        current_pick, total_picks, available_players, trending_players,
+        picks, draft_info, league_info) but sources it from espn_api instead
+        of Sleeper's public API.
+
+        ESPN's API needs per-user session cookies (swid/espn_s2) to read a
+        private league; those are threaded in via `credentials`, which
+        live_draft.py's /start-session populates from the caller's own
+        UserLeague row (never from a file or any shared/global state), and
+        which _refresh_draft_state re-passes on every subsequent poll so a
+        long-running session keeps using that same user's credentials.
+        Public leagues work fine with swid=None/espn_s2=None. If the league
+        turns out to require auth and none was provided, espn_service_enhanced
+        raises a clear error which is surfaced as-is below rather than
+        papered over with empty/fake data.
         """
-        return {
-            "status": "not_implemented",
-            "draft_id": f"espn_draft_{league_id}",
-            "available_players": [],
-            "current_pick": 1,
-            "total_picks": 192,
-            "picks": [],
-            "draft_info": {"league_id": league_id},
-            "league_info": {"name": f"ESPN League {league_id}"},
-            "note": "ESPN live draft polling is not implemented yet; this is placeholder data, not a real draft state."
-        }
+        credentials = credentials or {}
+        swid = credentials.get("swid")
+        espn_s2 = credentials.get("espn_s2")
+        season = credentials.get("season", 2025)
+
+        try:
+            draft_info = await espn_service_enhanced.get_draft_info(
+                league_id, season=season, swid=swid, espn_s2=espn_s2
+            )
+            if "error" in draft_info:
+                return {"error": draft_info["error"]}
+
+            league_info = await espn_service_enhanced.get_league_info(
+                league_id, season=season, swid=swid, espn_s2=espn_s2
+            )
+            if "error" in league_info:
+                return {"error": league_info["error"]}
+
+            raw_available = await espn_service_enhanced.get_available_players(
+                league_id, season=season, size=50, swid=swid, espn_s2=espn_s2
+            )
+            if isinstance(raw_available, list) and len(raw_available) > 0 and "error" in raw_available[0]:
+                return {"error": raw_available[0]["error"]}
+            if not isinstance(raw_available, list):
+                raw_available = []
+
+            # espn_service_enhanced's player formatter returns
+            # {"name": ..., "percent_owned": ..., ...}; the recommendation/
+            # value-pick logic below (_find_available_player,
+            # _calculate_player_values) was built against Sleeper's
+            # {"full_name": ..., "ownership": ..., ...} shape. Reshape here
+            # rather than change the shared ESPN formatter that other,
+            # already-working ESPN endpoints (roster, matchups, standings)
+            # depend on as-is.
+            available_players = [
+                {
+                    **player,
+                    "full_name": player.get("name", "Unknown Player"),
+                    "ownership": player.get("percent_owned", 0.0),
+                }
+                for player in raw_available
+                if isinstance(player, dict) and "error" not in player
+            ]
+
+            picks = draft_info.get("picks", [])
+            team_count = league_info.get("team_count") or 12
+            roster_size = league_info.get("roster_settings", {}).get("roster_size", 16)
+
+            return {
+                "status": "complete" if draft_info.get("draft_completed") else "drafting",
+                "draft_id": f"espn_{league_id}_{season}",
+                "current_pick": len(picks) + 1,
+                "total_picks": team_count * roster_size,
+                "available_players": available_players[:50],
+                # ESPN's API doesn't expose an "add trend" feed the way
+                # Sleeper's does; leaving this empty is honest, not faked.
+                "trending_players": [],
+                "draft_info": draft_info,
+                "picks": picks,
+                "league_info": league_info,
+            }
+        except Exception as e:
+            return {"error": f"Failed to get ESPN draft state: {str(e)}"}
 
     async def _get_yahoo_draft_state(self, league_id: str) -> Dict[str, Any]:
         """STUB: Yahoo live draft state is not wired to real data yet.
@@ -323,10 +394,10 @@ class DraftAssistantService:
         if platform == DraftPlatform.SLEEPER:
             return await self._get_sleeper_draft_state(league_id)
         elif platform == DraftPlatform.ESPN:
-            return await self._get_espn_draft_state(league_id)
+            return await self._get_espn_draft_state(league_id, session.get("platform_credentials", {}))
         elif platform == DraftPlatform.YAHOO:
             return await self._get_yahoo_draft_state(league_id)
-        
+
         return session["current_state"]
 
     async def _analyze_draft_situation(self, session: Dict[str, Any]) -> Dict[str, Any]:

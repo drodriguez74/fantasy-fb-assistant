@@ -201,6 +201,25 @@ class UserService:
             UserLeague.id == league_id
         ).first()
 
+    def get_user_league_by_platform_id(self, user_id: int, platform: str, league_id: str) -> Optional[UserLeague]:
+        """Get a user's league by platform + the platform's own external
+        league_id string, as opposed to get_user_league (which looks up by
+        this table's own row id). Used by callers -- e.g. starting a live
+        draft session -- that only have the external id the platform uses,
+        not the internal UserLeague row id.
+        """
+        try:
+            platform_enum = PlatformType(platform.lower())
+        except ValueError:
+            return None
+
+        return self.db.query(UserLeague).filter(
+            UserLeague.user_id == user_id,
+            UserLeague.platform == platform_enum,
+            UserLeague.league_id == str(league_id),
+            UserLeague.is_active == True
+        ).first()
+
     def get_user_leagues(self, user_id: int) -> List[UserLeague]:
         """Get all leagues for a user"""
         return self.db.query(UserLeague).filter(

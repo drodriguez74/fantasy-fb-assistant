@@ -24,7 +24,11 @@ class ESPNFantasyServiceEnhanced:
 
     def _get_league(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> League:
         """Get or create ESPN League object with optional authentication"""
-        cache_key = f"{league_id}_{season}"
+        # Cache key includes whether this call is authenticated (not the
+        # cookie values themselves) so a public-only lookup for a league_id
+        # never gets served back to a caller that passed real per-user
+        # swid/espn_s2 for that same league_id, and vice versa.
+        cache_key = f"{league_id}_{season}_{'auth' if (swid and espn_s2) else 'public'}"
         
         if cache_key not in self._leagues:
             try:
@@ -257,19 +261,46 @@ class ESPNFantasyServiceEnhanced:
         """Get draft information and results"""
         try:
             league = self._get_league(league_id, season, swid, espn_s2)
-            
+
+            # _get_league caches League objects per (league_id, season, auth)
+            # for the life of this process, and espn_api only populates
+            # league.draft once, at construction time. Without an explicit
+            # refresh here, a live-draft session polling this method every
+            # ~10s (see draft_assistant_service._get_espn_draft_state) would
+            # see the exact same picks forever instead of real ones as they
+            # happen. refresh_draft() re-fetches picks from ESPN's live API
+            # -- but espn_api's _fetch_draft() *appends* to league.draft
+            # rather than replacing it, so repeated refreshes on the same
+            # cached League object would otherwise duplicate every prior
+            # pick each time (verified against a real drafted league: pick
+            # count doubled on the second call). Reset the list first so
+            # each refresh reflects only the current real picks.
+            league.draft = []
+            league.refresh_draft()
+
+            # espn_api's Pick objects (espn_api.base_pick.BasePick) expose
+            # team/playerId/playerName/round_num/round_pick/keeper_status --
+            # there is no pick_number, player_name, player_id, position, or
+            # keeper attribute, so the original field names below (carried
+            # over from an earlier/different version of the library) raised
+            # AttributeError on every real league that had actually drafted.
+            # league.draft is already returned by ESPN in overall draft
+            # order, so the 1-based enumerate index is the real overall pick
+            # number (not fabricated -- it's ESPN's own ordering).
             draft_picks = []
             if hasattr(league, 'draft') and league.draft:
-                for pick in league.draft:
+                for i, pick in enumerate(league.draft, start=1):
                     draft_picks.append({
-                        "pick_number": pick.pick_number,
+                        "pick_number": i,
                         "round": pick.round_num,
                         "team_id": pick.team.team_id if pick.team else None,
                         "team_name": pick.team.team_name if pick.team else None,
-                        "player_name": pick.player_name,
-                        "player_id": getattr(pick, 'player_id', None),
-                        "position": getattr(pick, 'position', 'UNKNOWN'),
-                        "keeper": getattr(pick, 'keeper', False)
+                        "player_name": pick.playerName,
+                        "player_id": pick.playerId,
+                        # BasePick doesn't carry position data at all; leaving
+                        # this as an honest "unknown" rather than guessing.
+                        "position": "UNKNOWN",
+                        "keeper": bool(pick.keeper_status)
                     })
             
             return {
@@ -467,9 +498,11 @@ class ESPNFantasyServiceEnhanced:
         """Extract draft order from league"""
         try:
             if hasattr(league, 'draft') and league.draft:
-                # Get first round picks to determine draft order
+                # Get first round picks to determine draft order. BasePick
+                # has no pick_number attribute (see get_draft_info); the
+                # within-round pick order is round_pick.
                 first_round = [pick for pick in league.draft if pick.round_num == 1]
-                first_round.sort(key=lambda x: x.pick_number)
+                first_round.sort(key=lambda x: x.round_pick)
                 return [pick.team.team_id for pick in first_round if pick.team]
             return []
         except:
