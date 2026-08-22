@@ -4,6 +4,7 @@ import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { players, getErrorMessage } from '../services/api'
 import { PlayerCard } from '../components/players/PlayerCard'
 import { injuryStatusClasses } from '../components/players/playerDisplay'
+import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import type { Player, Position } from '../types'
 
 interface PaginationInfo {
@@ -24,7 +25,7 @@ export function PlayersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedPosition, setSelectedPosition] = useState<Position | ''>('')
-  const [sort, setSort] = useState<'rank' | 'bye_week' | ''>('')
+  const [sort, setSort] = useState<'rank' | 'bye_week' | 'consensus' | ''>('')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards')
   const [currentPage, setCurrentPage] = useState(1)
@@ -110,11 +111,12 @@ export function PlayersPage() {
 
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as 'rank' | 'bye_week' | '')}
+          onChange={(e) => setSort(e.target.value as 'rank' | 'bye_week' | 'consensus' | '')}
           className="px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
         >
           <option value="">Sort: Relevance</option>
           <option value="rank">Rank (ADP)</option>
+          <option value="consensus">Consensus Rank</option>
           <option value="bye_week">Bye Week</option>
         </select>
 
@@ -182,6 +184,11 @@ export function PlayersPage() {
                   <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     ADP
                   </th>
+                  {sort === 'consensus' && (
+                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                      Consensus
+                    </th>
+                  )}
                   <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Bye Week
                   </th>
@@ -220,6 +227,19 @@ export function PlayersPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                       {player.adp ? player.adp.toFixed(1) : '-'}
                     </td>
+                    {sort === 'consensus' && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
+                        {player.consensus ? (
+                          <div className="flex items-center gap-2">
+                            <span className="text-ink-900 font-medium">#{player.consensus.consensus_rank}</span>
+                            <DataConfidenceBadge
+                              level="computed"
+                              label={player.consensus.source_count > 1 ? '2 sources' : '1 source'}
+                            />
+                          </div>
+                        ) : '-'}
+                      </td>
+                    )}
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                       {player.bye_week ? `Week ${player.bye_week}` : '-'}
                     </td>

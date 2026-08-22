@@ -53,6 +53,23 @@ export type Player = {
   risk_level?: 'LOW' | 'MEDIUM' | 'HIGH'
   created_at: string
   updated_at?: string
+  consensus?: ConsensusRanking
+}
+
+// Real, inspectable consensus ADP rank blended from whichever ranking
+// sources are actually available for this player (see backend's
+// ConsensusRankingService) -- Sleeper's search_rank always, ESPN's
+// percent_owned only when the request has a live ESPN session/league
+// context. `source_count` tells the reader whether this is a genuine
+// multi-source blend or degraded to a single source.
+export interface ConsensusRanking {
+  consensus_rank: number
+  consensus_score: number
+  sources: {
+    sleeper_rank?: number
+    espn_ownership_pct?: number
+  }
+  source_count: number
 }
 
 // Draft types

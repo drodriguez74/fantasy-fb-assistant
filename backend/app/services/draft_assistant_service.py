@@ -5,6 +5,7 @@ from app.services.ai_service import ai_service
 from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
+from app.services.consensus_ranking_service import consensus_ranking_service
 from enum import Enum
 import json
 
@@ -97,6 +98,22 @@ class DraftAssistantService:
             
             # Refresh draft state
             updated_state = await self._refresh_draft_state(session)
+
+            # Attach a real, inspectable consensus rank to every available
+            # player before anything downstream (AI recommendations, value/
+            # sleeper scoring, the draft board's tiering) consumes this
+            # list -- see ConsensusRankingService for the blending method.
+            # A Sleeper session only ever has Sleeper's own search_rank, so
+            # this just reorders available_players by that signal's
+            # percentile (same ordering Sleeper's raw rank would already
+            # give). An ESPN session has that league's real percent_owned
+            # for its available players *and* gets cross-referenced by name
+            # against Sleeper's full player pool for a genuine two-source
+            # consensus, not ESPN ownership alone.
+            updated_state["available_players"] = await self._attach_consensus_ranks(
+                platform, updated_state.get("available_players", [])
+            )
+
             session["current_state"] = updated_state
             session["last_updated"] = datetime.now()
             
@@ -265,6 +282,38 @@ class DraftAssistantService:
             
         except Exception as e:
             return {"error": f"Failed to analyze team: {str(e)}"}
+
+    async def _attach_consensus_ranks(
+        self, platform: DraftPlatform, available_players: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Reorder/annotate `available_players` with a real consensus rank
+        (see ConsensusRankingService). Sleeper sessions only ever carry
+        Sleeper's own search_rank, so this degrades to a search_rank-based
+        ordering. ESPN sessions carry that league's real percent_owned and
+        are additionally cross-referenced by name against Sleeper's full
+        player pool -- the same kind of get_all_players() call a Sleeper
+        session's own _get_sleeper_draft_state already makes on every
+        refresh, so this isn't a new request pattern, just made on ESPN's
+        polling path too -- for a genuine two-source consensus.
+
+        This is enrichment on top of the platform's own draft state, not a
+        requirement for the rest of the pipeline: any failure here silently
+        falls back to the unranked available_players list rather than
+        breaking recommendations.
+        """
+        if not available_players:
+            return available_players
+
+        try:
+            other_source_players = None
+            if platform == DraftPlatform.ESPN:
+                all_sleeper = await sleeper_service.get_all_players()
+                if isinstance(all_sleeper, dict) and "error" not in all_sleeper:
+                    other_source_players = list(all_sleeper.values())
+
+            return consensus_ranking_service.rank_players(available_players, other_source_players)
+        except Exception:
+            return available_players
 
     async def _get_sleeper_draft_state(self, league_id: str) -> Dict[str, Any]:
         """Get live draft state from Sleeper's real public API.

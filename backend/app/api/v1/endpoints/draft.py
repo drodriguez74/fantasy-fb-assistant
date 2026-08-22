@@ -8,6 +8,7 @@ from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.user_service import UserService
+from app.services.consensus_ranking_service import consensus_ranking_service
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 
@@ -135,16 +136,27 @@ def _is_on_active_roster(player_data: dict) -> bool:
 _UNRANKED_SENTINEL = 9999999
 
 
+_RANKING_SORTS = ("search_rank", "consensus")
+
+
 @router.get("/positional-rankings/{position}")
 async def get_positional_rankings(
     position: str,
-    limit: int = Query(30, description="Number of players to return")
+    limit: int = Query(30, description="Number of players to return"),
+    sort: str = Query(
+        "search_rank",
+        description="'search_rank' (default, Sleeper's own rank) or "
+                     "'consensus' (percentile-blended Sleeper + ESPN consensus rank, "
+                     "see ConsensusRankingService)."
+    )
 ):
     """Get positional rankings for draft preparation"""
     try:
         valid_positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
         if position.upper() not in valid_positions:
             raise HTTPException(status_code=400, detail=f"Invalid position. Must be one of: {valid_positions}")
+        if sort not in _RANKING_SORTS:
+            raise HTTPException(status_code=400, detail=f"Invalid sort. Must be one of: {list(_RANKING_SORTS)}")
 
         # Get all players and filter by position
         all_players = await sleeper_service.get_all_players()
@@ -162,16 +174,37 @@ async def get_positional_rankings(
                 player_data["sleeper_id"] = player_id
                 position_players.append(player_data)
 
-        # Rank using Sleeper's own search_rank (roughly a popularity/relevance
-        # rank across all players). Lower is better; missing/unranked players
-        # use Sleeper's 9999999 sentinel so they sort last, not first.
-        position_players.sort(key=lambda x: x.get("search_rank") or _UNRANKED_SENTINEL)
+        # This endpoint has no live ESPN league/session context, so the
+        # consensus rank here always degrades to Sleeper's own search_rank
+        # alone (see ConsensusRankingService's single-source-available
+        # behavior) -- it's still computed via the shared service, both so
+        # its output is inspectable (the `consensus` field on every player)
+        # and so a caller passing sort=consensus gets an ordering that's
+        # directly comparable to a future/other consensus-ranked list, not a
+        # second, subtly different definition of "consensus" living here.
+        ranked = consensus_ranking_service.rank_players(position_players)
+        by_sleeper_id = {p["sleeper_id"]: p["consensus"] for p in ranked}
+        for player in position_players:
+            player["consensus"] = by_sleeper_id.get(player["sleeper_id"])
+
+        if sort == "consensus":
+            position_players.sort(key=lambda x: x["consensus"]["consensus_rank"])
+        else:
+            # Default: rank using Sleeper's own search_rank (roughly a
+            # popularity/relevance rank across all players). Lower is
+            # better; missing/unranked players use Sleeper's 9999999
+            # sentinel so they sort last, not first. Unchanged from the
+            # existing default behavior.
+            position_players.sort(key=lambda x: x.get("search_rank") or _UNRANKED_SENTINEL)
 
         return {
             "position": position.upper(),
+            "sort": sort,
             "players": position_players[:limit],
             "total": len(position_players)
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get positional rankings: {str(e)}")
 
