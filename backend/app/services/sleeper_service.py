@@ -292,6 +292,52 @@ class SleeperService:
         except Exception as e:
             return {"error": f"Failed to get draft state: {str(e)}"}
 
+    def parse_league_settings(self, league_info: Dict[str, Any]) -> Dict[str, Any]:
+        """Derive canonical roster-slot and scoring settings from Sleeper's
+        raw league object (the dict returned by get_league_info, and
+        already embedded as "league_info" in get_draft_state's result).
+
+        Sleeper's public API returns the league's real `roster_positions`
+        array directly on that object -- e.g.
+        ["QB","RB","RB","WR","WR","TE","FLEX","K","DEF","BN","BN","BN",
+        "BN","BN","BN"] -- and a real `scoring_settings` dict (stat
+        abbreviation -> points), including "rec" for points per reception.
+        No extra request is needed; this just reshapes what's already
+        there into the same {starters, bench, roster_size,
+        points_per_reception} shape
+        espn_service_enhanced.get_scoring_and_roster_settings produces for
+        ESPN, so draft_assistant_service can treat both platforms
+        identically instead of assuming one generic roster/scoring shape
+        for every connected league.
+        """
+        if not isinstance(league_info, dict) or "error" in league_info or not league_info:
+            return {"error": "Real league settings unavailable"}
+
+        raw_positions = league_info.get("roster_positions") or []
+        starters: Dict[str, int] = {}
+        bench = 0
+        for slot in raw_positions:
+            if slot == "BN":
+                bench += 1
+            elif slot == "IR":
+                # IR is a real roster slot but not real starting-lineup
+                # need for the QB/RB/WR/TE/FLEX/K/DEF positions this app
+                # tracks -- skip it rather than counting it as a "need".
+                continue
+            else:
+                starters[slot] = starters.get(slot, 0) + 1
+
+        scoring_settings = league_info.get("scoring_settings") or {}
+        points_per_reception = float(scoring_settings.get("rec", 0.0) or 0.0)
+
+        return {
+            "starters": starters,
+            "bench": bench,
+            "roster_size": len(raw_positions),
+            "points_per_reception": points_per_reception,
+            "source": "sleeper",
+        }
+
     async def close(self):
         """Close the HTTP client"""
         await self.client.aclose()

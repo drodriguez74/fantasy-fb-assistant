@@ -108,11 +108,34 @@ class AIService:
         available_players: List[Dict[str, Any]],
         team_needs: List[str],
         draft_position: int,
-        scoring_format: str = "PPR"
+        scoring_format: str = "PPR",
+        points_per_reception: Optional[float] = None
     ) -> Dict[str, Any]:
+        # scoring_format alone used to be the only signal handed to the
+        # model, and callers frequently passed a platform's coarse label
+        # (e.g. ESPN's scoring_type: STANDARD/H2H_POINTS/H2H_CATEGORIES) as
+        # if it were the PPR/Half-PPR/Standard reception-scoring rule. Those
+        # are different axes -- a H2H_POINTS league can be full-PPR,
+        # half-PPR, or standard depending on its actual per-stat scoring --
+        # so that label alone can't tell the model how receptions are
+        # scored. When the caller has a real, connected-league
+        # points_per_reception value (see draft_assistant_service's
+        # _get_league_settings / FALLBACK_ROSTER_REQUIREMENTS), state the
+        # real numeric rule explicitly instead.
+        if points_per_reception is None:
+            scoring_description = f"{scoring_format} scoring"
+        elif points_per_reception == 0:
+            scoring_description = "Standard (0 points per reception) scoring"
+        elif points_per_reception == 1:
+            scoring_description = "PPR (1 point per reception) scoring"
+        elif points_per_reception == 0.5:
+            scoring_description = "Half-PPR (0.5 points per reception) scoring"
+        else:
+            scoring_description = f"Custom PPR ({points_per_reception} points per reception) scoring"
+
         prompt = f"""
-        Draft Assistant for {scoring_format} scoring:
-        
+        Draft Assistant for {scoring_description}:
+
         Current draft position: {draft_position}
         Team needs: {', '.join(team_needs)}
         

@@ -16,6 +16,26 @@ class DraftPlatform(Enum):
 
 
 class DraftAssistantService:
+    # Positions a FLEX slot can be filled by. Real rosters don't
+    # pre-assign FLEX to one position -- see _effective_position_requirements
+    # for the heuristic used to fold FLEX slots into RB/WR/TE need.
+    FLEX_ELIGIBLE_POSITIONS = ("RB", "WR", "TE")
+
+    # Explicit fallback used only when no real, connected-league roster/
+    # scoring settings could be fetched for a session -- e.g. Yahoo's
+    # not-yet-implemented draft-state stub, or a real ESPN/Sleeper settings
+    # call that itself errored. This is exactly what this file hardcoded
+    # for every league before real per-league settings extraction existed;
+    # kept as a named, honest fallback (see _get_league_settings) instead
+    # of silently guessing at real numbers this session doesn't have.
+    FALLBACK_ROSTER_REQUIREMENTS = {
+        "starters": {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "DEF": 1},
+        "bench": 6,
+        "roster_size": 15,
+        "points_per_reception": 0.0,  # implicit Standard scoring
+        "source": "fallback_standard",
+    }
+
     def __init__(self):
         self.active_drafts = {}  # Track active draft sessions
         self.position_tiers = {
@@ -239,9 +259,11 @@ class DraftAssistantService:
                 pos = pick["player"].get("position", "UNKNOWN")
                 position_counts[pos] = position_counts.get(pos, 0) + 1
             
-            # Calculate positional needs
+            # Calculate positional needs, using the real connected league's
+            # starter requirements when available (see _get_league_settings).
             needs_analysis = await self._calculate_positional_needs(
-                position_counts, total_picks, draft_settings
+                position_counts, total_picks, draft_settings,
+                self._get_league_settings(session)
             )
             
             # Analyze team strengths/weaknesses
@@ -274,11 +296,23 @@ class DraftAssistantService:
         diffing the full player pool against picks already made. That
         method's return shape (status, draft_id, current_pick, total_picks,
         available_players, trending_players, picks, draft_info, league_info)
-        already lines up with what callers in this file expect, so this is a
-        thin pass-through rather than a reshape.
+        already lines up with what callers in this file expect, so this is
+        mostly a thin pass-through -- the one addition is `league_settings`,
+        the real per-league roster-slot/scoring shape derived from the same
+        league_info this call already fetches (see
+        sleeper_service.parse_league_settings). Roster-needs and
+        value-scoring logic downstream (_get_league_settings,
+        _effective_position_requirements, _calculate_player_values) reads
+        that instead of the generic hardcoded requirements this file used
+        to apply to every league regardless of what was actually connected.
         """
         try:
-            return await sleeper_service.get_draft_state(league_id)
+            state = await sleeper_service.get_draft_state(league_id)
+            if "error" not in state:
+                state["league_settings"] = sleeper_service.parse_league_settings(
+                    state.get("league_info", {})
+                )
+            return state
         except Exception as e:
             return {"error": str(e)}
 
@@ -349,6 +383,23 @@ class DraftAssistantService:
             team_count = league_info.get("team_count") or 12
             roster_size = league_info.get("roster_settings", {}).get("roster_size", 16)
 
+            # Real per-league roster-slot (incl. FLEX/bench) and
+            # points-per-reception settings, read directly off espn_api's
+            # Settings object -- see get_scoring_and_roster_settings's
+            # docstring for why get_league_info's own roster_settings block
+            # above can't be trusted for this (its roster_size/
+            # starting_lineup_size are always-16/9 fallback defaults, not
+            # real data). Don't fail the whole draft session if this
+            # particular call errors -- roster-needs/value-scoring logic
+            # falls back to generic Standard-league behavior explicitly
+            # (see DraftAssistantService.FALLBACK_ROSTER_REQUIREMENTS)
+            # rather than blocking the live draft over it.
+            league_settings = await espn_service_enhanced.get_scoring_and_roster_settings(
+                league_id, season=season, swid=swid, espn_s2=espn_s2
+            )
+            if "error" in league_settings:
+                league_settings = None
+
             return {
                 "status": "complete" if draft_info.get("draft_completed") else "drafting",
                 "draft_id": f"espn_{league_id}_{season}",
@@ -361,6 +412,7 @@ class DraftAssistantService:
                 "draft_info": draft_info,
                 "picks": picks,
                 "league_info": league_info,
+                "league_settings": league_settings,
             }
         except Exception as e:
             return {"error": f"Failed to get ESPN draft state: {str(e)}"}
@@ -418,14 +470,21 @@ class DraftAssistantService:
         
         # Determine strategy based on draft position and progress
         strategy = self._determine_draft_strategy(draft_progress, position_counts, current_round)
-        
+
+        # Real per-league roster-slot/scoring settings for this session
+        # (or the explicit standard fallback -- see _get_league_settings),
+        # threaded through draft_analysis so _generate_ai_recommendations
+        # and _calculate_player_values don't need to re-derive it.
+        league_settings = self._get_league_settings(session)
+
         return {
             "draft_progress": draft_progress,
             "current_round": current_round,
             "position_counts": position_counts,
-            "position_needs": self._get_position_needs(position_counts, current_round),
+            "position_needs": self._get_position_needs(position_counts, current_round, league_settings),
             "strategy_recommendation": strategy,
-            "urgency_positions": self._get_urgency_positions(position_counts, current_round)
+            "urgency_positions": self._get_urgency_positions(position_counts, current_round),
+            "league_settings": league_settings,
         }
 
     async def _generate_ai_recommendations(self, 
@@ -441,54 +500,115 @@ class DraftAssistantService:
                 "draft_analysis": draft_analysis,
                 "scoring_format": session["draft_settings"].get("scoring_format", "PPR")
             }
-            
+
+            league_settings = draft_analysis.get("league_settings") or self._get_league_settings(session)
+            # Only pass a real numeric points_per_reception when we actually
+            # have one for the connected league -- when we've fallen back to
+            # FALLBACK_ROSTER_REQUIREMENTS (no real settings available), let
+            # generate_draft_recommendation use its own scoring_format-label
+            # fallback instead of asserting "0 points per reception" as if
+            # it were confirmed real data for this league.
+            points_per_reception = (
+                league_settings.get("points_per_reception")
+                if league_settings.get("source") != "fallback_standard"
+                else None
+            )
+
             # Generate recommendations using AI service
             recommendations = await ai_service.generate_draft_recommendation(
                 available_players=available_players[:15],
                 team_needs=draft_analysis.get("position_needs", []),
                 draft_position=draft_analysis.get("current_round", 1),
-                scoring_format=context["scoring_format"]
+                scoring_format=context["scoring_format"],
+                points_per_reception=points_per_reception
             )
-            
+
             return recommendations
             
         except Exception as e:
             return {"error": f"AI recommendation failed: {str(e)}", "recommendations": []}
 
-    async def _calculate_player_values(self, 
-                                      available_players: List[Dict[str, Any]], 
+    async def _calculate_player_values(self,
+                                      available_players: List[Dict[str, Any]],
                                       draft_analysis: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate player values and identify sleepers"""
+        """Calculate player values and identify sleepers.
+
+        points_per_reception is the connected league's real per-reception
+        scoring value (0.0 Standard, 0.5 Half-PPR, 1.0 full PPR, or any
+        other league-specific override), threaded through via
+        draft_analysis["league_settings"] (see _analyze_draft_situation ->
+        _get_league_settings). A player's `projected_points` is adjusted by
+        `receptions * points_per_reception` ONLY when the player record
+        carries a real, not-yet-scored reception count under
+        `projected_receptions` -- i.e. a raw stat count, not a number some
+        platform already ran through its own scoring rules.
+
+        Neither platform this app currently reads available_players from
+        reliably supplies that raw ingredient today, for two different
+        reasons -- both verified directly rather than assumed:
+          - ESPN (espn_service_enhanced, via espn_api): a player's
+            `projected_points` is computed server-side by ESPN for the
+            specific connected League object, using that league's own real
+            scoring settings -- it already reflects real PPR/Half-PPR/
+            Standard scoring. Re-adding a reception bonus on top of it here
+            would double-count reception value, so ESPN player records are
+            deliberately NOT given a `projected_receptions` field (see
+            espn_service_enhanced._format_player) that would feed this path.
+          - Sleeper's public player-metadata endpoint (players/nfl -- the
+            only one available_players is built from) carries no stats or
+            projections at all: a real "Tyreek Hill" record pulled live
+            from api.sleeper.app/v1/players/nfl has no points/receptions
+            field whatsoever, only bio metadata (name/position/team/etc).
+            There is nothing honest to adjust there yet.
+
+        This still applies the real adjustment whenever
+        `projected_receptions` genuinely is present on a player record, so
+        it's correct today for any record shaped that way and
+        forward-compatible if either platform's player enrichment adds one
+        later -- rather than a no-op that quietly never fires regardless of
+        what data eventually shows up.
+        """
+        league_settings = draft_analysis.get("league_settings") or {}
+        points_per_reception = league_settings.get("points_per_reception") or 0.0
+
         value_picks = []
         sleepers = []
-        
+
         for player in available_players:
             # Simple value calculation (can be enhanced)
-            projected_points = player.get("projected_points", 0)
+            projected_points = player.get("projected_points", 0) or 0
             ownership = player.get("ownership", 100)
-            
+
+            # Reception-scoring adjustment -- see docstring above for why
+            # this is a no-op for both platforms' real data today, and why
+            # that's the honest outcome rather than a bug.
+            effective_points = projected_points
+            receptions = player.get("projected_receptions")
+            if points_per_reception and receptions:
+                effective_points = projected_points + (receptions * points_per_reception)
+
             # Value pick: high projected points, lower ownership
-            value_score = projected_points * (100 - ownership) / 100
-            
+            value_score = effective_points * (100 - ownership) / 100
+
             if value_score > 15:  # Threshold for value
                 value_picks.append({
                     "player": player,
                     "value_score": value_score,
-                    "reason": f"High projection ({projected_points:.1f}) with low ownership ({ownership:.1f}%)"
+                    "reason": f"High projection ({effective_points:.1f}) with low ownership ({ownership:.1f}%)"
                 })
-            
+
             # Sleeper: lower ownership but decent upside
-            if ownership < 20 and projected_points > 8:
+            if ownership < 20 and effective_points > 8:
                 sleepers.append({
                     "player": player,
-                    "sleeper_score": projected_points / ownership if ownership > 0 else projected_points,
+                    "sleeper_score": effective_points / ownership if ownership > 0 else effective_points,
                     "reason": f"Low ownership sleeper with upside"
                 })
-        
+
         # Sort by scores
         value_picks.sort(key=lambda x: x["value_score"], reverse=True)
         sleepers.sort(key=lambda x: x["sleeper_score"], reverse=True)
-        
+
         return {
             "value_picks": value_picks[:5],
             "sleepers": sleepers[:5]
@@ -588,24 +708,48 @@ class DraftAssistantService:
         else:
             return "Handcuffs, lottery tickets, and streaming options"
 
-    def _get_position_needs(self, position_counts: Dict[str, int], round_num: int) -> List[str]:
-        """Determine positional needs based on roster construction"""
+    def _get_position_needs(self, position_counts: Dict[str, int], round_num: int,
+                             league_settings: Optional[Dict[str, Any]] = None) -> List[str]:
+        """Determine positional needs based on roster construction.
+
+        Needs are gated by draft-round pacing (e.g. don't flag K/DEF as a
+        need in round 3, even though the roster technically has 0 of them)
+        so early picks aren't skewed toward end-of-roster positions. The
+        per-position target count used for that comparison comes from the
+        connected league's real starter requirements -- including FLEX
+        slots folded into whichever of RB/WR/TE is thinnest, see
+        _effective_position_requirements -- when league_settings is
+        available; otherwise it falls back to the same generic
+        RB2/WR2/QB1/TE1/K1/DEF1 shape this file always used (no connected
+        league, Yahoo's stub, or a failed settings fetch -- see
+        FALLBACK_ROSTER_REQUIREMENTS).
+
+        reqs.get(pos, 0) defaults to 0, not some generic non-zero count:
+        _effective_position_requirements is always given either real
+        settings or FALLBACK_ROSTER_REQUIREMENTS (never nothing), so a
+        position missing from reqs means the connected league genuinely
+        doesn't roster it (e.g. a no-kicker league) -- that's real
+        information, not a gap to paper over with a guessed default.
+        """
+        reqs = self._effective_position_requirements(
+            position_counts, league_settings or self.FALLBACK_ROSTER_REQUIREMENTS
+        )
+
         needs = []
-        
-        # Standard needs based on round
-        if position_counts.get("RB", 0) < 2 and round_num <= 8:
+
+        if position_counts.get("RB", 0) < reqs.get("RB", 0) and round_num <= 8:
             needs.append("RB")
-        if position_counts.get("WR", 0) < 2 and round_num <= 8:
+        if position_counts.get("WR", 0) < reqs.get("WR", 0) and round_num <= 8:
             needs.append("WR")
-        if position_counts.get("QB", 0) == 0 and round_num >= 4:
+        if position_counts.get("QB", 0) < reqs.get("QB", 0) and round_num >= 4:
             needs.append("QB")
-        if position_counts.get("TE", 0) == 0 and round_num >= 6:
+        if position_counts.get("TE", 0) < reqs.get("TE", 0) and round_num >= 6:
             needs.append("TE")
-        if position_counts.get("K", 0) == 0 and round_num >= 12:
+        if position_counts.get("K", 0) < reqs.get("K", 0) and round_num >= 12:
             needs.append("K")
-        if position_counts.get("DEF", 0) == 0 and round_num >= 12:
+        if position_counts.get("DEF", 0) < reqs.get("DEF", 0) and round_num >= 12:
             needs.append("DEF")
-        
+
         return needs
 
     def _get_urgency_positions(self, position_counts: Dict[str, int], round_num: int) -> List[str]:
@@ -626,27 +770,85 @@ class DraftAssistantService:
         
         return urgent
 
-    async def _calculate_positional_needs(self, 
-                                         position_counts: Dict[str, int], 
-                                         total_picks: int, 
-                                         draft_settings: Dict[str, Any]) -> Dict[str, Any]:
-        """Calculate detailed positional needs analysis"""
-        # Standard roster requirements
-        required_positions = {
-            "QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "DEF": 1
-        }
-        
+    async def _calculate_positional_needs(self,
+                                         position_counts: Dict[str, int],
+                                         total_picks: int,
+                                         draft_settings: Dict[str, Any],
+                                         league_settings: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        """Calculate detailed positional needs analysis using the connected
+        league's real starter requirements (QB/RB/WR/TE/FLEX/K/DEF slot
+        counts, with FLEX folded into whichever of RB/WR/TE is thinnest --
+        see _effective_position_requirements) instead of one hardcoded
+        QB1/RB2/WR2/TE1/K1/DEF1 shape applied to every league regardless of
+        what's actually connected. Falls back to that same generic shape
+        (FALLBACK_ROSTER_REQUIREMENTS) when no real settings were available
+        for this session, e.g. get_team_analysis calling this without a
+        connected league.
+        """
+        league_settings = league_settings or self.FALLBACK_ROSTER_REQUIREMENTS
+        required_positions = self._effective_position_requirements(position_counts, league_settings)
+
         needs = []
         for pos, required in required_positions.items():
             current = position_counts.get(pos, 0)
             if current < required:
                 needs.append(pos)
-        
+
         return {
             "top_needs": needs,
             "position_counts": position_counts,
-            "recommended_targets": self._get_position_needs(position_counts, self._calculate_round(total_picks + 1))
+            "recommended_targets": self._get_position_needs(
+                position_counts, self._calculate_round(total_picks + 1), league_settings
+            )
         }
+
+    def _get_league_settings(self, session: Dict[str, Any]) -> Dict[str, Any]:
+        """Real roster-slot/scoring settings for this session's connected
+        league (see _get_sleeper_draft_state / _get_espn_draft_state,
+        which attach a "league_settings" key derived from the real
+        platform data they fetch), or the explicit standard-league
+        fallback (FALLBACK_ROSTER_REQUIREMENTS) when none could be
+        fetched -- e.g. Yahoo's still-a-stub draft state, or a real
+        ESPN/Sleeper settings call that itself errored. Never silently
+        fabricates real-looking numbers; the fallback is the exact same
+        generic shape this file always used before real per-league
+        settings extraction existed.
+        """
+        settings = session.get("current_state", {}).get("league_settings")
+        if not settings or "error" in settings or not settings.get("starters"):
+            return self.FALLBACK_ROSTER_REQUIREMENTS
+        return settings
+
+    def _effective_position_requirements(self, position_counts: Dict[str, int],
+                                          league_settings: Dict[str, Any]) -> Dict[str, int]:
+        """Real per-position starter requirement for the connected league,
+        with FLEX slots folded into whichever of RB/WR/TE currently has the
+        largest shortfall against what's been drafted so far -- i.e. each
+        FLEX slot counts toward whichever position is thinnest at the time
+        it's considered, rather than being ignored or split evenly across
+        all three regardless of actual roster construction. This is a
+        simplification (real lineups don't pre-assign a FLEX slot to one
+        position), but it's an explicit, documented heuristic, not a
+        fabrication -- and it only affects RB/WR/TE; every other real
+        starter requirement (QB/K/DEF/any other slot the league carries)
+        passes through unchanged.
+        """
+        starters = dict(league_settings.get("starters", {}) or {})
+        flex_count = starters.pop("FLEX", 0)
+
+        flex_eligible_requirements = {
+            pos: starters.get(pos, 0) for pos in self.FLEX_ELIGIBLE_POSITIONS
+        }
+        for _ in range(flex_count):
+            thinnest = max(
+                self.FLEX_ELIGIBLE_POSITIONS,
+                key=lambda pos: flex_eligible_requirements[pos] - position_counts.get(pos, 0)
+            )
+            flex_eligible_requirements[thinnest] += 1
+
+        merged = dict(starters)
+        merged.update(flex_eligible_requirements)
+        return merged
 
     def _calculate_roster_strength(self, roster: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Calculate overall roster strength"""
