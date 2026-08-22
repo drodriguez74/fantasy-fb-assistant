@@ -7,6 +7,8 @@ from app.models.game_situation import (
     WEATHER_CONDITIONS, GAME_SCRIPTS, VENUE_TYPES
 )
 from app.models.historical_performance import PlayerHistoricalPerformance
+from app.models.nfl_schedule import NFLGame
+from app.services.matchup_analysis_service import MatchupAnalysisService
 from datetime import datetime, timedelta
 import statistics
 import numpy as np
@@ -247,7 +249,7 @@ class EnhancedGameSituationService:
         division_analysis = await self._analyze_division_matchups(player_id)
         
         # Upcoming opponent analysis
-        upcoming_opponents = await self._analyze_upcoming_opponents(player.team if player else "")
+        upcoming_opponents = await self._analyze_upcoming_opponents(player.team if player else "", position)
         
         return {
             'defense_strength_performance': opponent_analysis,
@@ -466,13 +468,25 @@ class EnhancedGameSituationService:
             return "VERY_LOW"
     
     async def _analyze_travel_impact(self, player_id: int, away_games: List[GameSituation]) -> Dict[str, Any]:
-        """Analyze impact of travel distance on performance"""
-        # This would integrate with real travel distance data
+        """
+        CATEGORY: Insufficient data (genuinely not feasible this pass).
+        Real travel-distance impact requires the distance between each
+        away venue and the player's home stadium -- i.e. per-stadium
+        latitude/longitude and a haversine calculation. VenueData (this
+        module's own venue table) has no coordinate columns at all, and
+        no other model in this app stores stadium locations either. Adding
+        that is new reference-data infrastructure (32+ stadium coordinates
+        plus a distance calculator), not a bug fix, so rather than keep the
+        old hardcoded "10.5 vs 12.3, MODERATE fatigue" shown for every
+        player, this honestly reports the gap.
+        """
         return {
-            'cross_country_games': 2,
-            'avg_points_long_travel': 10.5,
-            'avg_points_short_travel': 12.3,
-            'travel_fatigue_factor': "MODERATE"
+            'cross_country_games': None,
+            'avg_points_long_travel': None,
+            'avg_points_short_travel': None,
+            'travel_fatigue_factor': "INSUFFICIENT_DATA",
+            'data_confidence': 'insufficient',
+            'note': 'Stadium location/coordinate data is not available anywhere in this app, so travel distance cannot be computed.'
         }
     
     def _generate_default_weather_analysis(self) -> Dict[str, Any]:
@@ -618,20 +632,20 @@ class EnhancedGameSituationService:
             return "LOW"
     
     async def _forecast_weather_impact(self, player_id: int) -> Dict[str, Any]:
-        """Forecast weather impact for upcoming games"""
-        # This would integrate with weather APIs for actual forecasts
+        """
+        CATEGORY: Insufficient data (genuinely not feasible this pass).
+        A real weather *forecast* (as opposed to historical weather) needs
+        a live weather API integration -- this app has no such integration
+        anywhere (NFLGame.weather_conditions is a real column, but nothing
+        ever writes a forecast into it; there's no scheduled sync). Rather
+        than keep the old hardcoded "CLEAR / RAIN / DOME" 3-week preview
+        shown for every player, this reports the gap honestly.
+        """
         return {
-            'next_game': {
-                'expected_conditions': 'CLEAR',
-                'temperature_forecast': 72,
-                'wind_forecast': 5,
-                'impact_assessment': 'NEUTRAL'
-            },
-            'upcoming_games': [
-                {'week': 1, 'conditions': 'CLEAR', 'impact': 'NEUTRAL'},
-                {'week': 2, 'conditions': 'RAIN', 'impact': 'NEGATIVE'},
-                {'week': 3, 'conditions': 'DOME', 'impact': 'POSITIVE'}
-            ]
+            'next_game': None,
+            'upcoming_games': [],
+            'data_confidence': 'insufficient',
+            'note': 'No weather forecast integration exists in this app yet.'
         }
     
     def _calculate_matchup_dependency(self, opponent_analysis: Dict) -> str:
@@ -650,22 +664,77 @@ class EnhancedGameSituationService:
             return "LOW"
     
     async def _analyze_division_matchups(self, player_id: int) -> Dict[str, Any]:
-        """Analyze performance against division rivals"""
+        """
+        CATEGORY: Computed. Real division-rival vs non-division split from
+        this player's own logged GameSituation rows (is_division_rival is a
+        real column -- the same one _rivalry_game_analysis already uses
+        elsewhere in this class). Previously this ignored player_id
+        entirely and returned a fixed 11.2/12.8/-1.6/6 for everyone.
+        """
+        division_games = self.db.query(GameSituation).filter(
+            and_(GameSituation.player_id == player_id, GameSituation.is_division_rival == True)
+        ).all()
+        non_division_games = self.db.query(GameSituation).filter(
+            and_(GameSituation.player_id == player_id, GameSituation.is_division_rival == False)
+        ).all()
+
+        division_stats = self._calculate_situational_stats(division_games)
+        non_division_stats = self._calculate_situational_stats(non_division_games)
+
+        if division_stats['games'] < 2 or non_division_stats['games'] < 2:
+            return {
+                'division_avg': None,
+                'non_division_avg': None,
+                'rivalry_factor': None,
+                'games_analyzed': division_stats['games'] + non_division_stats['games'],
+                'data_confidence': 'insufficient',
+                'note': 'Not enough logged division-rival games for this player yet.'
+            }
+
         return {
-            'division_avg': 11.2,
-            'non_division_avg': 12.8,
-            'rivalry_factor': -1.6,
-            'games_analyzed': 6
+            'division_avg': division_stats['avg_points'],
+            'non_division_avg': non_division_stats['avg_points'],
+            'rivalry_factor': round(division_stats['avg_points'] - non_division_stats['avg_points'], 2),
+            'games_analyzed': division_stats['games'] + non_division_stats['games'],
+            'data_confidence': 'computed'
         }
-    
-    async def _analyze_upcoming_opponents(self, team: str) -> List[Dict[str, Any]]:
-        """Analyze upcoming opponent strength"""
-        # This would integrate with real NFL schedule and defensive ranking data
-        return [
-            {'week': 1, 'opponent': 'DAL', 'def_rank': 15, 'difficulty': 'MODERATE'},
-            {'week': 2, 'opponent': 'NYG', 'def_rank': 8, 'difficulty': 'DIFFICULT'},
-            {'week': 3, 'opponent': 'WAS', 'def_rank': 25, 'difficulty': 'EASY'}
-        ]
+
+    async def _analyze_upcoming_opponents(self, team: str, position: str = 'FLEX') -> List[Dict[str, Any]]:
+        """
+        CATEGORY: Computed. Real upcoming opponents/defensive ranks sourced
+        from the NFLGame / DefensiveMatchupRanking tables via
+        MatchupAnalysisService -- the same real schedule infrastructure the
+        Matchup Analysis and Waiver Wire features already use. Previously
+        this returned the same three DAL/NYG/WAS opponents for every team
+        regardless of who was actually asked about. Honestly returns an
+        empty list rather than mock opponents when no schedule rows are
+        synced for this team yet.
+        """
+        matchup_service = MatchupAnalysisService(self.db)
+        current_week = matchup_service.get_current_week()
+
+        games = self.db.query(NFLGame).filter(
+            and_(
+                NFLGame.season == 2024,
+                NFLGame.week.between(current_week, current_week + 2),
+                or_(NFLGame.home_team == team, NFLGame.away_team == team)
+            )
+        ).order_by(NFLGame.week).all()
+
+        opponents = []
+        for game in games:
+            opponent = game.away_team if game.home_team == team else game.home_team
+            rating = matchup_service.get_defensive_matchup_rating(opponent, position, game.week)
+            def_rank = rating.get('rank_vs_position')
+            opponents.append({
+                'week': game.week,
+                'opponent': opponent,
+                'def_rank': def_rank,
+                'difficulty': 'INSUFFICIENT_DATA' if def_rank is None or rating.get('confidence') == 'Low' else (
+                    'EASY' if def_rank >= 25 else 'DIFFICULT' if def_rank <= 8 else 'MODERATE'
+                )
+            })
+        return opponents
     
     def _identify_optimal_matchups(self, opponent_analysis: Dict) -> List[str]:
         """Identify optimal matchup types"""
@@ -712,22 +781,87 @@ class EnhancedGameSituationService:
         return pace_analysis
     
     async def _analyze_garbage_time_impact(self, player_id: int) -> Dict[str, Any]:
-        """Analyze garbage time performance"""
-        # This would analyze games with large score differentials in 4th quarter
+        """
+        CATEGORY: Heuristic. This app has no per-quarter play log, so "garbage
+        time" (last-minute snaps in a decided game) can't be isolated
+        directly. As a real, per-player proxy, we classify this player's
+        logged games by GameSituation.game_script -- BLOWOUT_WIN/BLOWOUT_LOSS
+        games are the ones where garbage-time snaps would occur -- and
+        compare fantasy output there against closer games. Real data, but a
+        stand-in for true 4th-quarter garbage-time detection.
+        """
+        blowout_games = self.db.query(GameSituation).filter(
+            and_(
+                GameSituation.player_id == player_id,
+                GameSituation.game_script.in_([GAME_SCRIPTS['BLOWOUT_WIN'], GAME_SCRIPTS['BLOWOUT_LOSS']])
+            )
+        ).all()
+        other_games = self.db.query(GameSituation).filter(
+            and_(
+                GameSituation.player_id == player_id,
+                GameSituation.game_script.isnot(None),
+                ~GameSituation.game_script.in_([GAME_SCRIPTS['BLOWOUT_WIN'], GAME_SCRIPTS['BLOWOUT_LOSS']])
+            )
+        ).all()
+
+        blowout_stats = self._calculate_situational_stats(blowout_games)
+        other_stats = self._calculate_situational_stats(other_games)
+
+        if blowout_stats['games'] < 2 or other_stats['games'] < 2:
+            return {
+                'garbage_time_boost': None,
+                'avg_boost': None,
+                'games_with_boost': blowout_stats['games'],
+                'total_games': blowout_stats['games'] + other_stats['games'],
+                'data_confidence': 'insufficient',
+                'note': 'Not enough logged blowout-game data for this player yet.'
+            }
+
+        avg_boost = round(blowout_stats['avg_points'] - other_stats['avg_points'], 2)
         return {
-            'garbage_time_boost': True,
-            'avg_boost': 2.3,
-            'games_with_boost': 4,
-            'total_games': 16
+            'garbage_time_boost': avg_boost > 0,
+            'avg_boost': avg_boost,
+            'games_with_boost': blowout_stats['games'],
+            'total_games': blowout_stats['games'] + other_stats['games'],
+            'data_confidence': 'heuristic'
         }
-    
+
     async def _analyze_red_zone_usage(self, player_id: int) -> Dict[str, Any]:
-        """Analyze red zone and goal line usage"""
+        """
+        CATEGORY: Computed. Real per-game red_zone_targets/goal_line_carries
+        columns on GameSituation (this player's own logged games), instead
+        of the previous fixed 1.2/0.8/0.65/MEDIUM shown for every player.
+        """
+        games = self.db.query(GameSituation).filter(
+            and_(
+                GameSituation.player_id == player_id,
+                or_(GameSituation.red_zone_targets.isnot(None), GameSituation.goal_line_carries.isnot(None))
+            )
+        ).all()
+
+        if len(games) < 2:
+            return {
+                'red_zone_targets_per_game': None,
+                'goal_line_carries_per_game': None,
+                'red_zone_efficiency': None,
+                'touchdown_dependency': 'INSUFFICIENT_DATA',
+                'data_confidence': 'insufficient',
+                'note': 'Not enough logged red-zone usage data for this player yet.'
+            }
+
+        rz_targets = [g.red_zone_targets for g in games if g.red_zone_targets is not None]
+        gl_carries = [g.goal_line_carries for g in games if g.goal_line_carries is not None]
+        avg_rz = round(statistics.mean(rz_targets), 2) if rz_targets else 0.0
+        avg_gl = round(statistics.mean(gl_carries), 2) if gl_carries else 0.0
+        total_opportunities = avg_rz + avg_gl
+        dependency = "HIGH" if total_opportunities >= 2 else "MEDIUM" if total_opportunities >= 1 else "LOW"
+
         return {
-            'red_zone_targets_per_game': 1.2,
-            'goal_line_carries_per_game': 0.8,
-            'red_zone_efficiency': 0.65,
-            'touchdown_dependency': "MEDIUM"
+            'red_zone_targets_per_game': avg_rz,
+            'goal_line_carries_per_game': avg_gl,
+            'games_analyzed': len(games),
+            'touchdown_dependency': dependency,
+            'data_confidence': 'computed'
         }
     
     def _calculate_script_dependency(self, script_analysis: Dict) -> str:
@@ -753,22 +887,76 @@ class EnhancedGameSituationService:
                 optimal.append(script)
         return optimal
     
+    HIGH_ALTITUDE_FEET = 4000.0  # Denver/Mexico City-level elevation threshold
+
     async def _analyze_altitude_impact(self, player_id: int) -> Dict[str, Any]:
-        """Analyze high altitude impact (Denver, Mexico City, etc.)"""
+        """
+        CATEGORY: Computed. Real join between this player's logged games
+        (GameSituation.venue_name) and VenueData.elevation, instead of the
+        previous fixed 12.1/10.8/-1.3 shown for every player.
+        """
+        games = self.db.query(GameSituation, VenueData).join(
+            VenueData, GameSituation.venue_name == VenueData.venue_name
+        ).filter(
+            and_(GameSituation.player_id == player_id, VenueData.elevation.isnot(None))
+        ).all()
+
+        high_altitude_points = [gs.fantasy_points for gs, v in games if v.elevation >= self.HIGH_ALTITUDE_FEET and gs.fantasy_points is not None]
+        sea_level_points = [gs.fantasy_points for gs, v in games if v.elevation < self.HIGH_ALTITUDE_FEET and gs.fantasy_points is not None]
+
+        if len(high_altitude_points) < 1 or len(sea_level_points) < 2:
+            return {
+                'high_altitude_games': len(high_altitude_points),
+                'sea_level_avg': None,
+                'high_altitude_avg': None,
+                'altitude_impact': None,
+                'data_confidence': 'insufficient',
+                'note': 'Not enough logged high-altitude venue games for this player yet (needs GameSituation rows joined to VenueData.elevation).'
+            }
+
+        sea_level_avg = round(statistics.mean(sea_level_points), 2)
+        high_altitude_avg = round(statistics.mean(high_altitude_points), 2)
         return {
-            'high_altitude_games': 1,
-            'sea_level_avg': 12.1,
-            'high_altitude_avg': 10.8,
-            'altitude_impact': -1.3
+            'high_altitude_games': len(high_altitude_points),
+            'sea_level_avg': sea_level_avg,
+            'high_altitude_avg': high_altitude_avg,
+            'altitude_impact': round(high_altitude_avg - sea_level_avg, 2),
+            'data_confidence': 'computed'
         }
-    
+
     async def _analyze_surface_impact(self, player_id: int) -> Dict[str, Any]:
-        """Analyze playing surface impact"""
+        """
+        CATEGORY: Computed. Real join between this player's logged games
+        and VenueData.surface_type, instead of the previous fixed
+        12.3/11.8/GRASS/LOW shown for every player. "injury_risk_factor" is
+        dropped rather than fabricated -- this app has no data linking
+        surface type to this player's own injury history.
+        """
+        games = self.db.query(GameSituation, VenueData).join(
+            VenueData, GameSituation.venue_name == VenueData.venue_name
+        ).filter(
+            and_(GameSituation.player_id == player_id, VenueData.surface_type.isnot(None))
+        ).all()
+
+        grass_points = [gs.fantasy_points for gs, v in games if v.surface_type and 'grass' in v.surface_type.lower() and gs.fantasy_points is not None]
+        turf_points = [gs.fantasy_points for gs, v in games if v.surface_type and 'turf' in v.surface_type.lower() and gs.fantasy_points is not None]
+
+        if len(grass_points) < 2 or len(turf_points) < 2:
+            return {
+                'grass_avg': None,
+                'turf_avg': None,
+                'surface_preference': 'INSUFFICIENT_DATA',
+                'data_confidence': 'insufficient',
+                'note': 'Not enough logged games with known playing surface for this player yet.'
+            }
+
+        grass_avg = round(statistics.mean(grass_points), 2)
+        turf_avg = round(statistics.mean(turf_points), 2)
         return {
-            'grass_avg': 12.3,
-            'turf_avg': 11.8,
-            'surface_preference': 'GRASS',
-            'injury_risk_factor': 'LOW'
+            'grass_avg': grass_avg,
+            'turf_avg': turf_avg,
+            'surface_preference': 'GRASS' if grass_avg >= turf_avg else 'TURF',
+            'data_confidence': 'computed'
         }
     
     def _assess_rivalry_emotional_factor(self, rivalry_stats: Dict, non_rivalry_stats: Dict) -> str:
@@ -913,34 +1101,52 @@ class EnhancedGameSituationService:
         return insights
     
     async def _forecast_upcoming_situations(self, player: Player) -> Dict[str, Any]:
-        """Forecast upcoming situational factors"""
-        # This would integrate with real NFL schedule and data
+        """
+        CATEGORY: split. Opponent/location/defensive-rank come from the real
+        NFLGame / DefensiveMatchupRanking tables via MatchupAnalysisService
+        (Computed) -- the same infrastructure used elsewhere in this class.
+        venue_type/expected_weather/projected_script/situational_score are
+        dropped rather than fabricated: this app has no weather-forecast
+        integration and no venue join wired into MatchupAnalysisService's
+        schedule query, so a "situational_score" here would just be made up.
+        Previously this returned the identical DAL/GB two-week preview for
+        every player regardless of their actual team or schedule.
+        """
+        matchup_service = MatchupAnalysisService(self.db)
+        matchup_info = matchup_service.analyze_player_upcoming_matchups(player, weeks_ahead=4)
+
+        if "error" in matchup_info or not matchup_info.get("upcoming_matchups"):
+            return {
+                'next_4_weeks': [],
+                'optimal_weeks': [],
+                'caution_weeks': [],
+                'overall_outlook': 'INSUFFICIENT_DATA',
+                'data_confidence': 'insufficient',
+                'note': 'No synced schedule data for this player yet.'
+            }
+
+        next_weeks = []
+        optimal_weeks = []
+        caution_weeks = []
+        for game in matchup_info["upcoming_matchups"]:
+            next_weeks.append({
+                'week': game['week'],
+                'opponent': game['opponent'],
+                'location': 'HOME' if game['is_home'] else 'AWAY',
+                'def_rank': game.get('opponent_rank_vs_position'),
+                'matchup_rating': game.get('matchup_rating')
+            })
+            if game.get('matchup_rating') is not None and game['matchup_rating'] >= 7.5:
+                optimal_weeks.append(game['week'])
+            elif game.get('matchup_rating') is not None and game['matchup_rating'] <= 4.0:
+                caution_weeks.append(game['week'])
+
         return {
-            'next_4_weeks': [
-                {
-                    'week': 1,
-                    'opponent': 'DAL',
-                    'location': 'HOME',
-                    'venue_type': 'DOME',
-                    'expected_weather': 'CONTROLLED',
-                    'def_rank': 15,
-                    'projected_script': 'CLOSE',
-                    'situational_score': 7.5
-                },
-                {
-                    'week': 2,
-                    'opponent': 'GB',
-                    'location': 'AWAY',
-                    'venue_type': 'OUTDOOR',
-                    'expected_weather': 'COLD',
-                    'def_rank': 8,
-                    'projected_script': 'TRAILING',
-                    'situational_score': 5.2
-                }
-            ],
-            'optimal_weeks': [1, 4],
-            'caution_weeks': [2],
-            'overall_outlook': 'MIXED'
+            'next_4_weeks': next_weeks,
+            'optimal_weeks': optimal_weeks,
+            'caution_weeks': caution_weeks,
+            'overall_outlook': matchup_info.get('outlook', 'Unknown'),
+            'data_confidence': 'computed'
         }
     
     async def _generate_cross_situational_insights(self, analysis_results: List[Dict]) -> List[str]:

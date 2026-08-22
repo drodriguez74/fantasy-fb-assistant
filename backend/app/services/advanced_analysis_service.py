@@ -1,15 +1,21 @@
 from typing import List, Dict, Any, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
-from app.models.player import Player
-from app.models.historical_performance import PlayerHistoricalPerformance
+from app.models.player import Player, InjuryStatus
+from app.models.historical_performance import PlayerHistoricalPerformance, GameLocation
+from app.models.nfl_schedule import NFLGame
 from app.services.advanced_analytics_service import AdvancedAnalyticsService
+from app.services.matchup_analysis_service import MatchupAnalysisService
 from datetime import datetime, timedelta
 import statistics
 import numpy as np
 from collections import defaultdict
 
 class AdvancedAnalysisService:
+    # Minimum games required on each side of a split (home/away, dome/outdoor,
+    # etc.) before we'll report it as a real number rather than "insufficient".
+    MIN_SPLIT_SAMPLE = 2
+
     def __init__(self, db: Session):
         self.db = db
         self.analytics_service = AdvancedAnalyticsService(db)
@@ -73,23 +79,24 @@ class AdvancedAnalysisService:
         """
         try:
             players = self.db.query(Player).filter(Player.id.in_(player_ids)).all()
-            
+
             schedule_analysis = []
             for player in players:
-                # Get team's upcoming opponents (simplified - would integrate with real NFL schedule)
+                # Real NFL schedule lookup (see _get_upcoming_matchups) -- empty
+                # when this team has no synced schedule rows for the upcoming weeks.
                 upcoming_matchups = await self._get_upcoming_matchups(player.team, weeks_ahead)
-                
+
                 # Analyze matchup difficulty
                 matchup_analysis = []
-                total_difficulty = 0
-                
+                scored_difficulties = []
+
                 for week, opponent in upcoming_matchups:
                     difficulty = await self._calculate_matchup_difficulty(
                         player.position.value if player.position else 'FLEX',
                         opponent,
                         player.team
                     )
-                    
+
                     matchup_analysis.append({
                         'week': week,
                         'opponent': opponent,
@@ -98,10 +105,35 @@ class AdvancedAnalysisService:
                         'key_factors': difficulty['factors'],
                         'projected_impact': difficulty['impact']
                     })
-                    total_difficulty += difficulty['score']
-                
-                avg_difficulty = total_difficulty / len(upcoming_matchups) if upcoming_matchups else 5.0
-                
+                    if difficulty['score'] is not None:
+                        scored_difficulties.append(difficulty['score'])
+
+                # CATEGORY: Insufficient data -- honestly flagged rather than
+                # silently defaulting to a neutral-looking 5.0 (the old
+                # behavior), which would have looked like a real "average"
+                # matchup rather than "we don't know yet."
+                if not upcoming_matchups:
+                    schedule_analysis.append({
+                        'player': {
+                            'id': player.id,
+                            'name': player.name,
+                            'position': player.position.value if player.position else 'Unknown',
+                            'team': player.team
+                        },
+                        'schedule_difficulty': {
+                            'average_score': None,
+                            'rating': 'INSUFFICIENT_DATA',
+                            'rank': None,
+                            'data_confidence': 'insufficient'
+                        },
+                        'upcoming_matchups': [],
+                        'recommendation': 'No synced schedule data for the upcoming weeks -- unable to project strength of schedule.'
+                    })
+                    continue
+
+                avg_difficulty = round(sum(scored_difficulties) / len(scored_difficulties), 2) if scored_difficulties else None
+                data_confidence = 'computed' if scored_difficulties else 'insufficient'
+
                 schedule_analysis.append({
                     'player': {
                         'id': player.id,
@@ -110,26 +142,37 @@ class AdvancedAnalysisService:
                         'team': player.team
                     },
                     'schedule_difficulty': {
-                        'average_score': round(avg_difficulty, 2),
-                        'rating': self._get_difficulty_rating(avg_difficulty),
-                        'rank': 0  # Will be calculated after all players
+                        'average_score': avg_difficulty,
+                        'rating': self._get_difficulty_rating(avg_difficulty) if avg_difficulty is not None else 'INSUFFICIENT_DATA',
+                        'rank': 0,  # Will be calculated after all players
+                        'data_confidence': data_confidence
                     },
                     'upcoming_matchups': matchup_analysis,
-                    'recommendation': self._get_schedule_recommendation(avg_difficulty, matchup_analysis)
+                    'recommendation': self._get_schedule_recommendation(avg_difficulty, matchup_analysis) if avg_difficulty is not None else 'Defensive ranking data not yet available for these opponents -- unable to project schedule impact.'
                 })
-            
-            # Rank players by schedule difficulty
-            schedule_analysis.sort(key=lambda x: x['schedule_difficulty']['average_score'])
+
+            # Rank players by schedule difficulty (players with no score yet sort last)
+            schedule_analysis.sort(
+                key=lambda x: (x['schedule_difficulty']['average_score'] is None, x['schedule_difficulty']['average_score'])
+            )
             for i, analysis in enumerate(schedule_analysis):
-                analysis['schedule_difficulty']['rank'] = i + 1
+                if analysis['schedule_difficulty']['average_score'] is not None:
+                    analysis['schedule_difficulty']['rank'] = i + 1
             
+            # Only players with a real computed score can be meaningfully
+            # called "easiest"/"hardest" -- an insufficient-data player
+            # sorts last (see key above) but isn't a genuine data point.
+            scored_players = [p for p in schedule_analysis if p['schedule_difficulty']['average_score'] is not None]
+
             return {
                 "success": True,
                 "schedule_analysis": schedule_analysis,
                 "summary": {
-                    "easiest_schedule": schedule_analysis[0]['player']['name'] if schedule_analysis else None,
-                    "hardest_schedule": schedule_analysis[-1]['player']['name'] if schedule_analysis else None,
-                    "average_difficulty": round(sum(p['schedule_difficulty']['average_score'] for p in schedule_analysis) / len(schedule_analysis), 2) if schedule_analysis else 0
+                    "easiest_schedule": scored_players[0]['player']['name'] if scored_players else None,
+                    "hardest_schedule": scored_players[-1]['player']['name'] if scored_players else None,
+                    "average_difficulty": round(sum(p['schedule_difficulty']['average_score'] for p in scored_players) / len(scored_players), 2) if scored_players else None,
+                    "players_with_data": len(scored_players),
+                    "players_without_data": len(schedule_analysis) - len(scored_players)
                 }
             }
 
@@ -498,24 +541,68 @@ class AdvancedAnalysisService:
         
         return f"Based on comprehensive analysis, {best_player[0]} appears to be the strongest option with a score of {best_player[1]:.1f}"
 
-    # Placeholder methods for future implementation
+    # --- CATEGORY: Computed (real implementation) ---
+    # These two methods used to be static/random placeholders (mock opponent
+    # cycling through a fixed 8-team list, and `random.uniform(3.0, 8.0)` for
+    # "difficulty" -- meaning the score changed on every call even for the
+    # *same* player, and was never actually derived from that player's real
+    # team or opponent). They now source real schedule and defensive-ranking
+    # data from the NFLGame / DefensiveMatchupRanking tables via
+    # MatchupAnalysisService -- the same real infrastructure the Matchup
+    # Analysis and Waiver Wire features already use elsewhere in this app.
+    # If this deployment's schedule/defensive-ranking tables haven't been
+    # synced yet, these honestly return empty/low-confidence results instead
+    # of a plausible-looking fake number -- see the "insufficient" branches
+    # below and in analyze_strength_of_schedule().
     async def _get_upcoming_matchups(self, team: str, weeks: int) -> List[Tuple[int, str]]:
-        """Get upcoming matchups for a team (placeholder)"""
-        # This would integrate with real NFL schedule data
-        mock_opponents = ['DAL', 'NYG', 'WAS', 'PHI', 'SF', 'LAR', 'SEA', 'ARI']
-        return [(i + 1, f"vs {mock_opponents[i % len(mock_opponents)]}") for i in range(weeks)]
+        """Get a team's real upcoming opponents from the NFL schedule (Computed)."""
+        matchup_service = MatchupAnalysisService(self.db)
+        current_week = matchup_service.get_current_week()
+
+        games = self.db.query(NFLGame).filter(
+            and_(
+                NFLGame.season == 2024,
+                NFLGame.week.between(current_week, current_week + max(weeks, 1) - 1),
+                or_(NFLGame.home_team == team, NFLGame.away_team == team)
+            )
+        ).order_by(NFLGame.week).all()
+
+        return [
+            (game.week, game.away_team if game.home_team == team else game.home_team)
+            for game in games
+        ]
 
     async def _calculate_matchup_difficulty(self, position: str, opponent: str, team: str) -> Dict[str, Any]:
-        """Calculate matchup difficulty (placeholder)"""
-        # Mock difficulty calculation
-        import random
-        difficulty_score = random.uniform(3.0, 8.0)
-        
+        """
+        Calculate matchup difficulty from real defensive rankings (Computed),
+        falling back to an explicit "insufficient" state (not a fabricated
+        score) when no ranking has been synced yet for this opponent/position.
+        """
+        matchup_service = MatchupAnalysisService(self.db)
+        rating = matchup_service.get_defensive_matchup_rating(opponent, position)
+
+        if "error" in rating or rating.get("confidence") == "Low":
+            return {
+                "score": None,
+                "rating": "INSUFFICIENT_DATA",
+                "factors": [rating.get("note", "No defensive ranking data available for this opponent/position yet")],
+                "impact": "Insufficient data to project matchup impact",
+                "data_confidence": "insufficient"
+            }
+
+        # matchup_rating is on a 1-10 scale where 10 = best matchup for the
+        # offense; difficulty is the inverse of that.
+        difficulty_score = 10 - rating["matchup_rating"]
+
         return {
             "score": round(difficulty_score, 2),
             "rating": self._get_difficulty_rating(difficulty_score),
-            "factors": ["Opponent defense ranking", "Historical performance vs position"],
-            "impact": "Moderate impact on production expected"
+            "factors": [
+                f"{opponent} ranked #{rating.get('rank_vs_position', '?')} vs {position}",
+                f"Fantasy points allowed (season avg): {rating.get('fantasy_points_allowed_avg')}"
+            ],
+            "impact": f"Recent trend: {rating['recent_trend']} pts/game allowed (last 4)" if rating.get("recent_trend") is not None else "Recent trend data unavailable",
+            "data_confidence": "computed"
         }
 
     def _get_difficulty_rating(self, score: float) -> str:
@@ -624,77 +711,245 @@ class AdvancedAnalysisService:
         else:
             return "PASS - Low breakout probability"
 
-    # Placeholder methods for situational analysis
+    # --- Game situation analysis ---
+    # This whole block used to be six hardcoded methods returning the exact
+    # same numbers (12.5/10.8, 11.2/13.1, 9.8/14.2, 10.5/13.8/12.1, "games
+    # missed: 2") for every player regardless of player_id -- this was the
+    # confirmed bug behind the "Game Situations" tab looking identical no
+    # matter who was selected. Each method below is now one of:
+    #   CATEGORY Computed  -- a real, per-player query/join against real data
+    #   CATEGORY Heuristic -- a real per-player query standing in for a more
+    #                         sophisticated calculation (e.g. keyword-bucketing
+    #                         a free-text field instead of a structured enum)
+    #   CATEGORY Insufficient data -- no data source exists for the claim at
+    #                         all; honestly reported instead of fabricated
+    # Note: PlayerHistoricalPerformance is populated by
+    # historical_data_service.py's Sleeper sync, but that sync does not
+    # currently write game_location/weather_conditions/game_script for any
+    # record (see _process_weekly_stats), and no records exist yet in this
+    # deployment. So on this database, the Computed/Heuristic methods below
+    # will legitimately report "insufficient data" today -- that's a real,
+    # per-player-parameterized query correctly finding nothing, not a fake
+    # number. They'll start returning real, differing-per-player results the
+    # moment that data is synced.
     async def _analyze_home_away_splits(self, player_id: int, historical_data: Dict) -> Dict[str, Any]:
-        """Analyze home vs away performance"""
+        """CATEGORY: Computed. Real home/away fantasy-point split from this
+        player's own historical game log (PlayerHistoricalPerformance.game_location)."""
+        records = self.db.query(PlayerHistoricalPerformance).filter(
+            PlayerHistoricalPerformance.player_id == player_id,
+            PlayerHistoricalPerformance.game_location.isnot(None),
+            PlayerHistoricalPerformance.fantasy_points_ppr.isnot(None)
+        ).all()
+
+        home_points = [r.fantasy_points_ppr for r in records if r.game_location == GameLocation.HOME]
+        away_points = [r.fantasy_points_ppr for r in records if r.game_location == GameLocation.AWAY]
+
+        if len(home_points) < self.MIN_SPLIT_SAMPLE or len(away_points) < self.MIN_SPLIT_SAMPLE:
+            return {
+                "home_average": None,
+                "away_average": None,
+                "preference": "INSUFFICIENT_DATA",
+                "sample_size": {"home": len(home_points), "away": len(away_points)},
+                "data_confidence": "insufficient",
+                "note": "Needs at least 2 logged home games and 2 away games; not enough game-log data synced for this player yet."
+            }
+
+        home_avg = round(statistics.mean(home_points), 2)
+        away_avg = round(statistics.mean(away_points), 2)
         return {
-            "home_average": 12.5,
-            "away_average": 10.8,
-            "preference": "HOME",
-            "sample_size": {"home": 5, "away": 5}
+            "home_average": home_avg,
+            "away_average": away_avg,
+            "preference": "HOME" if home_avg > away_avg else "AWAY",
+            "sample_size": {"home": len(home_points), "away": len(away_points)},
+            "data_confidence": "computed"
         }
 
     async def _analyze_weather_impact(self, player_id: int, historical_data: Dict) -> Dict[str, Any]:
-        """Analyze weather impact on performance"""
+        """CATEGORY: Heuristic. Buckets this player's logged games into
+        dome/outdoor via a keyword match against weather_conditions (a
+        free-text field) -- a real per-player signal, but a proxy rather
+        than a structured venue lookup."""
+        records = self.db.query(PlayerHistoricalPerformance).filter(
+            PlayerHistoricalPerformance.player_id == player_id,
+            PlayerHistoricalPerformance.weather_conditions.isnot(None),
+            PlayerHistoricalPerformance.fantasy_points_ppr.isnot(None)
+        ).all()
+
+        dome_points = [r.fantasy_points_ppr for r in records if 'dome' in (r.weather_conditions or '').lower()]
+        outdoor_points = [r.fantasy_points_ppr for r in records if 'dome' not in (r.weather_conditions or '').lower()]
+
+        if len(dome_points) < self.MIN_SPLIT_SAMPLE or len(outdoor_points) < self.MIN_SPLIT_SAMPLE:
+            return {
+                "outdoor_performance": None,
+                "dome_performance": None,
+                "weather_sensitivity": "INSUFFICIENT_DATA",
+                "key_factors": [],
+                "data_confidence": "insufficient",
+                "note": "No logged weather_conditions data for this player yet (or too few games to split dome vs outdoor)."
+            }
+
+        outdoor_avg = round(statistics.mean(outdoor_points), 2)
+        dome_avg = round(statistics.mean(dome_points), 2)
+        variance = abs(outdoor_avg - dome_avg)
+        sensitivity = "HIGH" if variance > 3 else "MEDIUM" if variance > 1.5 else "LOW"
         return {
-            "outdoor_performance": 11.2,
-            "dome_performance": 13.1,
-            "weather_sensitivity": "LOW",
-            "key_factors": ["Position less affected by weather"]
+            "outdoor_performance": outdoor_avg,
+            "dome_performance": dome_avg,
+            "weather_sensitivity": sensitivity,
+            "key_factors": [f"{len(dome_points)} dome games vs {len(outdoor_points)} outdoor games logged"],
+            "data_confidence": "heuristic"
         }
 
     async def _analyze_vs_opponent_strength(self, player_id: int, historical_data: Dict) -> Dict[str, Any]:
-        """Analyze performance vs strong/weak opponents"""
+        """CATEGORY: Insufficient data (genuinely not feasible this pass).
+        Classifying a player's *historical* games by the strength of the
+        defense they actually faced that week would require joining each
+        game-log row to that week's real defensive ranking at the time --
+        this app has no such join: PlayerHistoricalPerformance rows don't
+        carry an opponent_team the sync ever populates, and there's no
+        historical (as-of-that-week) defensive-ranking table to join
+        against even if they did. Building that is a new data pipeline, not
+        a bug fix, so we report the honest gap instead of the old
+        fabricated 9.8/14.2 split shown for every player.
+        For a *forward-looking* equivalent that IS real, see
+        analyze_strength_of_schedule() / _calculate_matchup_difficulty(),
+        which use the real DefensiveMatchupRanking table."""
         return {
-            "vs_strong_defense": 9.8,
-            "vs_weak_defense": 14.2,
-            "matchup_dependency": "MODERATE",
-            "optimal_targets": ["Weak pass defense", "High pace opponents"]
+            "vs_strong_defense": None,
+            "vs_weak_defense": None,
+            "matchup_dependency": "INSUFFICIENT_DATA",
+            "optimal_targets": [],
+            "data_confidence": "insufficient",
+            "note": "This app does not yet link historical game logs to the defensive strength faced that week. See the Strength of Schedule tab for real forward-looking opponent-difficulty data."
         }
 
     async def _analyze_game_script_impact(self, player_id: int, historical_data: Dict) -> Dict[str, Any]:
-        """Analyze performance in different game scripts"""
+        """CATEGORY: Heuristic. Buckets this player's logged games by the
+        free-text game_script field (e.g. "blowout_win", "close_game") into
+        leading/trailing/close via keyword matching -- real per-player data,
+        but a proxy since the field isn't a structured enum."""
+        records = self.db.query(PlayerHistoricalPerformance).filter(
+            PlayerHistoricalPerformance.player_id == player_id,
+            PlayerHistoricalPerformance.game_script.isnot(None),
+            PlayerHistoricalPerformance.fantasy_points_ppr.isnot(None)
+        ).all()
+
+        def _bucket(script: str) -> Optional[str]:
+            s = script.lower()
+            if 'blowout_win' in s or ('leading' in s and 'trailing' not in s):
+                return 'leading'
+            if 'blowout_loss' in s or 'trailing' in s:
+                return 'trailing'
+            if 'close' in s:
+                return 'close'
+            return None
+
+        buckets: Dict[str, List[float]] = defaultdict(list)
+        for r in records:
+            bucket = _bucket(r.game_script)
+            if bucket:
+                buckets[bucket].append(r.fantasy_points_ppr)
+
+        if sum(len(v) for v in buckets.values()) < self.MIN_SPLIT_SAMPLE * 2:
+            return {
+                "leading_games": None,
+                "trailing_games": None,
+                "close_games": None,
+                "script_preference": "INSUFFICIENT_DATA",
+                "garbage_time_boost": None,
+                "data_confidence": "insufficient",
+                "note": "No logged game_script data for this player yet."
+            }
+
+        averages = {k: round(statistics.mean(v), 2) for k, v in buckets.items() if v}
+        preference = max(averages, key=averages.get) if averages else None
         return {
-            "leading_games": 10.5,
-            "trailing_games": 13.8,
-            "close_games": 12.1,
-            "script_preference": "TRAILING",
-            "garbage_time_boost": True
+            "leading_games": averages.get('leading'),
+            "trailing_games": averages.get('trailing'),
+            "close_games": averages.get('close'),
+            "script_preference": preference.upper() if preference else "INSUFFICIENT_DATA",
+            "garbage_time_boost": (averages.get('trailing', 0) > averages.get('leading', 0)) if 'trailing' in averages and 'leading' in averages else None,
+            "data_confidence": "heuristic"
         }
 
     async def _analyze_injury_impact(self, player_id: int, historical_data: Dict) -> Dict[str, Any]:
-        """Analyze impact of injuries on performance"""
+        """CATEGORY: split. Current injury status is a real, live per-player
+        field (Player.injury_status) -- Computed. Historical "games missed" /
+        "return-to-form performance" would need a per-game injury log this
+        app doesn't have (Player.games_played/games_started are also
+        unpopulated), so that half is honestly reported as insufficient
+        rather than the old fabricated "games_missed: 2, return_performance:
+        85.2" shown for every player regardless of their actual health."""
+        player = self.db.query(Player).filter(Player.id == player_id).first()
+        if not player:
+            return {
+                "current_status": "UNKNOWN",
+                "injury_risk": "INSUFFICIENT_DATA",
+                "historical_impact": "insufficient_data",
+                "data_confidence": "insufficient"
+            }
+
+        status = player.injury_status if player.injury_status else InjuryStatus.HEALTHY
+        risk = "LOW" if status == InjuryStatus.HEALTHY else "HIGH" if status in (InjuryStatus.OUT, InjuryStatus.IR) else "MODERATE"
+
         return {
-            "games_missed": 2,
-            "return_performance": 85.2,
-            "injury_risk": "MODERATE",
-            "recovery_pattern": "Good return to form after injuries"
+            "current_status": status.value,
+            "body_part": player.injury_body_part,
+            "notes": player.injury_notes,
+            "status_updated_at": player.injury_updated_at.isoformat() if player.injury_updated_at else None,
+            "injury_risk": risk,
+            "historical_impact": "insufficient_data",
+            "historical_impact_note": "No per-game injury-designation log available to compute games missed or return-to-form performance.",
+            "data_confidence": "computed"
         }
 
     async def _generate_situational_insights(self, situations: Dict) -> List[str]:
-        """Generate insights from situational analysis"""
+        """Generate insights from situational analysis -- only from sections
+        that actually have data; insufficient-data sections are skipped
+        rather than turned into a fabricated insight."""
         insights = []
-        
-        home_away = situations['home_vs_away']
-        if home_away['preference'] == 'HOME':
+
+        home_away = situations.get('home_vs_away', {})
+        if home_away.get('preference') == 'HOME':
             insights.append(f"Performs better at home ({home_away['home_average']} vs {home_away['away_average']} away)")
-        
-        game_script = situations['game_script']
-        if game_script['script_preference'] == 'TRAILING':
+        elif home_away.get('preference') == 'AWAY':
+            insights.append(f"Performs better on the road ({home_away['away_average']} vs {home_away['home_average']} home)")
+
+        game_script = situations.get('game_script', {})
+        if game_script.get('script_preference') == 'TRAILING':
             insights.append("Benefits from negative game script and garbage time")
-        
+
+        if not insights:
+            insights.append("Not enough logged game-situation data yet to draw a situational insight for this player")
+
         return insights
 
     async def _analyze_upcoming_situations(self, player: Player) -> Dict[str, Any]:
-        """Analyze upcoming game situations for the player"""
+        """CATEGORY: Computed. Reuses the same real NFLGame /
+        DefensiveMatchupRanking infrastructure as analyze_strength_of_schedule(),
+        instead of the previous hardcoded 'next game is HOME vs a WEAK dome
+        opponent' shown for literally every player."""
+        matchup_service = MatchupAnalysisService(self.db)
+        matchup_info = matchup_service.analyze_player_upcoming_matchups(player, weeks_ahead=1)
+
+        if "error" in matchup_info or not matchup_info.get("upcoming_matchups"):
+            return {
+                "next_game": None,
+                "outlook": "No synced schedule data for this player's next game yet.",
+                "data_confidence": "insufficient"
+            }
+
+        next_game = matchup_info["upcoming_matchups"][0]
         return {
             "next_game": {
-                "location": "HOME",
-                "opponent_strength": "WEAK",
-                "weather": "DOME",
-                "projected_script": "FAVORABLE"
+                "week": next_game["week"],
+                "opponent": next_game["opponent"],
+                "location": "HOME" if next_game["is_home"] else "AWAY",
+                "opponent_rank_vs_position": next_game.get("opponent_rank_vs_position"),
+                "matchup_rating": next_game.get("matchup_rating")
             },
-            "outlook": "Positive situational factors for upcoming games"
+            "outlook": matchup_info.get("outlook", "Unknown"),
+            "data_confidence": "computed"
         }
 
     async def _generate_cross_player_situational_insights(self, situation_analysis: List[Dict]) -> List[str]:

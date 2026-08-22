@@ -14,6 +14,7 @@ import {
   EyeSlashIcon
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../hooks/useAuth'
+import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import {
   PlayerComparisonChart,
   PlayerComparisonBarChart,
@@ -78,23 +79,27 @@ interface PlayerComparison {
 interface ScheduleMatchup {
   week: number
   opponent: string
-  difficulty_score: number
-  difficulty_rating: 'EASY' | 'MODERATE' | 'DIFFICULT'
+  difficulty_score: number | null
+  difficulty_rating: 'EASY' | 'MODERATE' | 'DIFFICULT' | 'INSUFFICIENT_DATA'
 }
 
 interface ScheduleAnalysisEntry {
   player: { id: number; name: string }
   upcoming_matchups: ScheduleMatchup[]
-  schedule_difficulty: { rank: number; rating: 'EASY' | 'MODERATE' | 'DIFFICULT' }
+  schedule_difficulty: {
+    rank: number | null
+    rating: 'EASY' | 'MODERATE' | 'DIFFICULT' | 'INSUFFICIENT_DATA'
+    data_confidence?: 'computed' | 'heuristic' | 'insufficient'
+  }
   recommendation: string
 }
 
 interface ScheduleAnalysis {
   schedule_analysis: ScheduleAnalysisEntry[]
   summary: {
-    easiest_schedule: string
-    hardest_schedule: string
-    average_difficulty: number
+    easiest_schedule: string | null
+    hardest_schedule: string | null
+    average_difficulty: number | null
   }
 }
 
@@ -119,12 +124,12 @@ interface BreakoutCandidates {
 interface SituationAnalysisEntry {
   player: { id: number; name: string }
   situation_analysis: {
-    home_vs_away: { home_average: number; away_average: number; preference: string }
-    weather_impact: { outdoor_performance: number; dome_performance: number; weather_sensitivity: string }
-    game_script: { leading_games: number; trailing_games: number; close_games?: number; script_preference: string }
+    home_vs_away: { home_average: number | null; away_average: number | null; preference: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
+    weather_impact: { outdoor_performance: number | null; dome_performance: number | null; weather_sensitivity: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
+    game_script: { leading_games: number | null; trailing_games: number | null; close_games?: number | null; script_preference: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
   }
   key_insights: string[]
-  upcoming_context: { outlook: string }
+  upcoming_context: { outlook: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
 }
 
 interface GameSituations {
@@ -457,11 +462,15 @@ export function AdvancedAnalysisPage() {
     )
   }
 
-  // Transform schedule data for charts
+  // Transform schedule data for charts. Matchups with no synced defensive
+  // ranking (difficulty_score/rating null/'INSUFFICIENT_DATA') are excluded
+  // here rather than charted as 0 -- a 0 bar would look like a real "easy"
+  // matchup instead of "we don't know yet."
   const transformScheduleData = (scheduleAnalysis: ScheduleAnalysisEntry[]): ScheduleDifficultyData[] => {
     const data: ScheduleDifficultyData[] = []
     scheduleAnalysis.forEach(analysis => {
       analysis.upcoming_matchups.forEach((matchup) => {
+        if (matchup.difficulty_score === null || matchup.difficulty_rating === 'INSUFFICIENT_DATA') return
         data.push({
           week: matchup.week,
           opponent: matchup.opponent,
@@ -486,18 +495,23 @@ export function AdvancedAnalysisPage() {
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Schedule Summary (Next {weeksAhead} Weeks)</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{scheduleResult.summary.easiest_schedule}</div>
+              <div className="text-2xl font-bold text-green-600">{scheduleResult.summary.easiest_schedule ?? '—'}</div>
               <div className="text-sm text-gray-600">Easiest Schedule</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">{scheduleResult.summary.hardest_schedule}</div>
+              <div className="text-2xl font-bold text-red-600">{scheduleResult.summary.hardest_schedule ?? '—'}</div>
               <div className="text-sm text-gray-600">Hardest Schedule</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{scheduleResult.summary.average_difficulty}</div>
+              <div className="text-2xl font-bold text-blue-600">{scheduleResult.summary.average_difficulty ?? '—'}</div>
               <div className="text-sm text-gray-600">Average Difficulty</div>
             </div>
           </div>
+          {scheduleResult.summary.average_difficulty === null && (
+            <div className="mt-3">
+              <DataConfidenceBadge level="insufficient" label="No synced schedule/defensive-ranking data yet" />
+            </div>
+          )}
         </div>
 
         {/* Schedule Difficulty Charts */}
@@ -522,16 +536,22 @@ export function AdvancedAnalysisPage() {
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-gray-900">{analysis.player.name}</h3>
                 <div className="flex items-center space-x-4">
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
-                    Rank #{analysis.schedule_difficulty.rank}
-                  </span>
-                  <span className={`px-2 py-1 text-sm rounded-full ${
-                    analysis.schedule_difficulty.rating === 'EASY' ? 'bg-green-100 text-green-800' :
-                    analysis.schedule_difficulty.rating === 'MODERATE' ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
-                  }`}>
-                    {analysis.schedule_difficulty.rating}
-                  </span>
+                  {analysis.schedule_difficulty.rank !== null && (
+                    <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                      Rank #{analysis.schedule_difficulty.rank}
+                    </span>
+                  )}
+                  {analysis.schedule_difficulty.rating === 'INSUFFICIENT_DATA' ? (
+                    <DataConfidenceBadge level="insufficient" />
+                  ) : (
+                    <span className={`px-2 py-1 text-sm rounded-full ${
+                      analysis.schedule_difficulty.rating === 'EASY' ? 'bg-green-100 text-green-800' :
+                      analysis.schedule_difficulty.rating === 'MODERATE' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {analysis.schedule_difficulty.rating}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -540,13 +560,17 @@ export function AdvancedAnalysisPage() {
                   <div key={idx} className="text-center p-3 bg-gray-50 rounded-lg">
                     <div className="font-semibold">Week {matchup.week}</div>
                     <div className="text-sm text-gray-600">{matchup.opponent}</div>
-                    <div className={`text-sm font-medium ${
-                      matchup.difficulty_rating === 'EASY' ? 'text-green-600' :
-                      matchup.difficulty_rating === 'MODERATE' ? 'text-yellow-600' :
-                      'text-red-600'
-                    }`}>
-                      {matchup.difficulty_score}/10
-                    </div>
+                    {matchup.difficulty_score === null ? (
+                      <DataConfidenceBadge level="insufficient" className="mt-1" />
+                    ) : (
+                      <div className={`text-sm font-medium ${
+                        matchup.difficulty_rating === 'EASY' ? 'text-green-600' :
+                        matchup.difficulty_rating === 'MODERATE' ? 'text-yellow-600' :
+                        'text-red-600'
+                      }`}>
+                        {matchup.difficulty_score}/10
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -691,33 +715,45 @@ export function AdvancedAnalysisPage() {
     )
   }
 
-  // Transform situation data for charts
+  // Transform situation data for charts. Players whose section came back
+  // "insufficient data" (nulls) are excluded from that chart rather than
+  // charted as 0 -- a 0 bar would look like a real, unfavorable number
+  // instead of "we don't know yet."
   const transformSituationData = (situationAnalysis: SituationAnalysisEntry[]): {
     homeAwayData: SituationalData[],
     weatherData: WeatherDataItem[],
     gameScriptData: GameScriptDataItem[]
   } => {
-    const homeAwayData: SituationalData[] = situationAnalysis.map(analysis => ({
-      situation: 'Home vs Away',
-      home: analysis.situation_analysis.home_vs_away.home_average,
-      away: analysis.situation_analysis.home_vs_away.away_average,
-      player: analysis.player.name
-    }))
+    const homeAwayData: SituationalData[] = situationAnalysis
+      .filter(a => a.situation_analysis.home_vs_away.home_average !== null && a.situation_analysis.home_vs_away.away_average !== null)
+      .map(analysis => ({
+        situation: 'Home vs Away',
+        home: analysis.situation_analysis.home_vs_away.home_average as number,
+        away: analysis.situation_analysis.home_vs_away.away_average as number,
+        player: analysis.player.name
+      }))
 
-    const weatherData = situationAnalysis.map(analysis => ({
-      player: analysis.player.name,
-      outdoor: analysis.situation_analysis.weather_impact.outdoor_performance,
-      dome: analysis.situation_analysis.weather_impact.dome_performance,
-      weatherSensitivity: analysis.situation_analysis.weather_impact.weather_sensitivity
-    }))
+    const weatherData = situationAnalysis
+      .filter(a => a.situation_analysis.weather_impact.outdoor_performance !== null && a.situation_analysis.weather_impact.dome_performance !== null)
+      .map(analysis => ({
+        player: analysis.player.name,
+        outdoor: analysis.situation_analysis.weather_impact.outdoor_performance as number,
+        dome: analysis.situation_analysis.weather_impact.dome_performance as number,
+        weatherSensitivity: analysis.situation_analysis.weather_impact.weather_sensitivity
+      }))
 
-    const gameScriptData = situationAnalysis.map(analysis => ({
-      player: analysis.player.name,
-      leading: analysis.situation_analysis.game_script.leading_games,
-      trailing: analysis.situation_analysis.game_script.trailing_games,
-      close: analysis.situation_analysis.game_script.close_games || 
-             (analysis.situation_analysis.game_script.leading_games + analysis.situation_analysis.game_script.trailing_games) / 2
-    }))
+    const gameScriptData = situationAnalysis
+      .filter(a => a.situation_analysis.game_script.leading_games !== null && a.situation_analysis.game_script.trailing_games !== null)
+      .map(analysis => {
+        const leading = analysis.situation_analysis.game_script.leading_games as number
+        const trailing = analysis.situation_analysis.game_script.trailing_games as number
+        return {
+          player: analysis.player.name,
+          leading,
+          trailing,
+          close: analysis.situation_analysis.game_script.close_games ?? (leading + trailing) / 2
+        }
+      })
 
     return { homeAwayData, weatherData, gameScriptData }
   }
@@ -778,38 +814,59 @@ export function AdvancedAnalysisPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {/* Home vs Away */}
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-gray-900 mb-2">Home vs Away</h4>
-                  <div className="space-y-1 text-sm">
-                    <div>Home: {analysis.situation_analysis.home_vs_away.home_average} pts</div>
-                    <div>Away: {analysis.situation_analysis.home_vs_away.away_average} pts</div>
-                    <div className="font-medium text-blue-600">
-                      Prefers: {analysis.situation_analysis.home_vs_away.preference}
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-900">Home vs Away</h4>
+                    <DataConfidenceBadge level={analysis.situation_analysis.home_vs_away.data_confidence ?? 'insufficient'} />
                   </div>
+                  {analysis.situation_analysis.home_vs_away.home_average !== null ? (
+                    <div className="space-y-1 text-sm">
+                      <div>Home: {analysis.situation_analysis.home_vs_away.home_average} pts</div>
+                      <div>Away: {analysis.situation_analysis.home_vs_away.away_average} pts</div>
+                      <div className="font-medium text-blue-600">
+                        Prefers: {analysis.situation_analysis.home_vs_away.preference}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">Not enough logged home/away games for this player yet.</div>
+                  )}
                 </div>
 
                 {/* Weather Impact */}
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-gray-900 mb-2">Weather Impact</h4>
-                  <div className="space-y-1 text-sm">
-                    <div>Outdoor: {analysis.situation_analysis.weather_impact.outdoor_performance} pts</div>
-                    <div>Dome: {analysis.situation_analysis.weather_impact.dome_performance} pts</div>
-                    <div className="font-medium text-blue-600">
-                      Sensitivity: {analysis.situation_analysis.weather_impact.weather_sensitivity}
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-900">Weather Impact</h4>
+                    <DataConfidenceBadge level={analysis.situation_analysis.weather_impact.data_confidence ?? 'insufficient'} />
                   </div>
+                  {analysis.situation_analysis.weather_impact.outdoor_performance !== null ? (
+                    <div className="space-y-1 text-sm">
+                      <div>Outdoor: {analysis.situation_analysis.weather_impact.outdoor_performance} pts</div>
+                      <div>Dome: {analysis.situation_analysis.weather_impact.dome_performance} pts</div>
+                      <div className="font-medium text-blue-600">
+                        Sensitivity: {analysis.situation_analysis.weather_impact.weather_sensitivity}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No logged weather data for this player yet.</div>
+                  )}
                 </div>
 
                 {/* Game Script */}
                 <div className="bg-gray-50 p-4 rounded-lg">
-                  <h4 className="font-semibold text-gray-900 mb-2">Game Script</h4>
-                  <div className="space-y-1 text-sm">
-                    <div>Leading: {analysis.situation_analysis.game_script.leading_games} pts</div>
-                    <div>Trailing: {analysis.situation_analysis.game_script.trailing_games} pts</div>
-                    <div className="font-medium text-blue-600">
-                      Best: {analysis.situation_analysis.game_script.script_preference}
-                    </div>
+                  <div className="flex items-center justify-between mb-2">
+                    <h4 className="font-semibold text-gray-900">Game Script</h4>
+                    <DataConfidenceBadge level={analysis.situation_analysis.game_script.data_confidence ?? 'insufficient'} />
                   </div>
+                  {analysis.situation_analysis.game_script.leading_games !== null ? (
+                    <div className="space-y-1 text-sm">
+                      <div>Leading: {analysis.situation_analysis.game_script.leading_games} pts</div>
+                      <div>Trailing: {analysis.situation_analysis.game_script.trailing_games} pts</div>
+                      <div className="font-medium text-blue-600">
+                        Best: {analysis.situation_analysis.game_script.script_preference}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-sm text-gray-500">No logged game-script data for this player yet.</div>
+                  )}
                 </div>
               </div>
 
