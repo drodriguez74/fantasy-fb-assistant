@@ -1,3 +1,5 @@
+import { getPositionColor } from '../players/playerDisplay'
+
 interface PickLogPlayer {
   sleeper_id: string
   full_name: string
@@ -17,15 +19,6 @@ export interface PickLogEntry {
 
 interface DraftPickLogProps {
   picks: PickLogEntry[]
-}
-
-const POSITION_COLORS: Record<string, string> = {
-  QB: 'bg-red-100 text-red-800',
-  RB: 'bg-green-100 text-green-800',
-  WR: 'bg-blue-100 text-blue-800',
-  TE: 'bg-purple-100 text-purple-800',
-  K: 'bg-yellow-100 text-yellow-800',
-  DEF: 'bg-gray-100 text-gray-800',
 }
 
 export function DraftPickLog({ picks }: DraftPickLogProps) {
@@ -59,9 +52,7 @@ export function DraftPickLog({ picks }: DraftPickLogProps) {
                   <span className="text-ink-300 shrink-0">&rarr;</span>
                   <span className="font-medium text-ink-900 truncate">{pick.player.full_name}</span>
                   <span
-                    className={`px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
-                      POSITION_COLORS[pick.player.position] || 'bg-ink-100 text-ink-800'
-                    }`}
+                    className={`px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${getPositionColor(pick.player.position)}`}
                   >
                     {pick.player.position}
                   </span>

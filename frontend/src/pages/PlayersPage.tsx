@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline'
 import { players, getErrorMessage } from '../services/api'
 import { PlayerCard } from '../components/players/PlayerCard'
+import { injuryStatusClasses } from '../components/players/playerDisplay'
 import type { Player, Position } from '../types'
 
 interface PaginationInfo {
@@ -13,20 +14,6 @@ interface PaginationInfo {
   has_previous: boolean
   next_page?: number
   previous_page?: number
-}
-
-// Semantic injury-status scale (healthy=green, questionable=amber,
-// out/doubtful/IR=red), matched by keyword so it holds up against the
-// backend's various casings/phrasings rather than one exact string.
-function injuryBadgeClasses(status: string): string {
-  const s = status.toUpperCase()
-  if (s.includes('OUT') || s === 'IR' || s.includes('DOUBTFUL') || s.includes('SUSPENDED') || s.includes('PUP')) {
-    return 'bg-danger-100 text-danger-800'
-  }
-  if (s.includes('QUESTIONABLE')) {
-    return 'bg-warning-100 text-warning-800'
-  }
-  return 'bg-success-100 text-success-800'
 }
 
 export function PlayersPage() {
@@ -197,7 +184,7 @@ export function PlayersPage() {
                         <div>
                           <div className="text-sm font-medium text-ink-900">{player.name}</div>
                           {player.injury_status && player.injury_status.toUpperCase() !== 'HEALTHY' && (
-                            <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-xs font-medium ${injuryBadgeClasses(player.injury_status)}`}>
+                            <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-xs font-medium ${injuryStatusClasses(player.injury_status)}`}>
                               {player.injury_status}
                             </span>
                           )}

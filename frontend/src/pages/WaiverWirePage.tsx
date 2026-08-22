@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { waiverWire, getErrorMessage } from '../services/api'
+import { getPositionColor } from '../components/players/playerDisplay'
 import {
   PlusIcon,
   FireIcon,
@@ -243,16 +244,6 @@ export function WaiverWirePage() {
       watch: 'bg-purple-100 text-purple-800'
     }
     return colors[priority as keyof typeof colors] || 'bg-gray-100 text-gray-800'
-  }
-
-  const getPositionColor = (position: string) => {
-    const colors = {
-      QB: 'bg-red-100 text-red-800',
-      RB: 'bg-green-100 text-green-800',
-      WR: 'bg-blue-100 text-blue-800',
-      TE: 'bg-purple-100 text-purple-800'
-    }
-    return colors[position as keyof typeof colors] || 'bg-gray-100 text-gray-800'
   }
 
   const getTrendIcon = (direction: string) => {

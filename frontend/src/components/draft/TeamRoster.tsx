@@ -1,5 +1,6 @@
 import { TrashIcon } from '@heroicons/react/24/outline'
 import { Player } from '../../types'
+import { getPositionColor } from '../players/playerDisplay'
 
 interface DraftedPlayer extends Player {
   round: number
@@ -19,18 +20,6 @@ export function TeamRoster({
   onResetDraft, 
   showActions = true 
 }: TeamRosterProps) {
-  const getPositionColor = (position: string): string => {
-    const colors: Record<string, string> = {
-      QB: 'bg-red-100 text-red-800',
-      RB: 'bg-green-100 text-green-800',
-      WR: 'bg-blue-100 text-blue-800',
-      TE: 'bg-purple-100 text-purple-800',
-      K: 'bg-yellow-100 text-yellow-800',
-      DEF: 'bg-gray-100 text-gray-800'
-    }
-    return colors[position] || 'bg-gray-100 text-gray-800'
-  }
-
   const getPositionCount = (position: string): number => {
     return draftedPlayers.filter(p => p.position === position).length
   }
