@@ -23,7 +23,15 @@ class Settings(BaseSettings):
     YAHOO_CLIENT_SECRET: Optional[str] = None
     
     SLEEPER_API_URL: str = "https://api.sleeper.app/v1"
-    
+
+    # FantasyPros' real public Consensus Rankings/ADP API (see
+    # fantasypros_service.py for the endpoint/auth details) -- third
+    # consensus-ranking source alongside Sleeper search_rank and ESPN
+    # percent_owned. Optional like OPENAI_API_KEY/ANTHROPIC_API_KEY above:
+    # absent means ConsensusRankingService degrades to its existing
+    # Sleeper/ESPN-only behavior, not a crash.
+    FANTASYPROS_API_KEY: Optional[str] = None
+
     CORS_ORIGINS: list[str] = ["*"]  # Allow all origins for development
 
     # extra="ignore": this app's real per-user ESPN/Yahoo credentials are

@@ -234,7 +234,7 @@ export function PlayersPage() {
                             <span className="text-ink-900 font-medium">#{player.consensus.consensus_rank}</span>
                             <DataConfidenceBadge
                               level="computed"
-                              label={player.consensus.source_count > 1 ? '2 sources' : '1 source'}
+                              label={`${player.consensus.source_count} source${player.consensus.source_count === 1 ? '' : 's'}`}
                             />
                           </div>
                         ) : '-'}

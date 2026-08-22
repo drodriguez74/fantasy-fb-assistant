@@ -12,6 +12,7 @@ from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
 from app.services.historical_data_service import HistoricalDataService
 from app.services.consensus_ranking_service import consensus_ranking_service
+from app.services.fantasypros_service import fantasypros_service
 
 router = APIRouter()
 
@@ -31,8 +32,8 @@ async def get_players(
         description="Sort order: 'rank' (Sleeper search_rank ascending, ADP proxy), "
                      "'bye_week' (ascending, players with no bye week sort last), or "
                      "'consensus' (percentile-blended consensus rank; see "
-                     "ConsensusRankingService -- degrades to Sleeper-only since this "
-                     "endpoint has no ESPN session context). "
+                     "ConsensusRankingService -- degrades to Sleeper (+ FantasyPros, if "
+                     "configured) since this endpoint has no ESPN session context). "
                      "Defaults to the existing relevance sort (rostered players first, then search_rank)."
     ),
     page: int = Query(1, description="Page number (1-based)", ge=1),
@@ -104,12 +105,17 @@ async def get_players(
             players_list.sort(key=bye_week_sort_key)
         elif sort == "consensus":
             # Percentile-blended consensus rank (see ConsensusRankingService).
-            # This endpoint only ever has Sleeper data available, so the
-            # consensus score degrades to Sleeper's search_rank percentile
-            # alone -- computed via the shared service anyway so the
+            # This endpoint has no ESPN session context, so the consensus
+            # score degrades to Sleeper's search_rank percentile alone, or
+            # Sleeper + FantasyPros when a real FANTASYPROS_API_KEY is
+            # configured -- computed via the shared service anyway so the
             # `consensus` field attached to each player is real and
             # inspectable rather than a second, subtly different ranking
-            # definition maintained separately here.
+            # definition maintained separately here. FantasyPros' own call
+            # never raises (see fantasypros_service.get_consensus_rankings_players)
+            # and returns [] when no key is configured or the request
+            # fails, which is itself the degrade path -- no extra
+            # try/except needed here.
             ranking_input = [
                 {
                     "sleeper_id": player["sleeper_id"],
@@ -118,7 +124,12 @@ async def get_players(
                 }
                 for player in players_list
             ]
-            ranked = consensus_ranking_service.rank_players(ranking_input)
+            fantasypros_players = await fantasypros_service.get_consensus_rankings_players(
+                position=(position.upper() if position else "ALL"), scoring="PPR", ranking_type="ADP"
+            )
+            ranked = consensus_ranking_service.rank_players(
+                ranking_input, fantasypros_players=fantasypros_players
+            )
             consensus_by_id = {p["sleeper_id"]: p["consensus"] for p in ranked}
             for player in players_list:
                 player["consensus"] = consensus_by_id.get(player["sleeper_id"])
