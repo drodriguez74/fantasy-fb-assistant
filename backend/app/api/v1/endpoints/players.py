@@ -7,7 +7,7 @@ from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.models.player import Player, Position
 from app.services.sleeper_service import sleeper_service
-# from app.services.ai_service import ai_service # Temporarily commented out due to missing dependencies
+from app.services.ai_service import ai_service
 # from app.services.scraper_service import scraper_service # Temporarily commented out due to missing dependencies
 from app.services.player_data_service import PlayerDataService
 from app.services.historical_data_service import HistoricalDataService
@@ -412,17 +412,16 @@ async def generate_player_analysis(
         }
         
         # Generate AI analysis
-        # ai_analysis = await ai_service.generate_player_analysis( # Temporarily disabled
-        #     player_name=player_name,
-        #     player_data=analysis_data
-        # )
-        ai_analysis = "AI analysis temporarily unavailable. Player analysis will be restored soon."
-        
+        ai_analysis = await ai_service.generate_player_analysis(
+            player_name=player_name,
+            player_data=analysis_data
+        )
+
         return {
             "player_id": player_id,
             "player_name": player_name,
             "ai_analysis": ai_analysis,
-            "generated_at": "2025-08-13T00:00:00Z",
+            "generated_at": datetime.utcnow().isoformat(),
             "analysis_type": "comprehensive"
         }
         
@@ -478,11 +477,10 @@ async def get_quick_player_analysis(
                     "injury_status": player_data.get("injury_status"),
                 }
                 
-                # ai_analysis = await ai_service.generate_player_analysis( # Temporarily disabled
-                #     player_name=player_name,
-                #     player_data=analysis_data
-                # )
-                ai_analysis = "AI analysis temporarily unavailable. Player analysis will be restored soon."
+                ai_analysis = await ai_service.generate_player_analysis(
+                    player_name=player_name,
+                    player_data=analysis_data
+                )
                 transformed_player["ai_analysis"] = ai_analysis
                 
                 # Generate risk level based on analysis
