@@ -8,7 +8,8 @@ from app.models.user import User
 from app.models.player import Player, Position
 from app.services.sleeper_service import sleeper_service
 from app.services.ai_service import ai_service
-# from app.services.scraper_service import scraper_service # Temporarily commented out due to missing dependencies
+# scraper_service.scrape_player_news() is intentionally not imported/used here.
+# See the comment at its call site in get_player() below for why.
 from app.services.player_data_service import PlayerDataService
 from app.services.historical_data_service import HistoricalDataService
 from app.services.consensus_ranking_service import consensus_ranking_service
@@ -61,7 +62,13 @@ async def get_players(
                 if not position and player_position not in fantasy_positions:
                     continue
                 
-                # Transform Sleeper format to our Player model format
+                # Transform Sleeper format to our Player model format. This is a
+                # transient snapshot built fresh from Sleeper's API on every
+                # request (not a persisted row), so there's no real record
+                # creation/update time to report -- use the current time, same
+                # as this file's other on-the-fly-generated timestamps
+                # (generated_at/report_generated_at/comparison_date below).
+                snapshot_time = datetime.utcnow().isoformat()
                 transformed_player = {
                     "id": int(player_id) if player_id.isdigit() else hash(player_id) % 100000,
                     "name": player_data.get("full_name", f"{player_data.get('first_name', '')} {player_data.get('last_name', '')}").strip(),
@@ -77,8 +84,8 @@ async def get_players(
                     "depth_chart_order": player_data.get("depth_chart_order"),
                     "ai_analysis": None,  # Generated on demand
                     "risk_level": None,  # Could be calculated based on injury status
-                    "created_at": "2025-08-13T00:00:00Z",  # Placeholder
-                    "updated_at": "2025-08-13T00:00:00Z"   # Placeholder
+                    "created_at": snapshot_time,
+                    "updated_at": snapshot_time
                 }
                 
                 # Apply position filter
@@ -223,21 +230,44 @@ async def get_player(player_id: str):
         
         # Get player stats
         stats = await sleeper_service.get_player_stats(player_id)
-        
+
         # Get AI analysis
-        # ai_analysis = await ai_service.generate_player_analysis( # Temporarily disabled
-        ai_analysis = "AI analysis temporarily unavailable. Player analysis will be restored soon."
-        
-        # Get recent news
-        # news = await scraper_service.scrape_player_news(player_name) # Temporarily disabled
-        news = []
-        
+        analysis_data = {
+            "player_info": player_data,
+            "recent_stats": stats,
+            "position": player_data.get("position"),
+            "team": player_data.get("team"),
+            "injury_status": player_data.get("injury_status"),
+            "depth_chart_order": player_data.get("depth_chart_order"),
+            "fantasy_positions": player_data.get("fantasy_positions", [])
+        }
+        ai_analysis = await ai_service.generate_player_analysis(
+            player_name=player_name,
+            player_data=analysis_data
+        )
+
+        # Get recent news: scraper_service.scrape_player_news() is deliberately NOT
+        # wired up here. It looks like a real scraper (real httpx/BeautifulSoup
+        # calls against FantasyPros/ESPN/NFL.com for the general waiver/trending
+        # endpoints, and both dependencies are installed -- the old "missing
+        # dependencies" comment above this was stale), but its actual per-player
+        # path calls FantasyContentScraper._search_player_news(), which is an
+        # explicit "Mock implementation" that fabricates a canned string
+        # ("Recent updates and analysis for {player_name}...") and a fake
+        # https://example.com search URL rather than scraping anything real.
+        # Returning that here would present made-up content as real news, which
+        # is worse than admitting we don't have it. A real fix needs an actual
+        # per-player news source (e.g. a real search/RSS integration) wired into
+        # that method before this can be honestly enabled.
+        # TODO: replace with a real per-player news source, then re-enable.
+        news = None
+
         return {
             "id": int(player_id) if player_id.isdigit() else hash(player_id) % 100000,
             "player_data": player_data,
             "stats": stats,
             "ai_analysis": ai_analysis,
-            "recent_news": news[:3],  # Latest 3 news articles
+            "recent_news": news,  # None: no real per-player news source wired in (see comment above)
             "sleeper_id": player_id
         }
     except Exception as e:
@@ -482,7 +512,10 @@ async def get_quick_player_analysis(
         player_data = all_players[player_id]
         player_name = player_data.get("full_name", "Unknown Player")
         
-        # Transform to our format
+        # Transform to our format. Same transient-snapshot reasoning as the list
+        # endpoint above: no persisted row, so created_at/updated_at report when
+        # this snapshot was generated, not a stored record time.
+        snapshot_time = datetime.utcnow().isoformat()
         transformed_player = {
             "id": int(player_id) if player_id.isdigit() else hash(player_id) % 100000,
             "name": player_name,
@@ -498,8 +531,8 @@ async def get_quick_player_analysis(
             "depth_chart_order": player_data.get("depth_chart_order"),
             "ai_analysis": None,
             "risk_level": None,
-            "created_at": "2025-08-13T00:00:00Z",
-            "updated_at": "2025-08-13T00:00:00Z"
+            "created_at": snapshot_time,
+            "updated_at": snapshot_time
         }
         
         # Add AI analysis if requested
