@@ -86,7 +86,9 @@ export const auth = {
   
   getProfile: () => api.get('/auth/me'),
   
-  updateProfile: (data: Record<string, unknown>) => api.put('/auth/me', data),
+  // PUT /users/me (not /auth/me -- there is no PUT under the /auth prefix,
+  // only GET /auth/me; profile updates are handled by users.py).
+  updateProfile: (data: Record<string, unknown>) => api.put('/users/me', data),
 }
 
 // League endpoints
@@ -151,19 +153,6 @@ export const players = {
 
 // Draft endpoints
 export const draft = {
-  startSession: (data: { platform: string; league_id: string; settings?: Record<string, unknown> }) =>
-    api.post('/draft/start', data),
-
-  getRecommendations: (sessionId: string, params?: Record<string, unknown>) =>
-    api.get(`/draft/${sessionId}/recommendations`, { params }),
-  
-  recordPick: (sessionId: string, data: { player_id: number; team_id: string; round: number; pick: number }) =>
-    api.post(`/draft/${sessionId}/picks`, data),
-  
-  getSession: (sessionId: string) => api.get(`/draft/${sessionId}`),
-  
-  endSession: (sessionId: string) => api.post(`/draft/${sessionId}/end`),
-
   // Direct draft recommendations (non-session based)
   getDraftRecommendations: (data: {
     available_players: unknown[];
@@ -187,17 +176,6 @@ export const draft = {
 
   getProjections: (week: number, params?: { season?: string }) =>
     api.get(`/draft/projections/week/${week}`, { params }),
-}
-
-// Content endpoints
-export const content = {
-  getBlogPosts: (params?: { category?: string; page?: number }) =>
-    api.get('/content/blog-posts/', { params }),
-  
-  getBlogPost: (slug: string) => api.get(`/content/blog-posts/${slug}`),
-  
-  generateContent: (data: { topic: string; content_type: string; settings?: Record<string, unknown> }) =>
-    api.post('/content/generate', data),
 }
 
 // Historical data endpoints

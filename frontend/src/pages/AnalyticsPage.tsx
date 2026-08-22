@@ -155,27 +155,19 @@ export function AnalyticsPage() {
       setLoading(true)
       setError('')
       
-      const response = await fetch('/api/v1/analytics/predict/player-performance', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-        },
-        body: JSON.stringify({
-          player_id: selectedPlayerId,
-          weeks_ahead: weeksAhead,
-          model_type: modelType
-        })
+      // Use the shared axios instance (services/api.ts) rather than a raw
+      // relative fetch(): the old '/api/v1/...' path resolved against the
+      // frontend's own dev-server origin, not the backend (see the same fix
+      // applied to runLineupOptimization below).
+      const response = await api.post('/analytics/predict/player-performance', {
+        player_id: selectedPlayerId,
+        weeks_ahead: weeksAhead,
+        model_type: modelType
       })
 
-      if (!response.ok) {
-        throw new Error('Prediction request failed')
-      }
-
-      const data = await response.json()
-      setPredictionResult(data)
+      setPredictionResult(response.data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate prediction')
+      setError(getErrorMessage(err, 'Failed to generate prediction'))
     } finally {
       setLoading(false)
     }
@@ -218,27 +210,19 @@ export function AnalyticsPage() {
       setLoading(true)
       setError('')
       
-      const queryParams = new URLSearchParams()
-      if (correlationPosition) {
-        queryParams.append('position', correlationPosition)
-      }
-      queryParams.append('min_games', '8')
-      
-      const response = await fetch(`/api/v1/analytics/correlations/players?${queryParams}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+      // Use the shared axios instance (services/api.ts) rather than a raw
+      // relative fetch() -- see the comment on runPlayerPrediction above for
+      // why the old relative '/api/v1/...' path never reached the backend.
+      const response = await api.get('/analytics/correlations/players', {
+        params: {
+          position: correlationPosition || undefined,
+          min_games: 8
         }
       })
 
-      if (!response.ok) {
-        throw new Error('Correlation analysis failed')
-      }
-
-      const data = await response.json()
-      setCorrelationResult(data)
+      setCorrelationResult(response.data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to analyze correlations')
+      setError(getErrorMessage(err, 'Failed to analyze correlations'))
     } finally {
       setLoading(false)
     }

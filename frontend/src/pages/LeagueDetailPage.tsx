@@ -159,22 +159,31 @@ export function LeagueDetailPage() {
       const [
         rosterResponse,
         standingsResponse,
-        insightsResponse
+        insightsResponse,
+        waiverResponse,
+        tradeResponse
       ] = await Promise.all([
         api.get(`/leagues/${leagueId}/roster-analysis`),
         api.get(`/leagues/${leagueId}/standings?season=2025`),
-        api.get(`/leagues/${leagueId}/insights`)
+        api.get(`/leagues/${leagueId}/insights`),
+        api.get(`/leagues/${leagueId}/waiver-recommendations`),
+        api.get(`/leagues/${leagueId}/trade-suggestions`)
       ])
 
       // Set league info from roster analysis
       setLeagueInfo(rosterResponse.data.league_info)
       setRosterAnalysis(rosterResponse.data.roster_analysis)
 
+      // Identify "your" team by the real team name this league's roster
+      // analysis was computed for, rather than a hardcoded name -- that
+      // hardcoded name only ever matched one specific test league.
+      const userTeamName: string | undefined = rosterResponse.data.roster_analysis?.team_name
+
       // Set standings data
       const teams: StandingsTeam[] = standingsResponse.data.teams
       setStandingsData({
         teams,
-        user_team_rank: teams.find((team) => team.team_name === "LaMarvelous Saquads")?.rank ?? 0,
+        user_team_rank: teams.find((team) => team.team_name === userTeamName)?.rank ?? 0,
         total_teams: teams.length,
         playoff_teams: 6,
         updated_at: new Date().toISOString()
@@ -183,18 +192,21 @@ export function LeagueDetailPage() {
       // Set insights
       setInsights(insightsResponse.data.insights)
 
-      // Set placeholder data for missing endpoints
+      // Real waiver/trade recommendations from the league analysis service
+      // (these endpoints exist and return real data -- they were previously
+      // replaced with hardcoded empty placeholders here under a comment
+      // that incorrectly called them "missing endpoints").
       setWaiverRecs({
-        recommendations: [],
-        position_needs: {},
-        total_available: 0,
-        updated_at: new Date().toISOString()
+        recommendations: waiverResponse.data.waiver_recommendations?.recommendations ?? [],
+        position_needs: waiverResponse.data.waiver_recommendations?.position_needs ?? {},
+        total_available: waiverResponse.data.waiver_recommendations?.total_available ?? 0,
+        updated_at: waiverResponse.data.waiver_recommendations?.updated_at ?? new Date().toISOString()
       })
 
       setTradeRecs({
-        suggestions: [],
-        trade_deadline: "Week 13",
-        updated_at: new Date().toISOString()
+        suggestions: tradeResponse.data.trade_recommendations?.suggestions ?? [],
+        trade_deadline: tradeResponse.data.trade_recommendations?.trade_deadline ?? "Week 13",
+        updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString()
       })
 
       setMatchupData(null) // No matchup data for now
@@ -658,7 +670,7 @@ export function LeagueDetailPage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {team.team_name || team.name}
-                        {team.team_name === "LaMarvelous Saquads" && (
+                        {team.team_name === rosterAnalysis?.team_name && (
                           <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                             You
                           </span>
