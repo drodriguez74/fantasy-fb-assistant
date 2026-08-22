@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { api, getErrorMessage } from '../services/api'
+import { LeagueScoringSettings } from '../components/leagues/LeagueScoringSettings'
 import {
   ChartBarIcon,
   UserGroupIcon,
@@ -12,7 +13,8 @@ import {
   CheckCircleIcon,
   ClockIcon,
   FireIcon,
-  StarIcon
+  StarIcon,
+  AdjustmentsHorizontalIcon
 } from '@heroicons/react/24/outline'
 
 interface LeagueInfo {
@@ -139,7 +141,7 @@ export function LeagueDetailPage() {
   const navigate = useNavigate()
   const { user } = useAuth()
   
-  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'>('overview')
   const [leagueInfo, setLeagueInfo] = useState<LeagueInfo | null>(null)
   const [rosterAnalysis, setRosterAnalysis] = useState<RosterAnalysis | null>(null)
   const [waiverRecs, setWaiverRecs] = useState<WaiverRecommendation | null>(null)
@@ -285,6 +287,7 @@ export function LeagueDetailPage() {
     { id: 'standings', name: 'Standings', icon: StarIcon },
     { id: 'waiver', name: 'Waiver Wire', icon: FireIcon },
     { id: 'trades', name: 'Trade Center', icon: ArrowsRightLeftIcon },
+    { id: 'scoring', name: 'Scoring', icon: AdjustmentsHorizontalIcon },
   ]
 
   const getGradeColor = (grade: string) => {
@@ -342,7 +345,7 @@ export function LeagueDetailPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades')}
+                onClick={() => setActiveTab(tab.id as 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-blue-500 text-blue-600'
@@ -718,6 +721,20 @@ export function LeagueDetailPage() {
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{matchupData.ai_analysis}</p>
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'scoring' && leagueId && (
+        <div className="space-y-6">
+          {/* leagueId (the route param, not leagueInfo.id) is this app's own
+              UserLeague row id -- what every other call on this page
+              (standings/insights/roster-analysis above) already scopes
+              itself by. leagueInfo.id isn't reliably the same value: for a
+              connected ESPN league, GET /leagues/{id}/roster-analysis
+              overwrites its own league_info.id with ESPN's platform league
+              id instead (see leagues.py), which is not what POST
+              /league-scoring/configure expects for user_league_id. */}
+          <LeagueScoringSettings leagueId={Number(leagueId)} />
         </div>
       )}
     </div>

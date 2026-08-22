@@ -5,13 +5,15 @@ Manages custom scoring settings, bonuses, and league-specific rules.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
-from app.models.league_scoring import LeagueScoring, ScoringPreset, ScoringType
+from app.models.league_scoring import LeagueScoring, ScoringPreset
+from app.models.player import Player
 from app.models.user_league import UserLeague
 from app.services.scoring_calculation_service import ScoringCalculationService
 
@@ -28,6 +30,16 @@ class ScoringConfigRequest(BaseModel):
     passing_int_points: float = -1.0
     passing_300_yard_bonus: float = 0.0
     passing_400_yard_bonus: float = 0.0
+    # Real, independent completion-accuracy scoring (see
+    # app.services.scoring_rules's module docstring -- some real leagues
+    # reward accurate/efficient QBs with e.g. +0.5 per completion, -0.5 per
+    # incompletion, distinct from PPR-style volume scoring). Present on the
+    # LeagueScoring DB model since this feature was first built, but never
+    # exposed on this request model until now -- without these two fields,
+    # a completion-accuracy league could never actually be configured
+    # through this endpoint, only through the DB directly.
+    completion_points: float = 0.0
+    incompletion_points: float = 0.0
     
     # Rushing
     rushing_yards_per_point: float = 10.0
@@ -130,7 +142,7 @@ async def configure_league_scoring(
 
 
 @router.get("/presets")
-async def get_scoring_presets():
+async def get_scoring_presets(db: Session = Depends(get_db)):
     """Get available scoring presets (ESPN, Yahoo, Sleeper defaults)"""
     try:
         scoring_service = ScoringCalculationService(db)
@@ -203,6 +215,14 @@ async def get_league_scoring(
                     "yards_per_point": scoring_config.passing_yards_per_point,
                     "td_points": scoring_config.passing_td_points,
                     "int_points": scoring_config.passing_int_points,
+                    # Real, independent completion-accuracy scoring (see
+                    # ScoringConfigRequest.completion_points/incompletion_points
+                    # above, and app.services.scoring_rules's module
+                    # docstring) -- omitted here before this pass, which
+                    # meant a caller could configure these via POST
+                    # /configure but never see them come back from GET.
+                    "completion_points": scoring_config.completion_points,
+                    "incompletion_points": scoring_config.incompletion_points,
                     "bonuses": {
                         "300_yards": scoring_config.passing_300_yard_bonus,
                         "400_yards": scoring_config.passing_400_yard_bonus
@@ -220,11 +240,13 @@ async def get_league_scoring(
                     "yards_per_point": scoring_config.receiving_yards_per_point,
                     "td_points": scoring_config.receiving_td_points,
                     "reception_points": scoring_config.reception_points,
+                    "target_points": scoring_config.target_points,
                     "bonuses": {
                         "100_yards": scoring_config.receiving_100_yard_bonus,
                         "200_yards": scoring_config.receiving_200_yard_bonus
                     }
-                }
+                },
+                "fumble_lost_points": scoring_config.fumble_lost_points
             }
         }
         

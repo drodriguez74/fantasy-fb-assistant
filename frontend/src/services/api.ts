@@ -249,6 +249,39 @@ export const trade = {
     api.post('/trade/analysis', data),
 }
 
+// Manual league scoring override endpoints (backend/app/api/v1/endpoints/
+// league_scoring.py). A real, hand-entered scoring configuration that takes
+// priority over auto-detected platform scoring rules for the draft
+// assistant (see draft_assistant_service.py's _apply_manual_scoring_override)
+// -- useful for modeling a hypothetical scoring change, a platform without
+// real settings access, or correcting an auto-detected value. `leagueId`
+// throughout is the app's own UserLeague row id (the same id used by the
+// `leagues` endpoints above), not the platform's external league id.
+export interface LeagueScoringConfig {
+  user_league_id: number
+  scoring_type?: 'PPR' | 'Half_PPR' | 'Standard' | 'Custom'
+  reception_points?: number
+  passing_yards_per_point?: number
+  passing_td_points?: number
+  passing_int_points?: number
+  completion_points?: number
+  incompletion_points?: number
+  rushing_yards_per_point?: number
+  rushing_td_points?: number
+  receiving_yards_per_point?: number
+  receiving_td_points?: number
+  target_points?: number
+  fumble_lost_points?: number
+}
+
+export const leagueScoring = {
+  get: (leagueId: number) => api.get(`/league-scoring/league/${leagueId}`),
+
+  configure: (data: LeagueScoringConfig) => api.post('/league-scoring/configure', data),
+
+  getPresets: () => api.get('/league-scoring/presets'),
+}
+
 // In-app notification center endpoints (not device/browser push -- see
 // backend/app/models/notification.py for the scoping rationale)
 export const notifications = {
