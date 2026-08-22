@@ -6,6 +6,7 @@ from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.consensus_ranking_service import consensus_ranking_service
+from app.services.fantasypros_service import fantasypros_service
 from enum import Enum
 import json
 
@@ -316,12 +317,20 @@ class DraftAssistantService:
         player pool -- the same kind of get_all_players() call a Sleeper
         session's own _get_sleeper_draft_state already makes on every
         refresh, so this isn't a new request pattern, just made on ESPN's
-        polling path too -- for a genuine two-source consensus.
+        polling path too -- for a genuine two-source consensus. FantasyPros'
+        real Consensus Rankings/ADP API (see fantasypros_service.py) is
+        fetched here too, for every platform equally -- unlike ESPN's
+        percent_owned, it isn't tied to any specific connected league, so
+        there's no reason to gate it on `platform` the way the Sleeper
+        cross-reference is.
 
         This is enrichment on top of the platform's own draft state, not a
         requirement for the rest of the pipeline: any failure here silently
         falls back to the unranked available_players list rather than
-        breaking recommendations.
+        breaking recommendations. FantasyPros' own call never raises (see
+        fantasypros_service.get_consensus_rankings_players) and returns []
+        when no FANTASYPROS_API_KEY is configured or the request fails,
+        which is itself the degrade path back to Sleeper(+ESPN)-only.
         """
         if not available_players:
             return available_players
@@ -333,7 +342,13 @@ class DraftAssistantService:
                 if isinstance(all_sleeper, dict) and "error" not in all_sleeper:
                     other_source_players = list(all_sleeper.values())
 
-            return consensus_ranking_service.rank_players(available_players, other_source_players)
+            fantasypros_players = await fantasypros_service.get_consensus_rankings_players(
+                position="ALL", scoring="PPR", ranking_type="ADP"
+            )
+
+            return consensus_ranking_service.rank_players(
+                available_players, other_source_players, fantasypros_players=fantasypros_players
+            )
         except Exception:
             return available_players
 

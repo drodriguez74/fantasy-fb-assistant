@@ -9,6 +9,7 @@ from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.user_service import UserService
 from app.services.consensus_ranking_service import consensus_ranking_service
+from app.services.fantasypros_service import fantasypros_service
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 
@@ -146,8 +147,8 @@ async def get_positional_rankings(
     sort: str = Query(
         "search_rank",
         description="'search_rank' (default, Sleeper's own rank) or "
-                     "'consensus' (percentile-blended Sleeper + ESPN consensus rank, "
-                     "see ConsensusRankingService)."
+                     "'consensus' (percentile-blended Sleeper + ESPN + FantasyPros "
+                     "consensus rank, see ConsensusRankingService)."
     )
 ):
     """Get positional rankings for draft preparation"""
@@ -175,14 +176,25 @@ async def get_positional_rankings(
                 position_players.append(player_data)
 
         # This endpoint has no live ESPN league/session context, so the
-        # consensus rank here always degrades to Sleeper's own search_rank
-        # alone (see ConsensusRankingService's single-source-available
-        # behavior) -- it's still computed via the shared service, both so
-        # its output is inspectable (the `consensus` field on every player)
-        # and so a caller passing sort=consensus gets an ordering that's
-        # directly comparable to a future/other consensus-ranked list, not a
-        # second, subtly different definition of "consensus" living here.
-        ranked = consensus_ranking_service.rank_players(position_players)
+        # consensus rank here always degrades to Sleeper (+ FantasyPros, if
+        # a real FANTASYPROS_API_KEY is configured) rather than a genuine
+        # three-source blend that also includes a league's own ESPN
+        # ownership (see ConsensusRankingService's single/two-source-
+        # available behavior) -- it's still computed via the shared service,
+        # both so its output is inspectable (the `consensus` field on every
+        # player) and so a caller passing sort=consensus gets an ordering
+        # that's directly comparable to a future/other consensus-ranked
+        # list, not a second, subtly different definition of "consensus"
+        # living here. FantasyPros' own call never raises -- see
+        # fantasypros_service.get_consensus_rankings_players -- so this is
+        # itself the degrade path when no key is configured or the request
+        # fails, not something that needs its own try/except here.
+        fantasypros_players = await fantasypros_service.get_consensus_rankings_players(
+            position=position.upper(), scoring="PPR", ranking_type="ADP"
+        )
+        ranked = consensus_ranking_service.rank_players(
+            position_players, fantasypros_players=fantasypros_players
+        )
         by_sleeper_id = {p["sleeper_id"]: p["consensus"] for p in ranked}
         for player in position_players:
             player["consensus"] = by_sleeper_id.get(player["sleeper_id"])

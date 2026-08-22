@@ -60,14 +60,17 @@ export type Player = {
 // sources are actually available for this player (see backend's
 // ConsensusRankingService) -- Sleeper's search_rank always, ESPN's
 // percent_owned only when the request has a live ESPN session/league
-// context. `source_count` tells the reader whether this is a genuine
-// multi-source blend or degraded to a single source.
+// context, and FantasyPros' rank_ecr only when the backend has a real
+// FANTASYPROS_API_KEY configured. `source_count` (0-3) tells the reader
+// whether this is a genuine multi-source blend or degraded to fewer
+// sources -- render it dynamically, don't assume a fixed ceiling.
 export interface ConsensusRanking {
   consensus_rank: number
   consensus_score: number
   sources: {
     sleeper_rank?: number
     espn_ownership_pct?: number
+    fantasypros_rank_ecr?: number
   }
   source_count: number
 }

@@ -1,22 +1,26 @@
 """Consensus ADP (average draft position) ranking.
 
-This app currently has exactly two real, live ranking signals available
-without per-user credentials: Sleeper's public player pool (`search_rank`,
-available for essentially every real NFL player -- the baseline/default
-source) and, when a session has a connected ESPN league, that league's own
-`percent_owned` for its available-player pool. Every ranking surface in this
-codebase (the Draft positional-rankings endpoint, the Players list, a live
-ESPN draft session) previously used exactly one of those signals in
-isolation. Nothing here blends them.
+This app blends up to three real, independent ranking signals: Sleeper's
+public player pool (`search_rank`, available for essentially every real NFL
+player -- the baseline/default source), ESPN's `percent_owned` for a
+connected league's available-player pool (only present when a session has a
+live ESPN league), and FantasyPros' real Consensus Rankings/ADP API
+(`rank_ecr`, "expert consensus rank" aggregated across 130+ experts -- only
+present when a FANTASYPROS_API_KEY is configured; see fantasypros_service.py
+for the real endpoint/auth/response shape this was built against). Every
+ranking surface in this codebase (the Draft positional-rankings endpoint, the
+Players list, a live draft session) previously used exactly one signal in
+isolation; nothing here blended them until this service existed.
 
 Blending method
 ----------------
-A player's raw Sleeper rank (1..N, lower is better) and raw ESPN
-`percent_owned` (0..100, higher is better) live on incompatible scales --
-averaging them directly would let whichever source happens to have the
-wider/denser numeric range dominate the result for no principled reason (a
-Sleeper rank of 12 and an ESPN ownership of 94.2 are not "close" or "far"
-from each other in any meaningful sense as raw numbers).
+A player's raw Sleeper rank (1..N, lower is better), raw ESPN
+`percent_owned` (0..100, higher is better), and raw FantasyPros `rank_ecr`
+(1..N, lower is better) all live on incompatible scales -- averaging them
+directly would let whichever source happens to have the wider/denser numeric
+range dominate the result for no principled reason (a Sleeper rank of 12, an
+ESPN ownership of 94.2, and a FantasyPros rank_ecr of 8 are not "close" or
+"far" from each other in any meaningful sense as raw numbers).
 
 Instead, every source is first converted to a **percentile rank within its
 own population** (0..100, 100 = best), which is scale-free and directly
@@ -26,25 +30,30 @@ percentile of the tied group (the standard "fractional rank" tie-break) --
 this matters in particular for ESPN's `percent_owned`, where a long tail of
 truly unrostered players commonly share the exact same 0.0.
 
-When both sources are available for a player, the consensus score is the
-unweighted mean of the two percentiles. FantasyPros' own published
-methodology for "expert consensus rankings" -- the industry-standard
-precedent for what "consensus ADP" means -- is likewise an unweighted
-average across ranked sources; equal weighting is used here for the same
-reason: neither Sleeper's userbase nor a single connected ESPN league's
-ownership numbers has a principled claim to being the more authoritative
-signal, so picking an arbitrary weighting would be less honest than an even
-one, not more precise.
+When two or three sources are available for a player, the consensus score is
+the unweighted mean of whichever percentiles are present. FantasyPros' own
+published methodology for "expert consensus rankings" -- the industry-
+standard precedent for what "consensus ADP" means, and the actual API this
+service now also draws from directly -- is likewise an unweighted average
+across ranked sources; equal weighting is used here for the same reason:
+none of Sleeper's userbase, a single connected ESPN league's ownership
+numbers, or FantasyPros' own expert panel has a principled claim to being
+*more* authoritative than the others, so picking an arbitrary weighting
+would be less honest than an even one, not more precise.
 
 When only one source is available for a player -- the common case, since
-most players in a Sleeper-only session or most ESPN players who don't also
-get name-matched will only ever carry one signal -- the consensus score
-degrades to that single source's percentile rather than being averaged
-against a missing value treated as zero. Treating "no ESPN data for this
-player" as "ESPN rates this player at rock bottom" would systematically and
-wrongly tank the rank of every player outside whatever narrow pool a given
-call happens to have ESPN data for. `source_count` on every result makes
-this degradation visible to callers instead of silently blending it away.
+most players in a Sleeper-only session with no FantasyPros key configured
+will only ever carry one signal -- the consensus score degrades to that
+single source's percentile (or the mean of however many *are* present)
+rather than being averaged against a missing value treated as zero. Treating
+"no ESPN/FantasyPros data for this player" as "that source rates this player
+at rock bottom" would systematically and wrongly tank the rank of every
+player outside whatever narrow pool a given call happens to have that
+source's data for. `source_count` on every result makes this degradation
+visible to callers instead of silently blending it away -- it now ranges
+0..3, not just 0..2, and every caller that surfaces it (e.g.
+DataConfidenceBadge on PlayersPage) reads it dynamically rather than
+assuming a two-source ceiling.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -117,8 +126,8 @@ def _percentile_map(items: List[Tuple[Any, float]], reverse: bool) -> Dict[Any, 
     return result
 
 
-def _blend(sleeper_pct: Optional[float], espn_pct: Optional[float]) -> float:
-    parts = [p for p in (sleeper_pct, espn_pct) if p is not None]
+def _blend(*percentiles: Optional[float]) -> float:
+    parts = [p for p in percentiles if p is not None]
     if not parts:
         return 0.0
     return sum(parts) / len(parts)
@@ -126,15 +135,17 @@ def _blend(sleeper_pct: Optional[float], espn_pct: Optional[float]) -> float:
 
 class ConsensusRankingService:
     """Computes a real, inspectable consensus rank from whichever of
-    Sleeper's search_rank and ESPN's percent_owned are actually available
-    for a given batch of players. See module docstring for the blending
-    method and why it's an unweighted percentile average, not a raw one.
+    Sleeper's search_rank, ESPN's percent_owned, and FantasyPros' rank_ecr
+    are actually available for a given batch of players. See module
+    docstring for the blending method and why it's an unweighted percentile
+    average, not a raw one.
     """
 
     def rank_players(
         self,
         players: List[Dict[str, Any]],
         other_source_players: Optional[List[Dict[str, Any]]] = None,
+        fantasypros_players: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         """Return a new list (same dicts, shallow-copied, plus a
         `consensus` key) sorted best-first by consensus rank.
@@ -153,6 +164,17 @@ class ConsensusRankingService:
         percentile-ranked within that pool, and blended in. Players with no
         match in `other_source_players` simply keep whatever single source
         they already had; they are not penalized for the miss.
+
+        `fantasypros_players`, if given, is FantasyPros' own consensus-
+        rankings player list (see fantasypros_service.get_consensus_rankings_players
+        -- each entry a `{"player_name": ..., "rank_ecr": float, ...}` dict).
+        Unlike Sleeper/ESPN, this is never embedded directly on `players`
+        (it's always a separate real API call) -- it's percentile-ranked
+        within its own population and matched onto `players` by normalized
+        name, exactly like the `other_source_players` cross-reference above.
+        Omitted or empty (no FANTASYPROS_API_KEY configured, or the request
+        failed) degrades cleanly to whichever of Sleeper/ESPN are present,
+        identical to how a missing ESPN source already degrades today.
         """
         own_sleeper_pct = self._percentiles_by_index(players, "search_rank", reverse=False)
         own_espn_pct = self._percentiles_by_index(players, "percent_owned", reverse=True)
@@ -167,10 +189,17 @@ class ConsensusRankingService:
                 other_source_players, "percent_owned", reverse=True
             )
 
+        fantasypros_by_name: Dict[str, Tuple[float, Any]] = {}
+        if fantasypros_players:
+            fantasypros_by_name = self._percentiles_by_name(
+                fantasypros_players, "rank_ecr", reverse=False
+            )
+
         enriched: List[Dict[str, Any]] = []
         for idx, player in enumerate(players):
             sleeper_pct = own_sleeper_pct.get(idx)
             espn_pct = own_espn_pct.get(idx)
+            fantasypros_pct = None
             sources: Dict[str, Any] = {}
 
             if sleeper_pct is not None:
@@ -178,18 +207,26 @@ class ConsensusRankingService:
             if espn_pct is not None:
                 sources["espn_ownership_pct"] = round(player.get("percent_owned", 0.0), 1)
 
-            if other_source_players:
+            if other_source_players or fantasypros_players:
                 name = normalize_player_name(player.get("full_name") or player.get("name"))
                 if name:
-                    if sleeper_pct is None and name in other_sleeper_by_name:
-                        sleeper_pct, raw_rank = other_sleeper_by_name[name]
-                        sources["sleeper_rank"] = raw_rank
-                    if espn_pct is None and name in other_espn_by_name:
-                        espn_pct, raw_pct = other_espn_by_name[name]
-                        sources["espn_ownership_pct"] = round(raw_pct, 1) if raw_pct is not None else None
+                    if other_source_players:
+                        if sleeper_pct is None and name in other_sleeper_by_name:
+                            sleeper_pct, raw_rank = other_sleeper_by_name[name]
+                            sources["sleeper_rank"] = raw_rank
+                        if espn_pct is None and name in other_espn_by_name:
+                            espn_pct, raw_pct = other_espn_by_name[name]
+                            sources["espn_ownership_pct"] = round(raw_pct, 1) if raw_pct is not None else None
+                    if fantasypros_players and name in fantasypros_by_name:
+                        fantasypros_pct, raw_ecr = fantasypros_by_name[name]
+                        sources["fantasypros_rank_ecr"] = raw_ecr
 
-            source_count = (1 if sleeper_pct is not None else 0) + (1 if espn_pct is not None else 0)
-            consensus_score = _blend(sleeper_pct, espn_pct)
+            source_count = (
+                (1 if sleeper_pct is not None else 0)
+                + (1 if espn_pct is not None else 0)
+                + (1 if fantasypros_pct is not None else 0)
+            )
+            consensus_score = _blend(sleeper_pct, espn_pct, fantasypros_pct)
 
             new_player = dict(player)
             new_player["consensus"] = {
@@ -242,7 +279,11 @@ class ConsensusRankingService:
                 continue
             if field == "search_rank" and value >= SLEEPER_UNRANKED_SENTINEL:
                 continue
-            name = normalize_player_name(player.get("full_name") or player.get("name"))
+            # "full_name"/"name" cover Sleeper/ESPN-shaped dicts; "player_name"
+            # is FantasyPros' own field (see fantasypros_service.py).
+            name = normalize_player_name(
+                player.get("full_name") or player.get("name") or player.get("player_name")
+            )
             if not name:
                 continue
             name_by_index[idx] = name
