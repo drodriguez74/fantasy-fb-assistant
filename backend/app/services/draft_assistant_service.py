@@ -105,9 +105,22 @@ class DraftAssistantService:
                 available_players, draft_analysis
             )
             
+            # ai_service.generate_draft_recommendation returns flat
+            # {player_name, position, reasoning, confidence} objects (see its
+            # prompt template) rather than the {player: {...}, reason,
+            # confidence, tier} shape the frontend renders. Reconcile each
+            # recommended name against the real available_players pulled from
+            # Sleeper so the UI gets a real player_id/team/projected_points
+            # where we can find one, instead of crashing on a missing player.
+            top_recommendations = self._enrich_ai_recommendations(
+                ai_recommendations.get("recommendations", [])[:5],
+                available_players,
+                draft_analysis.get("current_round", 1)
+            )
+
             # Combine all recommendations
             recommendations = {
-                "top_recommendations": ai_recommendations.get("recommendations", [])[:5],
+                "top_recommendations": top_recommendations,
                 "value_picks": value_analysis.get("value_picks", [])[:3],
                 "sleeper_picks": value_analysis.get("sleepers", [])[:3],
                 "position_needs": draft_analysis.get("position_needs", []),
@@ -243,58 +256,63 @@ class DraftAssistantService:
             return {"error": f"Failed to analyze team: {str(e)}"}
 
     async def _get_sleeper_draft_state(self, league_id: str) -> Dict[str, Any]:
-        """Get draft state from Sleeper (demo mode with mock data)"""
+        """Get live draft state from Sleeper's real public API.
+
+        Delegates to SleeperService.get_draft_state, which hits Sleeper's
+        actual draft/league endpoints and computes available_players by
+        diffing the full player pool against picks already made. That
+        method's return shape (status, draft_id, current_pick, total_picks,
+        available_players, trending_players, picks, draft_info, league_info)
+        already lines up with what callers in this file expect, so this is a
+        thin pass-through rather than a reshape.
+        """
         try:
-            # For demo purposes, return mock draft state
-            # In production, would call actual Sleeper API
-            return {
-                "status": "drafting",
-                "draft_id": f"draft_{league_id}",
-                "available_players": [],  # Will be populated from database
-                "trending_players": [],
-                "current_pick": 1,
-                "total_picks": 192,  # 12 teams * 16 rounds
-                "picks": [],
-                "draft_info": {
-                    "league_id": league_id,
-                    "settings": {
-                        "teams": 12,
-                        "rounds": 16,
-                        "pick_timer": 90
-                    }
-                },
-                "league_info": {
-                    "name": f"League {league_id}",
-                    "season": "2024"
-                }
-            }
+            return await sleeper_service.get_draft_state(league_id)
         except Exception as e:
             return {"error": str(e)}
 
     async def _get_espn_draft_state(self, league_id: str) -> Dict[str, Any]:
-        """Get draft state from ESPN (demo mode)"""
+        """STUB: ESPN live draft state is not wired to real data yet.
+
+        Real ESPN live-draft polling needs authenticated session cookies
+        (espn_s2 / SWID) exchanged for draft picks via espn_service, which
+        this environment doesn't have configured end-to-end for live pick
+        polling. Rather than fabricate picks/available_players, this
+        explicitly returns an empty/placeholder state so callers (and the
+        frontend) don't mistake it for real data. Wiring this up for real is
+        legitimate follow-up scope, not done in this pass.
+        """
         return {
-            "status": "drafting",
+            "status": "not_implemented",
             "draft_id": f"espn_draft_{league_id}",
             "available_players": [],
             "current_pick": 1,
             "total_picks": 192,
             "picks": [],
             "draft_info": {"league_id": league_id},
-            "league_info": {"name": f"ESPN League {league_id}"}
+            "league_info": {"name": f"ESPN League {league_id}"},
+            "note": "ESPN live draft polling is not implemented yet; this is placeholder data, not a real draft state."
         }
-    
+
     async def _get_yahoo_draft_state(self, league_id: str) -> Dict[str, Any]:
-        """Get draft state from Yahoo (demo mode)"""
+        """STUB: Yahoo live draft state is not wired to real data yet.
+
+        Real Yahoo live-draft polling needs a real OAuth access token via
+        yahoo_service, which isn't configured in this environment. Rather
+        than fabricate picks/available_players, this explicitly returns an
+        empty/placeholder state. Wiring this up for real is legitimate
+        follow-up scope, not done in this pass.
+        """
         return {
-            "status": "drafting", 
+            "status": "not_implemented",
             "draft_id": f"yahoo_draft_{league_id}",
             "available_players": [],
             "current_pick": 1,
             "total_picks": 192,
             "picks": [],
             "draft_info": {"league_id": league_id},
-            "league_info": {"name": f"Yahoo League {league_id}"}
+            "league_info": {"name": f"Yahoo League {league_id}"},
+            "note": "Yahoo live draft polling is not implemented yet; this is placeholder data, not a real draft state."
         }
 
     async def _refresh_draft_state(self, session: Dict[str, Any]) -> Dict[str, Any]:
@@ -404,6 +422,64 @@ class DraftAssistantService:
             "value_picks": value_picks[:5],
             "sleepers": sleepers[:5]
         }
+
+    def _enrich_ai_recommendations(self,
+                                    raw_recommendations: List[Dict[str, Any]],
+                                    available_players: List[Dict[str, Any]],
+                                    current_round: int) -> List[Dict[str, Any]]:
+        """Reshape AI-generated {player_name, position, reasoning, confidence}
+        recommendations into {player, reason, confidence, tier} objects, and
+        attach the real player record (player_id/team/projected_points) when
+        we can match it by name against the live available_players list.
+        """
+        enriched = []
+        # Simple round-based tier as a fallback when we can't derive a
+        # position-ranked tier for an unmatched player.
+        fallback_tier = min(4, ((max(current_round, 1) - 1) // 3) + 1)
+
+        for rec in raw_recommendations:
+            player_name = rec.get("player_name", "")
+            matched = self._find_available_player(player_name, available_players)
+
+            player = {
+                "player_id": matched.get("player_id") if matched else player_name.lower().replace(" ", "_"),
+                "full_name": matched.get("full_name") if matched else (player_name or "Unknown Player"),
+                "position": (matched.get("position") if matched else None) or rec.get("position", ""),
+                "team": matched.get("team") if matched else None,
+                "projected_points": matched.get("projected_points") if matched else None,
+            }
+
+            enriched.append({
+                "player": player,
+                "reason": rec.get("reasoning", ""),
+                "confidence": rec.get("confidence", 50),
+                "tier": fallback_tier
+            })
+
+        return enriched
+
+    def _find_available_player(self, player_name: str, available_players: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Find the real Sleeper player record matching an AI-recommended name."""
+        if not player_name:
+            return None
+
+        target = player_name.strip().lower()
+        if not target:
+            return None
+
+        for player in available_players:
+            full_name = (player.get("full_name") or "").strip().lower()
+            if full_name == target:
+                return player
+
+        # Fall back to a loose substring match in case the AI paraphrased
+        # (e.g. suffixes like "Jr." or "II").
+        for player in available_players:
+            full_name = (player.get("full_name") or "").strip().lower()
+            if full_name and (full_name in target or target in full_name):
+                return player
+
+        return None
 
     def _assign_player_tiers(self, players: List[Dict[str, Any]], position: str) -> Dict[str, List]:
         """Assign players to tiers based on position"""
