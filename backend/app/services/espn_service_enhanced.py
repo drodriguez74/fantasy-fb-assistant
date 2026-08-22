@@ -172,6 +172,94 @@ class ESPNFantasyServiceEnhanced:
             return {"error": f"Failed to get league info: {str(e)}"}
 
     @async_wrapper
+    def get_scoring_and_roster_settings(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> Dict[str, Any]:
+        """Real, granular roster-slot counts and points-per-reception for a
+        league, read directly off espn_api's League.settings object.
+
+        get_league_info's `roster_settings` block above (roster_size /
+        starting_lineup_size) is NOT real per-league data: espn_api's
+        Settings object has no `roster_size` or `starting_lineup_size`
+        attribute at all (verified directly -- `dir(league.settings)` on a
+        real connected league lists no such attributes), so those two
+        `getattr(settings, ..., default)` calls were always silently
+        falling through to the literal default (16/9) for every league,
+        regardless of what that league's roster actually looks like. This
+        method reads what genuinely exists instead:
+          - `position_slot_counts`: a dict of ESPN's real slot labels
+            (QB, RB, WR, TE, 'RB/WR/TE' == FLEX, 'D/ST', K, BE, IR, plus a
+            long tail of zero-count slots for positions this app doesn't
+            support) to how many of that slot the league's real starting
+            lineup + bench carries.
+          - `scoring_format`: a list of {id, abbr, label, points} per-stat
+            scoring rules; statId 53 ("Each reception") is ESPN's actual
+            points-per-reception setting (41 is a rarer alternate used by
+            some leagues, checked as a fallback).
+
+        Returns the same {starters, bench, roster_size,
+        points_per_reception} shape sleeper_service.parse_league_settings
+        produces, so draft_assistant_service can treat both platforms
+        identically. Returns {"error": ...} if the league/settings can't
+        be loaded (e.g. bad credentials) -- callers should fall back to
+        generic behavior rather than fabricate real-looking numbers.
+        """
+        try:
+            league = self._get_league(league_id, season, swid, espn_s2)
+            settings = getattr(league, 'settings', None)
+            if not settings:
+                return {"error": "League settings unavailable"}
+
+            raw_slots = getattr(settings, 'position_slot_counts', {}) or {}
+            # ESPN's slot labels don't match Sleeper's vocabulary 1:1;
+            # normalize the two this app actually distinguishes so
+            # downstream roster-needs logic doesn't need to know which
+            # platform produced the data. Bench/IR/empty/unused-position
+            # slots are handled generically below rather than enumerated.
+            label_map = {"D/ST": "DEF", "RB/WR/TE": "FLEX"}
+            starters: Dict[str, int] = {}
+            bench = 0
+            for label, count in raw_slots.items():
+                if not count:
+                    continue
+                if label == "BE":
+                    bench += count
+                    continue
+                if label in ("IR", "", "P", "HC"):
+                    # Injured-reserve/punter/head-coach slots aren't real
+                    # draftable starting need for this app's position set.
+                    continue
+                canonical = label_map.get(label, label)
+                starters[canonical] = starters.get(canonical, 0) + count
+
+            scoring_format = getattr(settings, 'scoring_format', []) or []
+            points_per_reception = None
+            for item in scoring_format:
+                if item.get('id') == 53:  # "Each reception" -- the real PPR knob
+                    points_per_reception = float(item.get('points') or 0.0)
+                    break
+            if points_per_reception is None:
+                for item in scoring_format:
+                    if item.get('id') == 41:  # rarer alternate ("Receptions")
+                        points_per_reception = float(item.get('points') or 0.0)
+                        break
+            if points_per_reception is None:
+                # Neither scoring item is present in ESPN's response, which
+                # means this league doesn't override reception scoring --
+                # i.e. it's genuinely 0 points per reception, not unknown.
+                points_per_reception = 0.0
+
+            return {
+                "starters": starters,
+                "bench": bench,
+                "roster_size": sum(raw_slots.values()),
+                "points_per_reception": points_per_reception,
+                "scoring_type": getattr(settings, 'scoring_type', 'STANDARD'),
+                "source": "espn",
+            }
+        except Exception as e:
+            logger.error(f"Error getting scoring/roster settings: {str(e)}")
+            return {"error": f"Failed to get scoring/roster settings: {str(e)}"}
+
+    @async_wrapper
     def get_league_teams(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> List[Dict[str, Any]]:
         """Get all teams in the ESPN league"""
         try:

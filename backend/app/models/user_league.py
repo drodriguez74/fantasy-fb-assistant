@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Boolean, ForeignKey, Enum, Text, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from app.db.base import Base
@@ -30,6 +30,25 @@ class UserLeague(Base):
     season = Column(Integer, default=2024)
     scoring_format = Column(String)  # PPR, Half-PPR, Standard
     league_size = Column(Integer)
+
+    # Real, granular roster-slot and scoring settings for this league, as
+    # extracted by sleeper_service.parse_league_settings /
+    # espn_service_enhanced.get_scoring_and_roster_settings -- the draft
+    # assistant's roster-needs and value-scoring logic reads these instead
+    # of the generic QB1/RB2/WR2/TE1/K1/DEF1/Standard-scoring shape it used
+    # to apply to every league (see draft_assistant_service.py's
+    # FALLBACK_ROSTER_REQUIREMENTS for what that fallback still looks like
+    # when these are null). Stored as a JSON string rather than a
+    # normalized table: the shape is read as a whole by the draft
+    # assistant, not queried by individual field, and its keys differ by
+    # platform (ESPN's real slot labels vs Sleeper's). Schema is additive
+    # here; actually populating these at connect-time (leagues.py's
+    # /espn/connect, /sleeper equivalents) is a separate follow-up not
+    # done in this pass -- the live draft assistant derives this data
+    # fresh from the platform on every session instead of depending on it
+    # being persisted first.
+    roster_positions = Column(Text)  # JSON: {"starters": {...}, "bench": N, "roster_size": N}
+    points_per_reception = Column(Float)  # real per-reception scoring value (0.0 / 0.5 / 1.0 / custom)
     
     # User role and status
     is_commissioner = Column(Boolean, default=False)
