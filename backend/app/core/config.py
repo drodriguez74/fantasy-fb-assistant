@@ -26,7 +26,12 @@ class Settings(BaseSettings):
     
     CORS_ORIGINS: list[str] = ["*"]  # Allow all origins for development
 
-    model_config = SettingsConfigDict(env_file=".env")
+    # extra="ignore": this app's real per-user ESPN/Yahoo credentials are
+    # stored in the database (UserLeague rows), not here -- but a .env can
+    # reasonably carry extra developer-local values (e.g. for manual
+    # verification scripts) without crashing the entire app on import, which
+    # is what pydantic-settings' default extra="forbid" does.
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
 
 settings = Settings()
