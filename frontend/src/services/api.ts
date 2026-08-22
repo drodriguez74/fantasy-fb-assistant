@@ -271,4 +271,17 @@ export const trade = {
     api.post('/trade/analysis', data),
 }
 
+// In-app notification center endpoints (not device/browser push -- see
+// backend/app/models/notification.py for the scoping rationale)
+export const notifications = {
+  list: (params?: { page?: number; page_size?: number; unread_only?: boolean }) =>
+    api.get('/notifications/', { params }),
+
+  getUnreadCount: () => api.get('/notifications/unread-count'),
+
+  markRead: (notificationId: number) => api.post(`/notifications/${notificationId}/read`),
+
+  markAllRead: () => api.post('/notifications/read-all'),
+}
+
 export default api

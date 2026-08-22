@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import clsx from 'clsx'
 import { Menu, Transition } from '@headlessui/react'
 import { useAuth } from '../../hooks/useAuth'
+import { NotificationBell } from './NotificationBell'
 import {
   UserIcon,
   ArrowRightOnRectangleIcon,
@@ -121,6 +122,7 @@ export function Navbar() {
           <div className="hidden md:flex items-center space-x-4">
             {user ? (
               <>
+                <NotificationBell />
                 <div className="flex items-center space-x-2 min-w-0">
                   <UserIcon className="h-5 w-5 text-ink-400 flex-shrink-0" />
                   <span className="text-sm font-medium text-ink-700 truncate max-w-[10rem]">
@@ -145,7 +147,8 @@ export function Navbar() {
             )}
           </div>
 
-          <div className="flex items-center md:hidden">
+          <div className="flex items-center gap-1 md:hidden">
+            {user && <NotificationBell />}
             <button
               type="button"
               onClick={() => setMobileMenuOpen((prev) => !prev)}
