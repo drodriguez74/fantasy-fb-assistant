@@ -123,7 +123,7 @@ export const leagues = {
 
 // Players endpoints
 export const players = {
-  getAll: (params?: { position?: string; team?: string; sort?: 'rank' | 'bye_week'; page?: number; page_size?: number }) =>
+  getAll: (params?: { position?: string; team?: string; sort?: 'rank' | 'bye_week' | 'consensus'; page?: number; page_size?: number }) =>
     api.get('/players/', { params }),
   
   getFromDatabase: (params?: { 

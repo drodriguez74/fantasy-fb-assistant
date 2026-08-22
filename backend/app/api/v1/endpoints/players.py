@@ -11,6 +11,7 @@ from app.services.ai_service import ai_service
 # from app.services.scraper_service import scraper_service # Temporarily commented out due to missing dependencies
 from app.services.player_data_service import PlayerDataService
 from app.services.historical_data_service import HistoricalDataService
+from app.services.consensus_ranking_service import consensus_ranking_service
 
 router = APIRouter()
 
@@ -19,7 +20,7 @@ router = APIRouter()
 # way so unranked players sort to the bottom instead of the top.
 _UNRANKED_SENTINEL = 9999999
 
-_VALID_SORTS = ("rank", "bye_week")
+_VALID_SORTS = ("rank", "bye_week", "consensus")
 
 
 @router.get("/")
@@ -27,8 +28,11 @@ async def get_players(
     position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE, K, DEF)"),
     sort: Optional[str] = Query(
         None,
-        description="Sort order: 'rank' (Sleeper search_rank ascending, ADP proxy) or "
-                     "'bye_week' (ascending, players with no bye week sort last). "
+        description="Sort order: 'rank' (Sleeper search_rank ascending, ADP proxy), "
+                     "'bye_week' (ascending, players with no bye week sort last), or "
+                     "'consensus' (percentile-blended consensus rank; see "
+                     "ConsensusRankingService -- degrades to Sleeper-only since this "
+                     "endpoint has no ESPN session context). "
                      "Defaults to the existing relevance sort (rostered players first, then search_rank)."
     ),
     page: int = Query(1, description="Page number (1-based)", ge=1),
@@ -98,6 +102,28 @@ async def get_players(
                 return (bye_week is None, bye_week if bye_week is not None else 0)
 
             players_list.sort(key=bye_week_sort_key)
+        elif sort == "consensus":
+            # Percentile-blended consensus rank (see ConsensusRankingService).
+            # This endpoint only ever has Sleeper data available, so the
+            # consensus score degrades to Sleeper's search_rank percentile
+            # alone -- computed via the shared service anyway so the
+            # `consensus` field attached to each player is real and
+            # inspectable rather than a second, subtly different ranking
+            # definition maintained separately here.
+            ranking_input = [
+                {
+                    "sleeper_id": player["sleeper_id"],
+                    "full_name": all_players.get(player["sleeper_id"], {}).get("full_name", player["name"]),
+                    "search_rank": all_players.get(player["sleeper_id"], {}).get("search_rank"),
+                }
+                for player in players_list
+            ]
+            ranked = consensus_ranking_service.rank_players(ranking_input)
+            consensus_by_id = {p["sleeper_id"]: p["consensus"] for p in ranked}
+            for player in players_list:
+                player["consensus"] = consensus_by_id.get(player["sleeper_id"])
+
+            players_list.sort(key=lambda player: player["consensus"]["consensus_rank"])
         else:
             # Default: sort by relevance (players with teams first, then by search rank)
             def sort_key(player):
