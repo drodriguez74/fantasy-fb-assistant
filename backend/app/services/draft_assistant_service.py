@@ -6,6 +6,7 @@ from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.consensus_ranking_service import consensus_ranking_service
+from app.services.scoring_rules import calculate_points_from_stats, describe_scoring_rules
 from enum import Enum
 import json
 
@@ -423,6 +424,14 @@ class DraftAssistantService:
                     **player,
                     "full_name": player.get("name", "Unknown Player"),
                     "ownership": player.get("percent_owned", 0.0),
+                    # Tags this record as ESPN-sourced so
+                    # _calculate_player_values knows NOT to layer a raw-stat
+                    # scoring-rules recalculation on top of `projected_points`
+                    # here -- ESPN already computes that figure server-side
+                    # using this league's real scoring settings (see that
+                    # method's docstring), so recalculating from raw stats
+                    # would double-count.
+                    "platform": "espn",
                 }
                 for player in raw_available
                 if isinstance(player, dict) and "error" not in player
@@ -562,6 +571,15 @@ class DraftAssistantService:
                 if league_settings.get("source") != "fallback_standard"
                 else None
             )
+            # Same honesty rule as points_per_reception above: only pass the
+            # real, connected-league scoring_rules dict when we actually
+            # have one, never the fallback_standard placeholder as if it
+            # were confirmed real data.
+            scoring_rules = (
+                league_settings.get("scoring_rules")
+                if league_settings.get("source") != "fallback_standard"
+                else None
+            )
 
             # Generate recommendations using AI service
             recommendations = await ai_service.generate_draft_recommendation(
@@ -569,7 +587,8 @@ class DraftAssistantService:
                 team_needs=draft_analysis.get("position_needs", []),
                 draft_position=draft_analysis.get("current_round", 1),
                 scoring_format=context["scoring_format"],
-                points_per_reception=points_per_reception
+                points_per_reception=points_per_reception,
+                scoring_rules=scoring_rules
             )
 
             return recommendations
@@ -590,35 +609,55 @@ class DraftAssistantService:
         `receptions * points_per_reception` ONLY when the player record
         carries a real, not-yet-scored reception count under
         `projected_receptions` -- i.e. a raw stat count, not a number some
-        platform already ran through its own scoring rules.
+        platform already ran through its own scoring rules. The same
+        raw-count-times-rate approach is generalized below to the rest of
+        the league's real scoring rules (completions/incompletions/
+        attempts, passing/rushing/receiving yards and TDs, interceptions,
+        fumbles lost -- see app.services.scoring_rules) via a
+        `projected_stat_breakdown` field, whenever a player record
+        legitimately carries one.
 
         Neither platform this app currently reads available_players from
-        reliably supplies that raw ingredient today, for two different
+        reliably supplies raw per-stat ingredients today, for two different
         reasons -- both verified directly rather than assumed:
           - ESPN (espn_service_enhanced, via espn_api): a player's
-            `projected_points` is computed server-side by ESPN for the
-            specific connected League object, using that league's own real
-            scoring settings -- it already reflects real PPR/Half-PPR/
-            Standard scoring. Re-adding a reception bonus on top of it here
-            would double-count reception value, so ESPN player records are
-            deliberately NOT given a `projected_receptions` field (see
-            espn_service_enhanced._format_player) that would feed this path.
+            `projected_points` (sourced from `Player.projected_total_points`
+            -- see espn_service_enhanced._format_player) is computed
+            server-side by ESPN for the specific connected League object,
+            using that league's own real scoring settings -- it already
+            reflects real PPR/Half-PPR/Standard scoring AND every other
+            real scoring category (completions, INTs, yardage, etc), not
+            just receptions. Re-deriving any of that from raw stats here
+            would double-count. This is exactly why ESPN player records
+            built by _get_espn_draft_state are tagged `"platform": "espn"`
+            -- the loop below explicitly skips the recalculation path for
+            them, on top of the fact that they're deliberately NOT given a
+            `projected_receptions`/`projected_stat_breakdown` field (ESPN's
+            real per-stat raw projections DO exist, nested at
+            `player["stats"][0]["projected_breakdown"]` --
+            espn_api.football.player.Player.stats -- but are intentionally
+            left there, unsurfaced at the top level, rather than wired into
+            this recalculation and risking double-counting against
+            `projected_total_points`).
           - Sleeper's public player-metadata endpoint (players/nfl -- the
             only one available_players is built from) carries no stats or
             projections at all: a real "Tyreek Hill" record pulled live
             from api.sleeper.app/v1/players/nfl has no points/receptions
             field whatsoever, only bio metadata (name/position/team/etc).
-            There is nothing honest to adjust there yet.
+            There is nothing honest to adjust there yet -- for receptions
+            or for any other category.
 
         This still applies the real adjustment whenever
-        `projected_receptions` genuinely is present on a player record, so
-        it's correct today for any record shaped that way and
-        forward-compatible if either platform's player enrichment adds one
-        later -- rather than a no-op that quietly never fires regardless of
-        what data eventually shows up.
+        `projected_receptions` / `projected_stat_breakdown` genuinely is
+        present on a non-ESPN player record, so it's correct today for any
+        record shaped that way and forward-compatible if a platform's
+        player enrichment adds real raw stats later -- rather than a no-op
+        that quietly never fires regardless of what data eventually shows
+        up.
         """
         league_settings = draft_analysis.get("league_settings") or {}
         points_per_reception = league_settings.get("points_per_reception") or 0.0
+        scoring_rules = league_settings.get("scoring_rules")
 
         value_picks = []
         sleepers = []
@@ -635,6 +674,20 @@ class DraftAssistantService:
             receptions = player.get("projected_receptions")
             if points_per_reception and receptions:
                 effective_points = projected_points + (receptions * points_per_reception)
+
+            # Full scoring-rules recalculation (completions/incompletions,
+            # attempts, INT, passing/rushing/receiving yards & TDs, fumbles
+            # lost) -- fires only for a player record that (a) carries real
+            # raw per-stat season projections under `projected_stat_breakdown`
+            # and (b) is NOT an ESPN record, since ESPN's own
+            # `projected_points` already legitimately reflects the league's
+            # complete real scoring rules (see docstring). Replaces, rather
+            # than adds to, `effective_points` -- the raw breakdown is a
+            # full per-stat picture, not an incremental adjustment like the
+            # reception-only case above.
+            raw_stat_breakdown = player.get("projected_stat_breakdown")
+            if scoring_rules and raw_stat_breakdown and player.get("platform") != "espn":
+                effective_points = calculate_points_from_stats(raw_stat_breakdown, scoring_rules)
 
             # Value pick: high projected points, lower ownership
             value_score = effective_points * (100 - ownership) / 100

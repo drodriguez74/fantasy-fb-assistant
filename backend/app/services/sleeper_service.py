@@ -1,6 +1,7 @@
 import httpx
 from typing import Dict, List, Optional, Any
 from app.core.config import settings
+from app.services.scoring_rules import scoring_rules_from_sleeper
 import asyncio
 from datetime import datetime
 
@@ -309,6 +310,14 @@ class SleeperService:
         ESPN, so draft_assistant_service can treat both platforms
         identically instead of assuming one generic roster/scoring shape
         for every connected league.
+
+        Also attaches `scoring_rules`, the full canonical cross-platform
+        scoring-rules shape (see app.services.scoring_rules) built from
+        this same `scoring_settings` dict -- Sleeper's real per-league
+        scoring covers far more than points-per-reception (verified live:
+        `pass_cmp`/`pass_att`/`pass_int`/`rush_yd`/`rec_yd`/etc are all
+        real, independent keys), and this surfaces the rest of it instead
+        of discarding everything but `rec`.
         """
         if not isinstance(league_info, dict) or "error" in league_info or not league_info:
             return {"error": "Real league settings unavailable"}
@@ -335,6 +344,7 @@ class SleeperService:
             "bench": bench,
             "roster_size": len(raw_positions),
             "points_per_reception": points_per_reception,
+            "scoring_rules": scoring_rules_from_sleeper(scoring_settings),
             "source": "sleeper",
         }
 
