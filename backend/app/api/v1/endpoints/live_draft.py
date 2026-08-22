@@ -111,6 +111,73 @@ async def start_draft_session(
                 "season": espn_league.season or 2025,
             }
 
+        # Yahoo needs a real per-user OAuth access token to read a league.
+        # Those live on the caller's own UserLeague row, written by the
+        # real Yahoo connect flow (POST /leagues/yahoo/connect ->
+        # UserLeague.yahoo_access_token/yahoo_refresh_token/
+        # yahoo_token_expires_at, see leagues.py) -- looked up here the
+        # same way the ESPN branch above looks up swid/espn_s2, rather than
+        # trusting anything the client could pass in the request body.
+        # Yahoo tokens expire in ~1hr (unlike ESPN's long-lived cookies),
+        # so an expired token is rejected honestly right here at session
+        # start -- the same "expired == absent, tell the user to
+        # reconnect" check league_management_service._get_yahoo_token and
+        # leagues.py's own GET .../analysis /.../matchups endpoints already
+        # use -- rather than letting the session start and fail later with
+        # a cryptic 401 from Yahoo's API.
+        if draft_platform == DraftPlatform.YAHOO:
+            user_service = UserService(db)
+            yahoo_league = user_service.get_user_league_by_platform_id(
+                user_id=current_user.id,
+                platform="yahoo",
+                league_id=league_id
+            )
+
+            if not yahoo_league:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No Yahoo league connected for this league ID. "
+                        "Connect your Yahoo account first from the Leagues "
+                        "page, then start the draft session again."
+                    )
+                )
+
+            if not yahoo_league.yahoo_access_token:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Your Yahoo connection is missing an access token. "
+                        "Reconnect your Yahoo account from the Leagues "
+                        "page, then start the draft session again."
+                    )
+                )
+
+            if yahoo_league.yahoo_token_expires_at and yahoo_league.yahoo_token_expires_at < datetime.utcnow():
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "Your Yahoo connection has expired. Reconnect your "
+                        "Yahoo account from the Leagues page, then start "
+                        "the draft session again."
+                    )
+                )
+
+            scoring_format = yahoo_league.scoring_format or scoring_format
+            league_size = yahoo_league.league_size or league_size
+            platform_credentials = {
+                "access_token": yahoo_league.yahoo_access_token,
+                "expires_at": yahoo_league.yahoo_token_expires_at,
+            }
+            # Yahoo's API addresses a league by its composite league_key
+            # (e.g. "449.l.12345"), not the bare numeric league_id this
+            # endpoint receives from the frontend's league picker -- see
+            # draft_assistant_service._get_yahoo_draft_state's docstring.
+            # Prefer the stored league_key (set at connect time by POST
+            # /leagues/yahoo/connect); fall back to league_id if it's ever
+            # missing rather than failing the session outright.
+            league_id = yahoo_league.league_key or league_id
+
         result = await draft_assistant.start_draft_session(
             platform=draft_platform,
             league_id=league_id,
