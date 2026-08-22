@@ -2,6 +2,21 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { api, getErrorMessage } from '../services/api'
 
+// The live-draft router is mounted at /draft/live-draft (see
+// backend/app/api/v1/router.py), not /live-draft — every call below has to
+// include that prefix or it 404s against the real backend.
+const LIVE_DRAFT_API_PREFIX = '/draft/live-draft'
+
+// api.ts hardcodes its axios baseURL to http://localhost:8000/api/v1 (no env
+// var / relative-origin derivation exists to reuse here), so mirror that
+// same origin for the WebSocket instead of a second, independent hardcode
+// that could drift from it.
+function liveDraftWsUrl(sessionId: string): string {
+  const httpBase = api.defaults.baseURL || 'http://localhost:8000/api/v1'
+  const wsBase = httpBase.replace(/^http/, 'ws')
+  return `${wsBase}${LIVE_DRAFT_API_PREFIX}/ws/${sessionId}`
+}
+
 interface DraftSession {
   session_id: string
   platform: string
@@ -34,7 +49,7 @@ interface TeamAnalysis {
 }
 
 type DraftWebSocketMessage =
-  | { type: 'recommendations_update'; data: { recommendations: DraftRecommendation[] } }
+  | { type: 'recommendations_update'; data: { top_recommendations: DraftRecommendation[] } }
   | { type: 'pick_update' }
   | { type: 'error'; message: string }
 
@@ -73,8 +88,7 @@ export function LiveDraftPage() {
       wsRef.current.close()
     }
 
-    const wsUrl = `ws://localhost:8000/api/v1/live-draft/ws/${sessionId}`
-    wsRef.current = new WebSocket(wsUrl)
+    wsRef.current = new WebSocket(liveDraftWsUrl(sessionId))
 
     wsRef.current.onopen = () => {
       setWsConnected(true)
@@ -100,7 +114,7 @@ export function LiveDraftPage() {
   const handleWebSocketMessage = (data: DraftWebSocketMessage) => {
     switch (data.type) {
       case 'recommendations_update':
-        setRecommendations(data.data.recommendations || [])
+        setRecommendations(data.data.top_recommendations || [])
         break
       case 'pick_update':
         fetchDraftData()
@@ -129,17 +143,21 @@ export function LiveDraftPage() {
         league_size: selectedLeague.league_size
       }
 
-      const response = await api.post('/live-draft/start-session', draftSettings)
+      const response = await api.post(`${LIVE_DRAFT_API_PREFIX}/start-session`, draftSettings)
       const session = response.data
       
       setCurrentSession(session)
       setIsConnected(true)
-      
+
       // Connect WebSocket
       connectWebSocket(session.session_id)
-      
-      // Load initial data
-      await fetchDraftData()
+
+      // Load initial data. setCurrentSession above doesn't update
+      // `currentSession` synchronously (React batches state updates), so
+      // fetchDraftData's own read of that state would still see the
+      // pre-session null and bail out immediately. Pass the session we just
+      // got back explicitly so the very first load actually fires.
+      await fetchDraftData(session)
 
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to start draft session'))
@@ -149,20 +167,40 @@ export function LiveDraftPage() {
   }
 
   // Fetch current draft data
-  const fetchDraftData = async () => {
-    if (!currentSession) return
+  const fetchDraftData = async (session: DraftSession | null = currentSession) => {
+    if (!session) return
 
     try {
       const [recsResponse, boardResponse, analysisResponse] = await Promise.all([
-        api.get(`/live-draft/recommendations/${currentSession.session_id}`),
-        api.get(`/live-draft/draft-board/${currentSession.session_id}`),
-        api.get(`/live-draft/team-analysis/${currentSession.session_id}`)
+        api.get(`${LIVE_DRAFT_API_PREFIX}/recommendations/${session.session_id}`),
+        api.get(`${LIVE_DRAFT_API_PREFIX}/draft-board/${session.session_id}`),
+        api.get(`${LIVE_DRAFT_API_PREFIX}/team-analysis/${session.session_id}`)
       ])
 
-      setRecommendations(recsResponse.data.recommendations || [])
-      setDraftBoard(boardResponse.data.available_players || [])
-      setUserRoster(analysisResponse.data.current_roster || [])
-      setTeamAnalysis(analysisResponse.data.team_analysis || null)
+      setRecommendations(recsResponse.data.top_recommendations || [])
+
+      // draft-board groups players by position (draft_board.QB.players, etc);
+      // flatten it into the single list this page renders.
+      const draftBoardByPosition = boardResponse.data.draft_board || {}
+      const flatBoard: Player[] = Object.values(draftBoardByPosition).flatMap(
+        (entry: unknown) => ((entry as { players?: Player[] })?.players) || []
+      )
+      setDraftBoard(flatBoard)
+
+      // team-analysis's roster is a list of {player, pick_number, round,
+      // timestamp} picks, not bare Player objects.
+      const roster: Array<{ player: Player }> = analysisResponse.data.roster || []
+      setUserRoster(roster.map((pick) => pick.player).filter(Boolean))
+
+      // team-analysis's own "team_analysis" field is a free-text AI
+      // narrative string, not the {roster_needs, next_best_pick} shape this
+      // page renders — build that from the real structured fields the
+      // endpoint does return instead.
+      setTeamAnalysis({
+        roster_needs: analysisResponse.data.positional_needs?.top_needs || [],
+        positional_strength: {},
+        next_best_pick: analysisResponse.data.next_pick_suggestions?.[0] || ''
+      })
 
     } catch (err) {
       console.error('Failed to fetch draft data:', err)
@@ -174,7 +212,7 @@ export function LiveDraftPage() {
     if (!currentSession) return
 
     try {
-      await api.post('/live-draft/update-pick', {
+      await api.post(`${LIVE_DRAFT_API_PREFIX}/update-pick`, {
         session_id: currentSession.session_id,
         player_picked: player
       })
@@ -190,7 +228,7 @@ export function LiveDraftPage() {
     if (!currentSession) return
 
     try {
-      await api.delete(`/live-draft/session/${currentSession.session_id}`)
+      await api.delete(`${LIVE_DRAFT_API_PREFIX}/session/${currentSession.session_id}`)
       setCurrentSession(null)
       setIsConnected(false)
       setRecommendations([])

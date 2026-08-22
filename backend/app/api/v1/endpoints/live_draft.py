@@ -1,14 +1,24 @@
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, Depends
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
+from app.services.draft_assistant_service import draft_assistant, DraftPlatform
+from app.services.espn_service import espn_service
+from app.services.yahoo_service import yahoo_service
 from datetime import datetime
+from pathlib import Path
 import asyncio
 import json
 
 router = APIRouter()
+
+# backend/ root, computed relative to this file rather than hardcoded to a
+# specific developer machine, so the "use the user's already-connected ESPN
+# league" convenience below works from any checkout/worktree.
+_BACKEND_ROOT = Path(__file__).resolve().parents[4]
+_CONNECTED_LEAGUE_FILE = _BACKEND_ROOT / "connected_league.json"
 
 
 class StartDraftRequest(BaseModel):
@@ -21,7 +31,11 @@ class StartDraftRequest(BaseModel):
 
 class UpdatePickRequest(BaseModel):
     session_id: str
-    player_picked: Dict[str, str]  # player info
+    # Real player records (from Sleeper's raw player pool, or an AI
+    # recommendation) commonly carry numeric/null fields (projected_points,
+    # a missing team for free agents, etc). Dict[str, str] rejected any of
+    # those with a 422, so this accepts arbitrary JSON-serializable values.
+    player_picked: Dict[str, Any]
 
 
 class ConnectionManager:
@@ -51,52 +65,56 @@ manager = ConnectionManager()
 async def start_draft_session(request: StartDraftRequest):
     """Start a new live draft assistant session for 2025 season"""
     try:
-        # Load real connection data if available
-        connection_data = {}
+        platform = (request.platform or "sleeper").lower()
+        league_id = request.league_id
+        scoring_format = request.scoring_format
+        league_size = request.league_size
+        real_espn_league = False
+
+        # If the user is starting an ESPN session and already has a real
+        # connected ESPN league on file (from the ESPN cookie-auth connect
+        # flow), prefer that over whatever generic league_id the frontend
+        # happened to pass in.
+        if platform == "espn":
+            connection_data = {}
+            try:
+                with open(_CONNECTED_LEAGUE_FILE, "r") as f:
+                    connection_data = json.load(f)
+            except FileNotFoundError:
+                pass
+
+            if connection_data.get("espn_league_id"):
+                league_id = connection_data["espn_league_id"]
+                scoring_format = connection_data.get("scoring_format", scoring_format)
+                league_size = connection_data.get("league_size", league_size)
+                real_espn_league = True
+
         try:
-            with open("/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/connected_league.json", "r") as f:
-                connection_data = json.load(f)
-        except FileNotFoundError:
-            pass
-        
-        # Use real league data if connected, otherwise use request data
-        if connection_data.get("espn_league_id"):
-            real_league_id = connection_data["espn_league_id"]
-            league_settings = {
-                "scoring_format": connection_data.get("scoring_format", "PPR"),
-                "league_size": connection_data.get("league_size", 10),
-                "league_name": f"ESPN League {real_league_id}",
+            draft_platform = DraftPlatform(platform)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
+        result = await draft_assistant.start_draft_session(
+            platform=draft_platform,
+            league_id=league_id,
+            user_team_id=request.user_team_id,
+            draft_settings={
+                "scoring_format": scoring_format,
+                "league_size": league_size,
                 "season": 2025
             }
-        else:
-            real_league_id = request.league_id
-            league_settings = {
-                "scoring_format": request.scoring_format,
-                "league_size": request.league_size,
-                "league_name": f"League {request.league_id}",
-                "season": 2025
-            }
-        
-        session_id = f"draft_{real_league_id}_{request.platform}_{int(datetime.now().timestamp())}"
-        
-        # Return session with league data immediately (no API calls)
-        return {
-            "session_id": session_id,
-            "platform": request.platform,
-            "league_id": real_league_id,
-            "started_at": datetime.now().isoformat(),
-            "status": "active",
-            "league_name": league_settings["league_name"],
-            "scoring_format": league_settings["scoring_format"],
-            "league_size": league_settings["league_size"],
-            "season": 2025,
-            "draft_position": 5,
-            "current_round": 1,
-            "current_pick": 1,
-            "real_espn_league": bool(connection_data.get("espn_league_id")),
-            "espn_league_id": real_league_id
-        }
-        
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=400, detail=result["error"])
+
+        result["platform"] = platform
+        result["league_id"] = league_id
+        result["real_espn_league"] = real_espn_league
+        return result
+
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to start draft session: {str(e)}")
 
