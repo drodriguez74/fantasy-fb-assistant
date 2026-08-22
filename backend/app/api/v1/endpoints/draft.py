@@ -17,34 +17,40 @@ router = APIRouter()
 
 
 @router.get("/my-leagues")
-async def get_user_leagues_for_draft():
-    """Get user's connected leagues with draft status information"""
+async def get_user_leagues_for_draft(
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get the current user's connected leagues for the Live Draft
+    Assistant's league picker.
+
+    Reads the real per-user UserLeague table -- the same store the ESPN
+    connect flow (POST /leagues/espn/connect) and Sleeper/Yahoo connect
+    flows write to -- instead of the single shared connected_league.json
+    file this endpoint used to read via league_data_loader, which showed
+    every account whichever league had most recently been connected on the
+    machine, not that user's own leagues.
+    """
     try:
-        from app.utils.league_data_loader import get_all_user_leagues
-        leagues = get_all_user_leagues()
-        
-        # Format leagues for draft page with draft-specific info
+        user_service = UserService(db)
+        leagues = user_service.get_user_leagues(current_user.id)
+
         draft_leagues = []
         for league in leagues:
             draft_leagues.append({
-                "id": league["id"],
-                "league_name": league["name"],
-                "platform": league["platform"],
-                "league_id": league["league_key"],
-                "league_key": league["league_key"],
-                "season": league["season"],
-                "league_size": league["league_size"],
-                "scoring_format": league["scoring_format"],
-                "team_id": league.get("team_id", "1"),
-                "draft_status": "in_progress",
-                "draft_info": {
-                    "draft_completed": False,
-                    "draft_date": "2025-09-10",
-                    "total_rounds": league["league_size"]
-                },
+                "id": league.id,
+                "league_name": league.league_name or f"{league.platform.value.upper()} League {league.league_id}",
+                "platform": league.platform.value,
+                "league_id": league.league_id,
+                "league_key": league.league_key or league.league_id,
+                "season": league.season,
+                "league_size": league.league_size,
+                "scoring_format": league.scoring_format,
+                "team_id": league.team_id,
+                "draft_status": "unknown",
                 "can_start_session": True
             })
-        
+
         return {
             "success": True,
             "leagues": draft_leagues

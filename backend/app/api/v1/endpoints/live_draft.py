@@ -6,19 +6,13 @@ from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.services.draft_assistant_service import draft_assistant, DraftPlatform
 from app.services.espn_service import espn_service
+from app.services.user_service import UserService
 from app.services.yahoo_service import yahoo_service
 from datetime import datetime
-from pathlib import Path
 import asyncio
 import json
 
 router = APIRouter()
-
-# backend/ root, computed relative to this file rather than hardcoded to a
-# specific developer machine, so the "use the user's already-connected ESPN
-# league" convenience below works from any checkout/worktree.
-_BACKEND_ROOT = Path(__file__).resolve().parents[4]
-_CONNECTED_LEAGUE_FILE = _BACKEND_ROOT / "connected_league.json"
 
 
 class StartDraftRequest(BaseModel):
@@ -62,7 +56,11 @@ manager = ConnectionManager()
 
 
 @router.post("/start-session")
-async def start_draft_session(request: StartDraftRequest):
+async def start_draft_session(
+    request: StartDraftRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
     """Start a new live draft assistant session for 2025 season"""
     try:
         platform = (request.platform or "sleeper").lower()
@@ -70,29 +68,48 @@ async def start_draft_session(request: StartDraftRequest):
         scoring_format = request.scoring_format
         league_size = request.league_size
         real_espn_league = False
-
-        # If the user is starting an ESPN session and already has a real
-        # connected ESPN league on file (from the ESPN cookie-auth connect
-        # flow), prefer that over whatever generic league_id the frontend
-        # happened to pass in.
-        if platform == "espn":
-            connection_data = {}
-            try:
-                with open(_CONNECTED_LEAGUE_FILE, "r") as f:
-                    connection_data = json.load(f)
-            except FileNotFoundError:
-                pass
-
-            if connection_data.get("espn_league_id"):
-                league_id = connection_data["espn_league_id"]
-                scoring_format = connection_data.get("scoring_format", scoring_format)
-                league_size = connection_data.get("league_size", league_size)
-                real_espn_league = True
+        platform_credentials: Dict[str, Any] = {}
 
         try:
             draft_platform = DraftPlatform(platform)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
+        # ESPN needs per-user session cookies (swid/espn_s2) to read a
+        # private league. Those live on the caller's own UserLeague row,
+        # written by the real ESPN connect flow (POST /leagues/espn/connect
+        # -> UserLeague.espn_swid/espn_s2, see leagues.py). Look that up
+        # here rather than trusting anything the client could pass in the
+        # request body, and rather than any shared file/global state -- the
+        # same reason leagues.py moved its own ESPN endpoints off
+        # connected_league.json (a single file every account used to share).
+        if draft_platform == DraftPlatform.ESPN:
+            user_service = UserService(db)
+            espn_league = user_service.get_user_league_by_platform_id(
+                user_id=current_user.id,
+                platform="espn",
+                league_id=league_id
+            )
+
+            if not espn_league:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "No ESPN league connected for this league ID. "
+                        "Connect your ESPN league first from the Leagues page "
+                        "(enter your league ID, season, and SWID/espn_s2 "
+                        "cookies), then start the draft session again."
+                    )
+                )
+
+            scoring_format = espn_league.scoring_format or scoring_format
+            league_size = espn_league.league_size or league_size
+            real_espn_league = True
+            platform_credentials = {
+                "swid": espn_league.espn_swid,
+                "espn_s2": espn_league.espn_s2,
+                "season": espn_league.season or 2025,
+            }
 
         result = await draft_assistant.start_draft_session(
             platform=draft_platform,
@@ -102,7 +119,8 @@ async def start_draft_session(request: StartDraftRequest):
                 "scoring_format": scoring_format,
                 "league_size": league_size,
                 "season": 2025
-            }
+            },
+            platform_credentials=platform_credentials
         )
 
         if "error" in result:
