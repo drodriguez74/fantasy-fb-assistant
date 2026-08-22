@@ -1,15 +1,24 @@
 from typing import Dict, List, Optional, Any, Tuple
 import asyncio
+import logging
 from datetime import datetime
+from sqlalchemy.orm import Session
 from app.services.ai_service import ai_service
 from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.consensus_ranking_service import consensus_ranking_service
 from app.services.fantasypros_service import fantasypros_service
-from app.services.scoring_rules import calculate_points_from_stats, describe_scoring_rules
+from app.services.scoring_rules import (
+    calculate_points_from_stats,
+    describe_scoring_rules,
+    scoring_rules_from_league_scoring,
+)
+from app.models.league_scoring import LeagueScoring
 from enum import Enum
 import json
+
+logger = logging.getLogger(__name__)
 
 
 class DraftPlatform(Enum):
@@ -55,7 +64,9 @@ class DraftAssistantService:
                                   league_id: str,
                                   user_team_id: str = None,
                                   draft_settings: Dict[str, Any] = None,
-                                  platform_credentials: Dict[str, Any] = None) -> Dict[str, Any]:
+                                  platform_credentials: Dict[str, Any] = None,
+                                  user_league_id: Optional[int] = None,
+                                  db: Optional[Session] = None) -> Dict[str, Any]:
         """Initialize a real-time draft assistant session
 
         platform_credentials carries whatever a platform needs to make
@@ -66,6 +77,18 @@ class DraftAssistantService:
         It's stored on the session below so _refresh_draft_state can keep
         polling with the right credentials on every subsequent call, not
         just this first one. Never logged.
+
+        user_league_id/db (both optional, and only ever passed together by
+        live_draft.py's /start-session, which owns a real per-request `db`
+        session and looked `user_league_id` up from the caller's own
+        UserLeague row) are used once, right here, to check for a manually-
+        configured LeagueScoring row (see _apply_manual_scoring_override)
+        and layer it over whatever real settings _get_*_draft_state just
+        fetched, before either gets cached into the session. Resolving this
+        once at session start -- rather than on every later poll -- avoids
+        holding a request-scoped SQLAlchemy Session past the request that
+        created it (get_live_recommendations/get_draft_board/etc are polled
+        on their own separate requests with no `db` of their own today).
         """
         try:
             session_id = f"{platform.value}_{league_id}_{datetime.now().timestamp()}"
@@ -82,6 +105,13 @@ class DraftAssistantService:
 
             if "error" in draft_state:
                 return draft_state
+
+            if db is not None and user_league_id is not None:
+                overridden = self._apply_manual_scoring_override(
+                    draft_state.get("league_settings"), db, user_league_id
+                )
+                if overridden is not None:
+                    draft_state["league_settings"] = overridden
 
             # Initialize session
             self.active_drafts[session_id] = {
@@ -1052,11 +1082,66 @@ class DraftAssistantService:
         fabricates real-looking numbers; the fallback is the exact same
         generic shape this file always used before real per-league
         settings extraction existed.
+
+        A manually-configured LeagueScoring row (see
+        _apply_manual_scoring_override) has already been layered into
+        session["current_state"]["league_settings"] by start_draft_session,
+        before this method ever runs -- so a manual override, when one
+        exists for the connected league, is already what "settings" below
+        resolves to, taking priority over auto-detected platform settings
+        with no extra check needed here.
         """
         settings = session.get("current_state", {}).get("league_settings")
         if not settings or "error" in settings or not settings.get("starters"):
             return self.FALLBACK_ROSTER_REQUIREMENTS
         return settings
+
+    def _apply_manual_scoring_override(
+        self,
+        league_settings: Optional[Dict[str, Any]],
+        db: Session,
+        user_league_id: int,
+    ) -> Optional[Dict[str, Any]]:
+        """Layer a manually-configured LeagueScoring row (see
+        app.api.v1.endpoints.league_scoring's POST /configure, backed by
+        app.models.league_scoring.LeagueScoring) on top of this session's
+        real, auto-detected league_settings (see _get_sleeper_draft_state /
+        _get_espn_draft_state), when one exists for the connected
+        UserLeague. Called once, at session start (see start_draft_session).
+
+        A manual override models scoring only -- LeagueScoring has no
+        roster-slot columns -- so starters/bench/roster_size always keep
+        coming from the real auto-detected settings (or
+        FALLBACK_ROSTER_REQUIREMENTS, if even auto-detection failed);
+        only points_per_reception and the full scoring_rules breakdown are
+        replaced. Manual scoring wins by design whenever it exists: a user
+        who explicitly configured custom scoring wants that reflected even
+        when auto-detection also succeeded -- e.g. to model a hypothetical
+        rule change, override a platform's settings the auto-detection got
+        wrong, or configure a platform this app doesn't extract real
+        settings from yet.
+
+        Returns None (meaning: nothing to override, caller keeps whatever
+        it already had) both when no manual config exists for this league
+        and when the lookup itself fails -- a DB error here should never
+        take down draft-session start.
+        """
+        try:
+            scoring_config = db.query(LeagueScoring).filter(
+                LeagueScoring.user_league_id == user_league_id
+            ).first()
+        except Exception as e:
+            logger.warning(f"Manual scoring override lookup failed for user_league_id={user_league_id}: {e}")
+            return None
+
+        if not scoring_config:
+            return None
+
+        base = dict(league_settings) if league_settings else dict(self.FALLBACK_ROSTER_REQUIREMENTS)
+        base["points_per_reception"] = scoring_config.reception_points
+        base["scoring_rules"] = scoring_rules_from_league_scoring(scoring_config)
+        base["source"] = f"{base.get('source') or 'fallback_standard'}+manual_override"
+        return base
 
     def _effective_position_requirements(self, position_counts: Dict[str, int],
                                           league_settings: Dict[str, Any]) -> Dict[str, int]:

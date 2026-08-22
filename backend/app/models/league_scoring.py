@@ -27,7 +27,21 @@ class LeagueScoring(Base):
     user_league_id = Column(Integer, ForeignKey("user_leagues.id"), nullable=False, unique=True)
     
     # Basic scoring type
-    scoring_type = Column(Enum(ScoringType), nullable=False, default=ScoringType.PPR)
+    #
+    # values_callable: SQLAlchemy's Enum column validates/stores a Python
+    # enum's member NAME by default (PPR, HALF_PPR, STANDARD, CUSTOM), not
+    # its .value ("PPR", "Half_PPR", "Standard", "Custom") -- but every
+    # reader of this column (get_league_scoring below, scoring_config.
+    # scoring_type.value in scoring_calculation_service.py) works in terms
+    # of .value. Without this, POST /configure round-tripping the exact
+    # string GET /league/{id} just returned (e.g. "Custom") would be
+    # rejected as an invalid enum value. Applies to ScoringPreset.
+    # scoring_type below too, for the same reason.
+    scoring_type = Column(
+        Enum(ScoringType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+        default=ScoringType.PPR,
+    )
     
     # Passing scoring
     passing_yards_per_point = Column(Float, default=25.0)  # 1 point per 25 yards
@@ -114,7 +128,10 @@ class ScoringPreset(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False, unique=True)
     description = Column(Text)
-    scoring_type = Column(Enum(ScoringType), nullable=False)
+    scoring_type = Column(
+        Enum(ScoringType, values_callable=lambda enum_cls: [e.value for e in enum_cls]),
+        nullable=False,
+    )
     
     # Store all scoring settings as JSON for easy application
     scoring_settings = Column(JSON, nullable=False)

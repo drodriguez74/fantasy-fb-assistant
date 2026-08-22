@@ -213,6 +213,57 @@ def calculate_points_from_stats(stat_counts: Dict[str, float], scoring_rules: Op
     return total
 
 
+def scoring_rules_from_league_scoring(config: Any) -> Dict[str, Any]:
+    """Build the canonical scoring-rules shape from a manually-configured
+    LeagueScoring row (see app.models.league_scoring.LeagueScoring, written
+    by POST /league-scoring/configure) -- the same canonical shape
+    scoring_rules_from_sleeper/scoring_rules_from_espn build from each
+    platform's real auto-detected settings, so draft_assistant_service can
+    layer a manual override on top of (or in place of) auto-detected
+    settings without the rest of the app needing to know whether a
+    league's scoring rules came from a platform's live API or from a
+    user's own hand-entered configuration. Takes the ORM row directly
+    (duck-typed, like the rest of this module takes each platform's raw
+    shape) rather than importing the model here, to keep this module free
+    of a model-layer dependency.
+
+    LeagueScoring stores *_yards_per_point the way ESPN/Sleeper/Yahoo
+    present it to end users -- "yards needed for 1 point", e.g. 25.0 for
+    "1 point per 25 passing yards" -- while the canonical shape wants
+    points per single yard (see default_scoring_rules: 0.04 == 1/25).
+    This inverts each rate, guarding the pathological zero-yards-per-point
+    case rather than dividing by zero.
+    """
+    def _rate(yards_per_point: Optional[float]) -> float:
+        return 1.0 / yards_per_point if yards_per_point else 0.0
+
+    return {
+        "passing": {
+            "completion": config.completion_points or 0.0,
+            "incompletion": config.incompletion_points or 0.0,
+            "attempt": 0.0,
+            "yard": _rate(config.passing_yards_per_point),
+            "td": config.passing_td_points or 0.0,
+            "interception": config.passing_int_points or 0.0,
+        },
+        "rushing": {
+            "attempt": config.carry_points or 0.0,
+            "yard": _rate(config.rushing_yards_per_point),
+            "td": config.rushing_td_points or 0.0,
+        },
+        "receiving": {
+            "reception": config.reception_points or 0.0,
+            "yard": _rate(config.receiving_yards_per_point),
+            "td": config.receiving_td_points or 0.0,
+            "target": config.target_points or 0.0,
+        },
+        "fumbles": {
+            "lost": config.fumble_lost_points or 0.0,
+        },
+        "source": "manual_override",
+    }
+
+
 def describe_scoring_rules(rules: Optional[Dict[str, Any]]) -> str:
     """Human-readable, LLM-prompt-ready summary of the ways a league's real
     scoring deviates from bare Standard scoring -- e.g. "rewards completed

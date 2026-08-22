@@ -229,7 +229,7 @@ class ScoringCalculationService:
             {
                 "name": "ESPN Standard",
                 "description": "Default ESPN league scoring",
-                "scoring_type": "STANDARD",
+                "scoring_type": "Standard",
                 "settings": {
                     "reception_points": 0.0,
                     "passing_yards_per_point": 25.0,
@@ -257,7 +257,7 @@ class ScoringCalculationService:
             {
                 "name": "Yahoo Standard",
                 "description": "Default Yahoo league scoring",
-                "scoring_type": "STANDARD",
+                "scoring_type": "Standard",
                 "settings": {
                     "reception_points": 0.0,
                     "passing_yards_per_point": 25.0,

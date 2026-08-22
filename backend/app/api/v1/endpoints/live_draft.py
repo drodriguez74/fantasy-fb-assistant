@@ -69,11 +69,29 @@ async def start_draft_session(
         league_size = request.league_size
         real_espn_league = False
         platform_credentials: Dict[str, Any] = {}
+        # The connected UserLeague row's own id (not the platform's
+        # external league_id string) for this session, when one exists --
+        # threaded through to draft_assistant.start_draft_session so it can
+        # check for a manually-configured LeagueScoring override (see
+        # DraftAssistantService._apply_manual_scoring_override). None for a
+        # Sleeper league the user never formally "connected" via this app
+        # (Sleeper needs no auth, so a bare league_id works without one) --
+        # that's fine, it just means no manual override is possible for it.
+        user_league_id: Optional[int] = None
 
         try:
             draft_platform = DraftPlatform(platform)
         except ValueError:
             raise HTTPException(status_code=400, detail=f"Unsupported platform: {platform}")
+
+        if draft_platform == DraftPlatform.SLEEPER:
+            sleeper_league = UserService(db).get_user_league_by_platform_id(
+                user_id=current_user.id,
+                platform="sleeper",
+                league_id=league_id
+            )
+            if sleeper_league:
+                user_league_id = sleeper_league.id
 
         # ESPN needs per-user session cookies (swid/espn_s2) to read a
         # private league. Those live on the caller's own UserLeague row,
@@ -105,6 +123,7 @@ async def start_draft_session(
             scoring_format = espn_league.scoring_format or scoring_format
             league_size = espn_league.league_size or league_size
             real_espn_league = True
+            user_league_id = espn_league.id
             platform_credentials = {
                 "swid": espn_league.espn_swid,
                 "espn_s2": espn_league.espn_s2,
@@ -165,6 +184,7 @@ async def start_draft_session(
 
             scoring_format = yahoo_league.scoring_format or scoring_format
             league_size = yahoo_league.league_size or league_size
+            user_league_id = yahoo_league.id
             platform_credentials = {
                 "access_token": yahoo_league.yahoo_access_token,
                 "expires_at": yahoo_league.yahoo_token_expires_at,
@@ -187,7 +207,9 @@ async def start_draft_session(
                 "league_size": league_size,
                 "season": 2025
             },
-            platform_credentials=platform_credentials
+            platform_credentials=platform_credentials,
+            user_league_id=user_league_id,
+            db=db
         )
 
         if "error" in result:
