@@ -1,6 +1,6 @@
 from typing import Optional, Dict, Any, List
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from app.core.security import get_password_hash, verify_password
 from app.models.user import User
 from app.models.user_league import UserLeague, PlatformType
@@ -55,7 +55,7 @@ class UserService:
             return None
         
         # Check account lockout
-        if user.locked_until and user.locked_until > datetime.utcnow():
+        if user.locked_until and user.locked_until > datetime.now(timezone.utc):
             return None
         
         if not verify_password(password, user.hashed_password):
@@ -64,7 +64,7 @@ class UserService:
             
             # Lock account after 5 failed attempts
             if user.failed_login_attempts >= 5:
-                user.locked_until = datetime.utcnow() + timedelta(minutes=15)
+                user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=15)
             
             self.db.commit()
             return None
@@ -72,7 +72,7 @@ class UserService:
         # Successful login - reset failed attempts and update login info
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.last_login = datetime.utcnow()
+        user.last_login = datetime.now(timezone.utc)
         user.login_count += 1
         self.db.commit()
         
@@ -96,7 +96,7 @@ class UserService:
             if field in allowed_fields and hasattr(user, field):
                 setattr(user, field, value)
         
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(user)
         return user
@@ -113,7 +113,7 @@ class UserService:
             return False
         
         user.hashed_password = get_password_hash(new_password)
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         return True
 
@@ -126,7 +126,7 @@ class UserService:
         user.hashed_password = get_password_hash(new_password)
         user.failed_login_attempts = 0
         user.locked_until = None
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         return True
 
@@ -137,7 +137,7 @@ class UserService:
             return False
         
         user.is_verified = True
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         return True
 
@@ -148,7 +148,7 @@ class UserService:
             return False
         
         user.is_active = False
-        user.updated_at = datetime.utcnow()
+        user.updated_at = datetime.now(timezone.utc)
         self.db.commit()
         return True
 
@@ -256,7 +256,7 @@ class UserService:
             if hasattr(session, field):
                 setattr(session, field, value)
         
-        session.last_activity = datetime.utcnow()
+        session.last_activity = datetime.now(timezone.utc)
         self.db.commit()
         self.db.refresh(session)
         return session
