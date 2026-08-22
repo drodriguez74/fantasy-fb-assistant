@@ -408,6 +408,7 @@ async def get_player_waiver_evaluation(
         
         # Get any existing recommendation
         from app.models.waiver_wire import WaiverWireRecommendation
+        from sqlalchemy import and_
         existing_rec = db.query(WaiverWireRecommendation).filter(
             and_(
                 WaiverWireRecommendation.player_id == player_id,

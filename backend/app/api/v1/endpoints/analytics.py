@@ -365,7 +365,7 @@ async def analyze_matchup_metrics(
                 "dome_games": len([m for m in matchups if m.dome_game]),
                 "outdoor_games": len([m for m in matchups if not m.dome_game])
             },
-            "fantasy_impact": self._analyze_fantasy_impact(matchups),
+            "fantasy_impact": _analyze_fantasy_impact(matchups),
             "recent_games": [
                 {
                     "season": m.season,
