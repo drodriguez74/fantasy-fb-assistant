@@ -1,8 +1,11 @@
 import type { Position } from '../../types'
 
-// Shared display helpers for player position/risk/injury badges, used by both
-// PlayerCard (list view) and PlayerDetailPage (focused single-player view).
-// Kept in a non-component file so react-refresh/only-export-components
+// Shared display helpers for player position/risk/injury badges. Single
+// source of truth for position-badge colors -- import from here rather than
+// re-declaring a local color map, so every surface (PlayerCard, PlayersPage,
+// DraftBoard, TeamRoster, RecommendationCard, WaiverWirePage,
+// HistoricalPage, ...) renders the same player's position badge in the same
+// color. Kept in a non-component file so react-refresh/only-export-components
 // doesn't flag PlayerCard.tsx for exporting non-component values.
 
 export const positionColors: Record<Position, string> = {
@@ -12,6 +15,15 @@ export const positionColors: Record<Position, string> = {
   TE: 'bg-yellow-100 text-yellow-800',
   K: 'bg-purple-100 text-purple-800',
   DEF: 'bg-gray-100 text-gray-800',
+}
+
+const FALLBACK_POSITION_COLOR = 'bg-gray-100 text-gray-800'
+
+// Same palette as `positionColors`, but tolerant of a loosely-typed `string`
+// (rather than the `Position` union) and of unrecognized values -- for call
+// sites whose player data isn't narrowed to `Position`.
+export function getPositionColor(position: string): string {
+  return positionColors[position as Position] || FALLBACK_POSITION_COLOR
 }
 
 export const riskColors = {

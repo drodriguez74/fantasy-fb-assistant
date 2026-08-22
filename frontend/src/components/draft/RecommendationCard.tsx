@@ -1,5 +1,6 @@
 import { StarIcon, TrophyIcon } from '@heroicons/react/24/outline'
 import { DraftRecommendation } from '../../types'
+import { getPositionColor } from '../players/playerDisplay'
 
 interface RecommendationCardProps {
   recommendation: DraftRecommendation
@@ -12,18 +13,6 @@ export function RecommendationCard({ recommendation, onDraftPlayer, rank }: Reco
     if (score >= 80) return 'text-success-700'
     if (score >= 60) return 'text-warning-700'
     return 'text-danger-700'
-  }
-
-  const getPositionColor = (position: string): string => {
-    const colors: Record<string, string> = {
-      QB: 'bg-red-100 text-red-800',
-      RB: 'bg-green-100 text-green-800',
-      WR: 'bg-blue-100 text-blue-800',
-      TE: 'bg-purple-100 text-purple-800',
-      K: 'bg-yellow-100 text-yellow-800',
-      DEF: 'bg-gray-100 text-gray-800'
-    }
-    return colors[position] || 'bg-gray-100 text-gray-800'
   }
 
   const getRiskColor = (risk: string): string => {

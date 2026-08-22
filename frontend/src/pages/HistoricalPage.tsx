@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { historical, players, getErrorMessage } from '../services/api'
+import { getPositionColor } from '../components/players/playerDisplay'
 import {
   ChartBarIcon,
   ArrowTrendingUpIcon,
@@ -133,18 +134,6 @@ function TrendsTab() {
       default:
         return <div className="h-5 w-5 bg-gray-300 rounded-full" />
     }
-  }
-
-  const getPositionColor = (position: string) => {
-    const colors: Record<string, string> = {
-      QB: 'bg-red-100 text-red-800',
-      RB: 'bg-green-100 text-green-800', 
-      WR: 'bg-blue-100 text-blue-800',
-      TE: 'bg-purple-100 text-purple-800',
-      K: 'bg-yellow-100 text-yellow-800',
-      DEF: 'bg-gray-100 text-gray-800'
-    }
-    return colors[position] || 'bg-gray-100 text-gray-800'
   }
 
   const formatPerformanceChange = (change: number) => {

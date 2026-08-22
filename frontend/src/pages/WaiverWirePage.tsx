@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { waiverWire, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
+import { getPositionColor } from '../components/players/playerDisplay'
 import {
   PlusIcon,
   FireIcon,
@@ -273,12 +274,6 @@ export function WaiverWirePage() {
     return colors[priority] || 'bg-ink-100 text-ink-600'
   }
 
-  // Position is a category, not a status, and the design system reserves
-  // success/warning/danger for status meaning -- so every position gets the
-  // same neutral badge (matches PlayersPage's table) rather than an
-  // arbitrary decorative color per letter.
-  const positionBadgeClass = 'bg-ink-100 text-ink-800'
-
   const getTrendIcon = (direction: string) => {
     switch (direction) {
       case 'up':
@@ -444,7 +439,7 @@ export function WaiverWirePage() {
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
                           <h4 className="text-lg font-medium text-ink-900">{rec.player_name}</h4>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${positionBadgeClass}`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionColor(rec.position)}`}>
                             {rec.position}
                           </span>
                           <span className="text-sm text-ink-500">{rec.team}</span>
@@ -580,7 +575,7 @@ export function WaiverWirePage() {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${positionBadgeClass}`}>
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionColor(player.position)}`}>
                               {player.position}
                             </span>
                           </div>

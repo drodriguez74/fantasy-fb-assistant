@@ -1,5 +1,6 @@
 import { PlusIcon, StarIcon } from '@heroicons/react/24/outline'
 import { DraftRecommendation, Player } from '../../types'
+import { getPositionColor, injuryStatusClasses } from '../players/playerDisplay'
 
 interface DraftBoardProps {
   recommendations: DraftRecommendation[]
@@ -25,29 +26,6 @@ export function DraftBoard({
   const getPlayerRank = (player: Player): number => {
     const index = availablePlayers.findIndex(p => p.id === player.id)
     return index >= 0 ? index + 1 : 999
-  }
-
-  const getPositionColor = (position: string): string => {
-    const colors: Record<string, string> = {
-      QB: 'bg-red-100 text-red-800',
-      RB: 'bg-green-100 text-green-800', 
-      WR: 'bg-blue-100 text-blue-800',
-      TE: 'bg-purple-100 text-purple-800',
-      K: 'bg-yellow-100 text-yellow-800',
-      DEF: 'bg-gray-100 text-gray-800'
-    }
-    return colors[position] || 'bg-gray-100 text-gray-800'
-  }
-
-  const getInjuryStatusClasses = (status: string): string => {
-    const s = status.toUpperCase()
-    if (s.includes('OUT') || s === 'IR' || s.includes('DOUBTFUL') || s.includes('SUSPENDED') || s.includes('PUP')) {
-      return 'bg-danger-100 text-danger-800'
-    }
-    if (s.includes('QUESTIONABLE')) {
-      return 'bg-warning-100 text-warning-800'
-    }
-    return 'bg-success-100 text-success-800'
   }
 
   return (
@@ -143,7 +121,7 @@ export function DraftBoard({
 
                     <div className="flex items-center gap-2">
                       {player.injury_status && player.injury_status.toUpperCase() !== 'HEALTHY' && (
-                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${getInjuryStatusClasses(player.injury_status)}`}>
+                        <span className={`px-2 py-1 text-xs font-medium rounded-full ${injuryStatusClasses(player.injury_status)}`}>
                           {player.injury_status}
                         </span>
                       )}
