@@ -16,34 +16,17 @@ depends_on = None
 
 
 def upgrade():
-    # Create blog_posts table
-    op.create_table('blog_posts',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('title', sa.String(), nullable=False),
-    sa.Column('slug', sa.String(), nullable=False),
-    sa.Column('content', sa.Text(), nullable=False),
-    sa.Column('summary', sa.Text(), nullable=True),
-    sa.Column('source_urls', sa.Text(), nullable=True),
-    sa.Column('perspectives_count', sa.Integer(), default=5),
-    sa.Column('consensus_score', sa.Integer(), nullable=True),
-    sa.Column('tags', sa.String(), nullable=True),
-    sa.Column('category', sa.String(), nullable=True),
-    sa.Column('is_published', sa.Boolean(), default=False),
-    sa.Column('featured', sa.Boolean(), default=False),
-    sa.Column('publish_date', sa.DateTime(timezone=True), nullable=True),
-    sa.Column('author', sa.String(), default='AI Assistant'),
-    sa.Column('created_by_ai', sa.Boolean(), default=True),
-    sa.Column('ai_model_used', sa.String(), nullable=True),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.func.now()),
-    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-    sa.PrimaryKeyConstraint('id'),
-    sa.UniqueConstraint('slug')
-    )
-    op.create_index(op.f('ix_blog_posts_id'), 'blog_posts', ['id'], unique=False)
-    op.create_index(op.f('ix_blog_posts_slug'), 'blog_posts', ['slug'], unique=True)
+    # blog_posts was already created by the initial migration (0b92d89d8227).
+    # This migration originally re-issued a full create_table for it, which
+    # is a guaranteed "relation already exists" failure on a fresh database.
+    # The only real, new-to-this-migration difference vs. the initial schema
+    # is two columns (`featured`, `author`) that the BlogPost model has but
+    # 0b92d89d8227 never created -- add just those instead of recreating the
+    # whole table.
+    op.add_column('blog_posts', sa.Column('featured', sa.Boolean(), nullable=True, server_default=sa.false()))
+    op.add_column('blog_posts', sa.Column('author', sa.String(), nullable=True, server_default='AI Assistant'))
 
 
 def downgrade():
-    op.drop_index(op.f('ix_blog_posts_slug'), table_name='blog_posts')
-    op.drop_index(op.f('ix_blog_posts_id'), table_name='blog_posts')
-    op.drop_table('blog_posts')
+    op.drop_column('blog_posts', 'author')
+    op.drop_column('blog_posts', 'featured')
