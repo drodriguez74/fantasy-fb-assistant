@@ -242,23 +242,26 @@ export const waiverWire = {
   analyzeRoster: (data: { roster_player_ids: number[]; week?: number; season?: number }) =>
     api.post('/waiver-wire/analyze-roster', data),
   
+  // Real-time snapshot from Sleeper's live trending add/drop feed (see
+  // backend/app/services/waiver_wire_service.py::get_live_trending_players).
+  // NOT a historical trend line -- WaiverWireTrend, the table this used to
+  // (always-emptily) query, has no real ingestion pipeline behind it.
   getTrending: (params: { week: number; season?: number; position?: string; trend_direction?: string; limit?: number }) =>
     api.get('/waiver-wire/trending', { params }),
-  
-  getAlerts: (params?: { active_only?: boolean; priority?: string; limit?: number }) =>
-    api.get('/waiver-wire/alerts', { params }),
-  
+
   generateRecommendations: (params: { week: number; season?: number; force_refresh?: boolean }) =>
     api.post('/waiver-wire/generate-recommendations', null, { params }),
-  
+
   getPlayerEvaluation: (playerId: number, params: { week: number; season?: number }) =>
     api.get(`/waiver-wire/player/${playerId}/evaluation`, { params }),
-  
+
   getWeeklyInsights: (params: { week: number; season?: number }) =>
     api.get('/waiver-wire/insights/weekly-summary', { params }),
-  
-  subscribeToAlerts: (data: { position?: string; min_ownership?: number; max_ownership?: number; priority_levels?: string[] }) =>
-    api.post('/waiver-wire/alerts/subscribe', data),
+
+  // NOTE: getAlerts/subscribeToAlerts (GET/POST /waiver-wire/alerts*) were
+  // removed -- both queried/wrote a table nothing in the backend ever
+  // populated. The Alerts tab now reads the real in-app notification center
+  // via the `notifications` export below instead.
 }
 
 // Trade analyzer endpoints

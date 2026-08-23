@@ -215,6 +215,101 @@ class WaiverWireService:
             logger.error(f"Error getting live trending waiver recommendations: {str(e)}")
             return []
 
+    async def get_live_trending_players(
+        self,
+        trend_direction: str = "up",
+        position: Optional[str] = None,
+        limit: int = 15
+    ) -> List[Dict[str, Any]]:
+        """Real "who's trending on the waiver wire" view, sourced directly
+        from Sleeper's live trending add/drop feed.
+
+        This backs GET /waiver-wire/trending. That endpoint used to query
+        WaiverWireTrend, a table nothing in this codebase has ever written
+        to -- always empty in practice, and its schema (ownership_change,
+        pickup_rate, drop_rate, recent_performance, upcoming_matchup_rating)
+        would require real per-week ownership deltas this app has no
+        ingestion pipeline for. Building that real historical ingestion
+        isn't viable as a small extension either: WaiverWireTrend.player_id
+        is a FK to the local `Player` table, which holds only a handful of
+        seeded rows, while Sleeper's live trending players are drawn from
+        its full ~11k player universe -- nearly every trending player has no
+        local Player row a snapshot could attach to.
+
+        Rather than keep serving fabricated stats from a table nothing
+        populates, this reshapes the same real, live Sleeper trending feed
+        `get_live_trending_recommendations` already uses -- for *both* "add"
+        and "drop" trend types, which is real information that method
+        doesn't expose (it only ever looks at "add"). This is an honest live
+        snapshot of the last 24 hours, not a historical time series.
+        """
+        try:
+            if trend_direction == "up":
+                trend_types = [("add", "up")]
+            elif trend_direction == "down":
+                trend_types = [("drop", "down")]
+            else:
+                trend_types = [("add", "up"), ("drop", "down")]
+
+            target_position = position.upper() if position else None
+            pool_size = max(limit * 5, 100)
+
+            all_players = await self.sleeper_service.get_all_players()
+            if isinstance(all_players, dict) and "error" in all_players:
+                logger.error(f"Sleeper player lookup failed: {all_players['error']}")
+                return []
+
+            results = []
+            for trend_type, direction_label in trend_types:
+                trending = await self.sleeper_service.get_trending_players(trend_type, 24, pool_size)
+                if trending and isinstance(trending[0], dict) and "error" in trending[0]:
+                    logger.error(f"Sleeper trending-{trend_type} lookup failed: {trending[0]['error']}")
+                    continue
+
+                for entry in trending:
+                    sleeper_id = entry.get("player_id")
+                    count = entry.get("count", 0)
+                    player_data = all_players.get(sleeper_id)
+
+                    if not player_data or not _is_rosterable_player(player_data):
+                        continue
+
+                    player_position = player_data.get("position")
+                    if player_position not in _WAIVER_ELIGIBLE_POSITIONS:
+                        continue
+                    if target_position and player_position != target_position:
+                        continue
+
+                    try:
+                        player_id = int(sleeper_id)
+                    except (TypeError, ValueError):
+                        player_id = sleeper_id
+
+                    name = player_data.get("full_name") or " ".join(
+                        filter(None, [player_data.get("first_name"), player_data.get("last_name")])
+                    ) or "Unknown Player"
+
+                    results.append({
+                        'player_id': player_id,
+                        'player_name': name,
+                        'position': player_position,
+                        'team': player_data.get('team'),
+                        'trend_direction': direction_label,
+                        'count_24h': count,
+                        'reason': (
+                            f"{count:,} {'adds' if direction_label == 'up' else 'drops'} "
+                            f"across Sleeper fantasy leagues in the last 24 hours."
+                        ),
+                    })
+
+            # Real signal, ranked by the magnitude of the actual 24h count.
+            results.sort(key=lambda r: r['count_24h'], reverse=True)
+            return results[:limit]
+
+        except Exception as e:
+            logger.error(f"Error getting live trending players: {str(e)}")
+            return []
+
     @staticmethod
     def _priority_from_rank(rank: int, total: int) -> str:
         """Bucket a player into a priority tier based on where their real

@@ -72,13 +72,6 @@ class WaiverAnalysisRequest(BaseModel):
     season: int = 2025
 
 
-class AlertSubscriptionRequest(BaseModel):
-    position: Optional[str] = None
-    min_ownership: float = 0.0
-    max_ownership: float = 50.0
-    priority_levels: List[str] = ["urgent", "high"]
-
-
 @router.get("/recommendations")
 async def get_waiver_recommendations(
     week: int = Query(..., description="NFL week number"),
@@ -204,129 +197,49 @@ async def analyze_roster_moves(
 
 @router.get("/trending")
 async def get_trending_players(
-    week: int = Query(..., description="NFL week number"),
-    season: int = Query(2025, description="NFL season"),
+    week: int = Query(..., description="NFL week number (informational only -- see note below)"),
+    season: int = Query(2025, description="NFL season (informational only -- see note below)"),
     position: Optional[str] = Query(None, description="Filter by position"),
     trend_direction: str = Query("up", description="Trend direction (up, down, both)"),
     limit: int = Query(15, description="Maximum players to return"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get trending players on the waiver wire"""
+    """Get trending players on the waiver wire.
+
+    Sourced from Sleeper's live trending add/drop feed rather than the
+    WaiverWireTrend table -- nothing in this codebase has ever written to
+    that table (it exists in the schema but has no ingestion pipeline), so
+    it always returned empty. See WaiverWireService.get_live_trending_players
+    for why real historical backfill isn't a viable small extension here
+    (WaiverWireTrend.player_id FKs to the mostly-empty local Player table).
+
+    This is a live snapshot of real 24h Sleeper add/drop activity -- the
+    same real signal GET /recommendations uses for "add" only, extended
+    here to also cover "drop" trends -- not a historical trend line.
+    `week`/`season` are accepted for URL consistency with the rest of this
+    router but don't scope the underlying Sleeper feed, which is always
+    "right now."
+    """
     try:
-        from app.models.waiver_wire import WaiverWireTrend
-        from app.models.player import Player, Position
-        from sqlalchemy import and_, desc
-        
-        # Build query
-        query = db.query(WaiverWireTrend, Player).join(Player).filter(
-            and_(
-                WaiverWireTrend.week == week,
-                WaiverWireTrend.season == season
-            )
+        waiver_service = WaiverWireService(db)
+
+        trending_players = await waiver_service.get_live_trending_players(
+            trend_direction=trend_direction, position=position, limit=limit
         )
-        
-        # Filter by position if specified
-        if position:
-            query = query.filter(Player.position == Position(position.upper()))
-        
-        # Filter by trend direction
-        if trend_direction == "up":
-            query = query.filter(WaiverWireTrend.ownership_change > 2.0)
-        elif trend_direction == "down":
-            query = query.filter(WaiverWireTrend.ownership_change < -2.0)
-        # "both" includes all trends
-        
-        # Order by pickup rate and ownership change
-        trends = query.order_by(
-            desc(WaiverWireTrend.pickup_rate),
-            desc(WaiverWireTrend.ownership_change)
-        ).limit(limit).all()
-        
-        trending_players = []
-        for trend, player in trends:
-            trending_players.append({
-                "player_id": player.id,
-                "player_name": player.name,
-                "position": player.position.value,
-                "team": player.team,
-                "ownership_change": trend.ownership_change,
-                "pickup_rate": trend.pickup_rate,
-                "drop_rate": trend.drop_rate,
-                "recent_performance": trend.recent_performance,
-                "upcoming_matchup_rating": trend.upcoming_matchup_rating,
-                "target_share_trend": trend.target_share_trend,
-                "snap_count_trend": trend.snap_count_trend
-            })
-        
+
         return {
             "week": week,
             "season": season,
             "trend_direction": trend_direction,
             "position_filter": position,
             "trending_players": trending_players,
-            "total_found": len(trending_players)
+            "total_found": len(trending_players),
+            "generated_at": datetime.utcnow().isoformat()
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get trending players: {str(e)}")
-
-
-@router.get("/alerts")
-async def get_waiver_alerts(
-    active_only: bool = Query(True, description="Only return active alerts"),
-    priority: Optional[str] = Query(None, description="Filter by priority level"),
-    limit: int = Query(20, description="Maximum alerts to return"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get waiver wire alerts and time-sensitive notifications"""
-    try:
-        from app.models.waiver_wire import WaiverWireAlert, Priority
-        from sqlalchemy import and_, desc
-        
-        # Build query
-        query = db.query(WaiverWireAlert)
-        
-        if active_only:
-            query = query.filter(WaiverWireAlert.is_active == True)
-        
-        if priority:
-            query = query.filter(WaiverWireAlert.urgency == Priority(priority.upper()))
-        
-        # Order by urgency and creation time
-        alerts = query.order_by(
-            desc(WaiverWireAlert.urgency),
-            desc(WaiverWireAlert.created_at)
-        ).limit(limit).all()
-        
-        formatted_alerts = []
-        for alert in alerts:
-            formatted_alerts.append({
-                "id": alert.id,
-                "player_id": alert.player_id,
-                "player_name": alert.player.name,
-                "position": alert.player.position.value,
-                "team": alert.player.team,
-                "alert_type": alert.alert_type,
-                "title": alert.title,
-                "message": alert.message,
-                "urgency": alert.urgency.value,
-                "trigger_event": alert.trigger_event,
-                "expires_at": alert.expires_at.isoformat() if alert.expires_at else None,
-                "created_at": alert.created_at.isoformat(),
-                "is_active": alert.is_active
-            })
-        
-        return {
-            "alerts": formatted_alerts,
-            "total_found": len(formatted_alerts),
-            "active_only": active_only,
-            "priority_filter": priority
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get waiver alerts: {str(e)}")
 
 
 @router.post("/generate-recommendations")
@@ -487,31 +400,24 @@ async def get_weekly_waiver_insights(
         raise HTTPException(status_code=500, detail=f"Failed to get weekly insights: {str(e)}")
 
 
-@router.post("/alerts/subscribe")
-async def subscribe_to_alerts(
-    request: AlertSubscriptionRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Subscribe to waiver wire alerts based on criteria"""
-    try:
-        # This would integrate with a notification system
-        # For now, return the subscription preferences
-        
-        return {
-            "success": True,
-            "message": "Alert subscription created successfully",
-            "subscription": {
-                "user_id": current_user.id,
-                "position_filter": request.position,
-                "ownership_range": {
-                    "min": request.min_ownership,
-                    "max": request.max_ownership
-                },
-                "priority_levels": request.priority_levels,
-                "created_at": datetime.utcnow().isoformat()
-            }
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to create alert subscription: {str(e)}")
+# NOTE: POST /alerts/subscribe (and GET /alerts, which queried the
+# never-populated WaiverWireAlert table) have been removed. Both were
+# decommissioned rather than built out further:
+#
+# - /alerts/subscribe was an explicit non-persisting stub (its own comment
+#   said "this would integrate with a notification system") with zero
+#   frontend callers -- confirmed via a repo-wide search of api.ts and every
+#   page/component.
+# - This app now has a real, working in-app notification center
+#   (app.models.notification.Notification, app.services.notification_service,
+#   GET /notifications/*, wired to the navbar bell) that already delivers
+#   the actual underlying value ("tell me when a waiver-relevant player
+#   starts trending") automatically, as a side effect of every
+#   GET /waiver-wire/recommendations call -- see notify_trending_adds above.
+#   A separate opt-in "subscription" step would be redundant with something
+#   that already fires proactively, and building real subscription-criteria
+#   persistence (position/ownership-range filters, an unsubscribe path,
+#   etc.) is a distinct, larger feature this pass didn't build.
+#
+# The frontend's Alerts tab (WaiverWirePage.tsx) now reads directly from the
+# real GET /notifications/ endpoint instead of this dead stub.
