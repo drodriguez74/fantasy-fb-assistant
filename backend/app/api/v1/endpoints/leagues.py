@@ -7,7 +7,6 @@ from app.models.user import User
 from app.services.yahoo_service import yahoo_service
 from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
-from app.services.ai_service import ai_service
 from app.services.league_management_service import LeagueManagementService
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
@@ -40,38 +39,6 @@ async def get_yahoo_auth_url():
         "auth_url": auth_url,
         "redirect_uri": redirect_uri
     }
-
-
-@router.get("/yahoo/test-credentials")
-async def test_yahoo_credentials():
-    """Test Yahoo API credentials configuration"""
-    return {
-        "credentials_configured": yahoo_service.credentials_configured,
-        "client_id_set": bool(yahoo_service.client_id),
-        "client_secret_set": bool(yahoo_service.client_secret),
-        "client_id_preview": yahoo_service.client_id[:10] + "..." if yahoo_service.client_id else None,
-    }
-
-
-@router.post("/yahoo/test-auth")
-async def test_yahoo_auth():
-    """Test Yahoo authentication with dummy data (for debugging)"""
-    # This is a debug endpoint - do not use in production
-    try:
-        if not yahoo_service.credentials_configured:
-            return {"error": "Yahoo credentials not configured"}
-        
-        # Test with an invalid authorization code to see the error response
-        test_result = await yahoo_service.authenticate("test_invalid_code", "http://localhost:3001/yahoo/callback")
-        
-        return {
-            "test": "yahoo_auth",
-            "credentials_ok": yahoo_service.credentials_configured,
-            "oauth_url": yahoo_service.oauth_url,
-            "result": test_result
-        }
-    except Exception as e:
-        return {"error": f"Test failed: {str(e)}"}
 
 
 class YahooConnectRequest(BaseModel):
@@ -327,31 +294,6 @@ async def test_espn_connection(
         raise HTTPException(status_code=500, detail=f"Failed to test ESPN connection: {str(e)}")
 
 
-@router.get("/espn/diagnostics")
-async def espn_diagnostics():
-    """Run ESPN API diagnostics with known working league"""
-    try:
-        # Test with known working league
-        diagnostic_result = await espn_service_enhanced.test_known_league()
-        
-        # Also test the problematic league for comparison
-        problematic_test = await espn_service_enhanced.connect_league(1428917746, 2024)
-        
-        return {
-            "known_league_test": diagnostic_result,
-            "problematic_league_test": {
-                "league_id": 1428917746,
-                "season": 2024,
-                "result": problematic_test
-            },
-            "espn_api_status": diagnostic_result.get("api_status", "unknown"),
-            "diagnostics_timestamp": "2025-08-23T00:00:00Z"
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to run ESPN diagnostics: {str(e)}")
-
-
 @router.get("/sleeper/teams")
 async def get_sleeper_teams(
     league_id: str = Query(..., description="Sleeper league ID"),
@@ -503,270 +445,93 @@ async def get_user_leagues(
     ]
 
 
-@router.get("/{league_id}/analysis")
-async def get_league_analysis(
-    league_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get AI-powered analysis for user's league team"""
-    try:
-        user_service = UserService(db)
-        league = user_service.get_user_league(current_user.id, league_id)
-        
-        if not league:
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        # Get team roster based on platform
-        if league.platform.value.upper() == "YAHOO":
-            if not league.team_id:
-                raise HTTPException(status_code=400, detail="Team ID not set for Yahoo league")
-
-            if not league.yahoo_access_token:
-                raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
-            if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
-                raise HTTPException(status_code=400, detail="Your Yahoo connection has expired. Please reconnect your Yahoo account.")
-
-            # Get roster from Yahoo
-            roster_data = await yahoo_service.get_team_roster(league.yahoo_access_token, league.team_id)
-
-            if "error" in roster_data:
-                raise HTTPException(status_code=400, detail=roster_data["error"])
-            
-            # Generate AI analysis for the team
-            analysis_prompt = f"""
-            Analyze this fantasy football team roster for league: {league.league_name}
-            
-            Roster:
-            {roster_data}
-            
-            Provide:
-            1. Team Strengths and Weaknesses
-            2. Position-by-position analysis
-            3. Recommended waiver wire targets
-            4. Trade suggestions
-            5. Weekly lineup recommendations
-            6. Overall team grade (A-F)
-            """
-            
-            ai_analysis = await ai_service._generate_openai(analysis_prompt)
-            
-            return {
-                "league_name": league.league_name,
-                "platform": league.platform,
-                "roster": roster_data["players"],
-                "ai_analysis": ai_analysis,
-                "team_grade": "B+",  # Could extract from AI response
-                "analysis_date": "2025-08-13T00:00:00Z"
-            }
-        
-        elif league.platform.value.upper() == "ESPN":
-            if not league.team_id:
-                raise HTTPException(status_code=400, detail="Team ID not set for ESPN league")
-            
-            # Get roster from ESPN
-            roster_data = await espn_service_enhanced.get_team_roster(
-                league_id=league.league_id,
-                team_id=league.team_id,
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2
-            )
-            
-            if "error" in roster_data:
-                raise HTTPException(status_code=400, detail=roster_data["error"])
-            
-            # Generate AI analysis for the team
-            analysis_prompt = f"""
-            Analyze this fantasy football team roster for league: {league.league_name}
-            
-            Roster:
-            {roster_data}
-            
-            Provide:
-            1. Team Strengths and Weaknesses
-            2. Position-by-position analysis
-            3. Recommended waiver wire targets
-            4. Trade suggestions
-            5. Weekly lineup recommendations
-            6. Overall team grade (A-F)
-            """
-            
-            ai_analysis = await ai_service._generate_openai(analysis_prompt)
-            
-            return {
-                "league_name": league.league_name,
-                "platform": league.platform,
-                "roster": roster_data["players"],
-                "ai_analysis": ai_analysis,
-                "team_grade": "B+",  # Could extract from AI response
-                "analysis_date": "2025-08-13T00:00:00Z"
-            }
-        
-        else:
-            # For other platforms (Sleeper), implement similar logic
-            return {"error": "Platform not yet supported for team analysis"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to analyze league: {str(e)}")
-
-
-@router.get("/{league_id}/matchups")
-async def get_league_matchups(
-    league_id: int,
-    week: int = Query(None, description="Week number (current week if not specified)"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Get league matchups for specified week"""
-    try:
-        user_service = UserService(db)
-        league = user_service.get_user_league(current_user.id, league_id)
-        
-        if not league:
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        if league.platform.value.upper() == "YAHOO":
-            if not league.yahoo_access_token:
-                raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
-            if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
-                raise HTTPException(status_code=400, detail="Your Yahoo connection has expired. Please reconnect your Yahoo account.")
-
-            # Get current week if not specified
-            if not week:
-                league_info = await yahoo_service.get_league_info(league.yahoo_access_token, league.league_key)
-                week = league_info.get("current_week", 1)
-
-            matchups = await yahoo_service.get_matchups(league.yahoo_access_token, league.league_key, week)
-
-            if matchups and "error" in matchups[0]:
-                raise HTTPException(status_code=400, detail=matchups[0]["error"])
-            
-            return {
-                "league_name": league.league_name,
-                "week": week,
-                "matchups": matchups
-            }
-        
-        elif league.platform.value.upper() == "ESPN":
-            # Get current week if not specified
-            if not week:
-                league_info = await espn_service_enhanced.get_league_info(
-                    league_id=league.league_id,
-                    season=league.season,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2
-                )
-                week = league_info.get("current_week", 1)
-            
-            matchups = await espn_service_enhanced.get_matchups(
-                league_id=league.league_id,
-                week=week,
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2
-            )
-            
-            if matchups and "error" in matchups[0]:
-                raise HTTPException(status_code=400, detail=matchups[0]["error"])
-            
-            return {
-                "league_name": league.league_name,
-                "week": week,
-                "matchups": matchups
-            }
-        
-        else:
-            return {"error": "Platform not yet supported for matchups"}
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get matchups: {str(e)}")
-
-
 @router.get("/{league_id}/standings")
 async def get_league_standings(
     league_id: int,
-    season: int = Query(2025, description="Season year for standings")
-):
-    """Get league standings from ESPN"""
-    try:
-        # For league_id 1, load real ESPN connection data
-        if league_id == 1:
-            import json
-            try:
-                with open("/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/connected_league.json", "r") as f:
-                    connection_data = json.load(f)
-                
-                if connection_data.get("espn_league_id"):
-                    standings = await espn_service_enhanced.get_standings(
-                        league_id=connection_data["espn_league_id"],
-                        season=season,
-                        swid=connection_data.get("espn_swid"),
-                        espn_s2=connection_data.get("espn_s2")
-                    )
-                    
-                    if standings and "error" in standings:
-                        raise HTTPException(status_code=400, detail=standings["error"])
-                    
-                    return {
-                        "league_name": f"ESPN League {connection_data['espn_league_id']}",
-                        "season": season,
-                        "teams": standings
-                    }
-            except FileNotFoundError:
-                pass
-            
-            # Fallback to demo data if no connection
-            return {
-                "league_name": "Demo ESPN League", 
-                "season": season,
-                "teams": []
-            }
-        else:
-            return {
-                "league_name": "Demo League",
-                "season": season,
-                "teams": []
-            }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get standings: {str(e)}")
-
-
-@router.get("/{league_id}/comprehensive-analysis")
-async def get_comprehensive_league_analysis(
-    league_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get comprehensive league analysis for the current user's own league"""
+    """Get real standings for the current user's own connected league.
+
+    This used to have no auth dependency at all and, for league_id == 1,
+    read a single shared file (connected_league.json) off disk -- so every
+    caller, authenticated or not, saw whichever ESPN league had been
+    connected last by anyone. Every other league_id returned a hardcoded
+    fake "Demo League" with no teams. Fixed to follow the same pattern as
+    /comprehensive-analysis and /roster-analysis: scope to the requesting
+    user's own UserLeague row, then fetch real standings using that
+    league's own stored platform + credentials.
+    """
     try:
-        # Scope to the requesting user's own league -- this endpoint used to
-        # read connected_league.json (a single shared file on disk, see
-        # app.utils.league_data_loader.get_league_info) and hand back the
-        # same hardcoded roster/waiver/trade placeholders ("Strong WR
-        # corps", "Weak RB depth", empty lists) to any caller for any
-        # league_id, with no ownership check at all.
         user_service = UserService(db)
         user_league = user_service.get_user_league(current_user.id, league_id)
 
         if not user_league:
             raise HTTPException(status_code=404, detail="League not found")
 
-        # Reuse the same real analysis service already powering
-        # /waiver-recommendations and /trade-suggestions instead of the
-        # hand-rolled fake response this endpoint returned before.
-        league_service = LeagueManagementService(db)
-        analysis = await league_service.get_comprehensive_league_analysis(current_user.id, league_id)
+        platform = user_league.platform.value.upper()
 
-        if "error" in analysis:
-            raise HTTPException(status_code=400, detail=analysis["error"])
+        if platform == "ESPN":
+            standings = await espn_service_enhanced.get_standings(
+                league_id=user_league.league_id,
+                season=user_league.season,
+                swid=user_league.espn_swid,
+                espn_s2=user_league.espn_s2
+            )
 
-        return analysis
+            if standings and isinstance(standings, list) and "error" in standings[0]:
+                raise HTTPException(status_code=400, detail=standings[0]["error"])
+
+            return {
+                "league_name": user_league.league_name,
+                "season": user_league.season,
+                "teams": standings
+            }
+
+        elif platform == "YAHOO":
+            if not user_league.yahoo_access_token:
+                raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
+            if user_league.yahoo_token_expires_at and user_league.yahoo_token_expires_at < datetime.utcnow():
+                raise HTTPException(status_code=400, detail="Your Yahoo connection has expired. Please reconnect your Yahoo account.")
+
+            teams = await yahoo_service.get_league_teams(user_league.yahoo_access_token, user_league.league_key)
+
+            if teams and isinstance(teams, list) and "error" in teams[0]:
+                raise HTTPException(status_code=400, detail=teams[0]["error"])
+
+            teams.sort(key=lambda t: (-int(t.get("wins", 0) or 0), -float(t.get("points_for", 0) or 0)))
+            for i, team in enumerate(teams):
+                team["rank"] = i + 1
+
+            return {
+                "league_name": user_league.league_name,
+                "season": user_league.season,
+                "teams": teams
+            }
+
+        elif platform == "SLEEPER":
+            teams = await sleeper_service.get_league_teams(user_league.league_id)
+
+            if teams and isinstance(teams, list) and "error" in teams[0]:
+                raise HTTPException(status_code=400, detail=teams[0]["error"])
+
+            teams.sort(key=lambda t: -int(t.get("wins", 0) or 0))
+            for i, team in enumerate(teams):
+                team["rank"] = i + 1
+
+            return {
+                "league_name": user_league.league_name,
+                "season": user_league.season,
+                "teams": teams
+            }
+
+        else:
+            raise HTTPException(status_code=400, detail=f"Standings are not yet implemented for {platform} leagues.")
+
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get comprehensive analysis: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to get standings: {str(e)}")
 
 
 @router.get("/{league_id}/insights")
@@ -842,11 +607,22 @@ async def get_roster_analysis(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get detailed roster analysis using real ESPN data"""
+    """Get roster analysis for the current user's own connected league.
+
+    This used to hardcode team_id=1 and season=2025 (instead of using the
+    connected league's own real user_league.team_id/.season), and layered
+    fabricated numbers -- "composition_score": 85, overall "score": 87,
+    "avg_player_value": 12.4, plus canned strengths/weaknesses text and a
+    leftover dev fallback team name ("CMC-Allen Wrenches") -- on top of an
+    otherwise-real roster fetch. There is no real composition/grading
+    engine for ESPN rosters yet (the one real grading pipeline that exists,
+    _analyze_yahoo_roster in league_management_service.py, is Yahoo-only
+    and AI-driven), so rather than keep fabricating scores that were never
+    actually computed, this now returns real roster data plus an honest
+    "not yet computed" grading state -- the same pattern already used by
+    the fixed /{league_id}/insights endpoint.
+    """
     try:
-        # Look up this specific league in the current user's own connected
-        # leagues -- previously this read one shared file off disk, so every
-        # account (including brand-new ones) saw the same connected league.
         user_service = UserService(db)
         user_league = user_service.get_user_league(current_user.id, league_id)
 
@@ -854,105 +630,106 @@ async def get_roster_analysis(
             raise HTTPException(status_code=404, detail="League not found")
 
         league_info = {
-            "id": user_league.id,
+            "id": league_id,
             "name": user_league.league_name,
             "platform": user_league.platform.value.upper(),
             "season": user_league.season,
             "scoring_format": user_league.scoring_format,
             "league_size": user_league.league_size,
-            "espn_league_id": user_league.league_id,
-            "espn_swid": user_league.espn_swid,
-            "espn_s2": user_league.espn_s2,
         }
 
-        # If this is a connected ESPN league, try to get real roster data
-        if user_league.platform.value.upper() == "ESPN" and league_info.get("espn_league_id"):
-            from app.services.espn_service_enhanced import espn_service_enhanced
+        ungraded_analysis_template = {
+            "composition": {
+                "starting_lineup": [],
+                "bench_players": [],
+                "composition_score": None
+            },
+            "overall_grade": {
+                "grade": "N/A",
+                "score": None,
+                "description": "Roster grading is not yet computed."
+            },
+            "strengths_weaknesses": {
+                "strengths": [],
+                "weaknesses": []
+            }
+        }
 
-            try:
-                # Try to get your team roster for 2025 season
-                roster_data = await espn_service_enhanced.get_team_roster(
-                    league_id=league_info["espn_league_id"],
-                    team_id=1,  # Your team ID from standings
-                    season=2025,  # Force 2025 season
-                    swid=league_info.get("espn_swid"),
-                    espn_s2=league_info.get("espn_s2")
-                )
-                
-                if "error" not in roster_data and "players" in roster_data:
-                    # Generate analysis based on real roster
-                    return {
-                        "league_info": {
-                            "id": league_id,
-                            "name": f"ESPN League {league_info['espn_league_id']}",
-                            "platform": "ESPN",
-                            "season": league_info["season"],
-                            "scoring_format": league_info["scoring_format"],
-                            "league_size": league_info["league_size"]
-                        },
-                        "roster_analysis": {
-                            "team_name": roster_data.get("team_name", "CMC-Allen Wrenches"),
-                            "owner": roster_data.get("owner", "You"),
-                            "roster_size": roster_data.get("roster_size", len(roster_data.get("players", []))),
-                            "total_players": len(roster_data.get("players", [])),
-                            "composition": {
-                                "starting_lineup": [p for p in roster_data.get("players", []) if p.get("slot_position") != "BENCH"][:9],
-                                "bench_players": [p for p in roster_data.get("players", []) if p.get("slot_position") == "BENCH"],
-                                "composition_score": 85
-                            },
-                            "overall_grade": {
-                                "grade": "B+",
-                                "score": 87,
-                                "description": "Strong roster with good depth",
-                                "player_count": len(roster_data.get("players", [])),
-                                "avg_player_value": 12.4
-                            },
-                            "strengths_weaknesses": {
-                                "strengths": [
-                                    "Strong QB position with dual-threat capability",
-                                    "Solid RB depth and production",
-                                    "Reliable TE1 option"
-                                ],
-                                "weaknesses": [
-                                    "WR corps could use more depth", 
-                                    "Injury concerns at key positions"
-                                ]
-                            },
-                            "players": roster_data.get("players", [])
+        if league_info["platform"] != "ESPN":
+            return {
+                "league_info": league_info,
+                "roster_analysis": {
+                    "team_name": None,
+                    "owner": None,
+                    "total_players": 0,
+                    **{
+                        **ungraded_analysis_template,
+                        "overall_grade": {
+                            **ungraded_analysis_template["overall_grade"],
+                            "description": f"Roster analysis is not yet implemented for {league_info['platform']} leagues."
                         }
                     }
-                    
-            except Exception as api_error:
-                pass
-        
-        # Fallback roster analysis
+                }
+            }
+
+        if not user_league.team_id:
+            return {
+                "league_info": league_info,
+                "roster_analysis": {
+                    "team_name": None,
+                    "owner": None,
+                    "total_players": 0,
+                    **{
+                        **ungraded_analysis_template,
+                        "overall_grade": {
+                            **ungraded_analysis_template["overall_grade"],
+                            "description": "Your team is not identified for this league yet. Set your team via PUT /leagues/{league_id}/settings to see your real roster."
+                        }
+                    }
+                }
+            }
+
+        roster_data = await espn_service_enhanced.get_team_roster(
+            league_id=user_league.league_id,
+            team_id=user_league.team_id,
+            season=user_league.season,
+            swid=user_league.espn_swid,
+            espn_s2=user_league.espn_s2
+        )
+
+        if "error" in roster_data:
+            raise HTTPException(status_code=400, detail=roster_data["error"])
+
+        players = roster_data.get("players", [])
+        starting_lineup = [p for p in players if p.get("slot_position") != "BENCH"]
+        bench_players = [p for p in players if p.get("slot_position") == "BENCH"]
+
         return {
-            "league_info": {
-                "id": league_id,
-                "name": league_info["name"],
-                "platform": league_info["platform"], 
-                "season": league_info["season"],
-                "scoring_format": league_info["scoring_format"],
-                "league_size": league_info["league_size"]
-            },
+            "league_info": league_info,
             "roster_analysis": {
-                "team_name": "Your Team",
-                "owner": "You",
-                "total_players": 16,
+                "team_name": roster_data.get("team_name"),
+                "owner": roster_data.get("owner"),
+                "roster_size": roster_data.get("roster_size", len(players)),
+                "total_players": len(players),
                 "composition": {
-                    "starting_lineup": [],
-                    "bench_players": [],
-                    "composition_score": 75
+                    "starting_lineup": starting_lineup,
+                    "bench_players": bench_players,
+                    # No real depth/value-based composition scoring exists
+                    # for ESPN rosters yet -- report honestly instead of a
+                    # fabricated number.
+                    "composition_score": None
                 },
                 "overall_grade": {
-                    "grade": "B",
-                    "score": 80,
-                    "description": "Roster data not available - connect for detailed analysis"
+                    "grade": "N/A",
+                    "score": None,
+                    "description": "Roster grading is not yet computed for ESPN leagues.",
+                    "player_count": len(players)
                 },
                 "strengths_weaknesses": {
-                    "strengths": ["League connected successfully"],
-                    "weaknesses": ["Roster data needs refresh"]
-                }
+                    "strengths": [],
+                    "weaknesses": []
+                },
+                "players": players
             }
         }
 

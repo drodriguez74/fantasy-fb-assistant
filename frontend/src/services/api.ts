@@ -131,11 +131,6 @@ export const leagues = {
       username: username || undefined,
     }),
 
-  getAnalysis: (leagueId: number) => api.get(`/leagues/${leagueId}/analysis`),
-  
-  getMatchups: (leagueId: number, week?: number) => 
-    api.get(`/leagues/${leagueId}/matchups${week ? `?week=${week}` : ''}`),
-  
   getStandings: (leagueId: number) => api.get(`/leagues/${leagueId}/standings`),
 
   updateSettings: (leagueId: number, settings: Record<string, unknown>) =>
