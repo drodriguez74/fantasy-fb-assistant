@@ -8,6 +8,7 @@ from app.services.yahoo_service import yahoo_service
 from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.league_management_service import LeagueManagementService
+from app.services.roster_grading import grade_roster
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
 from app.core.config import settings
@@ -734,6 +735,19 @@ async def get_roster_analysis(
         starting_lineup = [p for p in players if p.get("lineup_slot") not in ("BE", "IR")]
         bench_players = [p for p in players if p.get("lineup_slot") in ("BE", "IR")]
 
+        # Real, deterministic grading (roster_grading.py) -- no AI call,
+        # reuses this league's own real roster-slot requirements. Falls
+        # back to a standard lineup internally if settings can't be read.
+        league_settings = await espn_service_enhanced.get_scoring_and_roster_settings(
+            league_id=user_league.league_id,
+            season=user_league.season,
+            swid=user_league.espn_swid,
+            espn_s2=user_league.espn_s2
+        )
+        if "error" in league_settings:
+            league_settings = None
+        grading = grade_roster(players, league_settings)
+
         return {
             "league_info": league_info,
             "roster_analysis": {
@@ -744,20 +758,17 @@ async def get_roster_analysis(
                 "composition": {
                     "starting_lineup": starting_lineup,
                     "bench_players": bench_players,
-                    # No real depth/value-based composition scoring exists
-                    # for ESPN rosters yet -- report honestly instead of a
-                    # fabricated number.
-                    "composition_score": None
+                    "composition_score": grading["composition_score"]
                 },
                 "overall_grade": {
-                    "grade": "N/A",
-                    "score": None,
-                    "description": "Roster grading is not yet computed for ESPN leagues.",
+                    "grade": grading["grade"],
+                    "score": grading["composition_score"],
+                    "description": "Composition grade based on this league's real roster-slot requirements.",
                     "player_count": len(players)
                 },
                 "strengths_weaknesses": {
-                    "strengths": [],
-                    "weaknesses": []
+                    "strengths": grading["strengths"],
+                    "weaknesses": grading["weaknesses"]
                 },
                 "players": players
             }
