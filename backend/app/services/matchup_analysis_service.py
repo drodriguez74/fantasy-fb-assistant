@@ -24,35 +24,68 @@ class MatchupAnalysisService:
     
     def __init__(self, db: Session):
         self.db = db
-    
+        self._current_season_cache: Optional[int] = None
+
+    def get_current_season(self) -> int:
+        """Determine the real current NFL season instead of a hardcoded year.
+
+        Previously every query in this file was pinned to the literal 2024,
+        which silently returned stale-or-empty results the moment the real
+        season moved on. Prefer the most recent season actually present in
+        the NFL schedule data (so this stays correct once that data is
+        populated for a new season); fall back to a calendar-based estimate
+        when the schedule table is empty. NFL season "N" is conventionally
+        the year it kicks off in and runs through the Super Bowl the
+        following February, so a bare calendar year is treated as season
+        N-1 for Jan/Feb (the previous season's playoffs are still resolving)
+        and season N from March onward (free agency/draft/preseason prep
+        for fantasy purposes already treats the new year as "the season").
+        """
+        if self._current_season_cache is not None:
+            return self._current_season_cache
+
+        try:
+            latest_season = self.db.query(func.max(NFLGame.season)).scalar()
+            if latest_season:
+                self._current_season_cache = latest_season
+                return latest_season
+        except Exception as e:
+            logger.warning(f"Could not derive season from NFLGame data: {str(e)}")
+
+        now = datetime.utcnow()
+        estimated_season = now.year if now.month >= 3 else now.year - 1
+        self._current_season_cache = estimated_season
+        return estimated_season
+
     def get_current_week(self) -> int:
         """Determine current NFL week based on schedule"""
         try:
+            season = self.get_current_season()
             # Find most recent completed game or next scheduled game
             current_time = datetime.utcnow()
-            
+
             # Check for games this week
             current_week_game = self.db.query(NFLGame).filter(
                 and_(
-                    NFLGame.season == 2024,
+                    NFLGame.season == season,
                     NFLGame.game_date <= current_time + timedelta(days=3),
                     NFLGame.game_date >= current_time - timedelta(days=3)
                 )
             ).first()
-            
+
             if current_week_game:
                 return current_week_game.week
-            
+
             # Fall back to next scheduled game
             next_game = self.db.query(NFLGame).filter(
                 and_(
-                    NFLGame.season == 2024,
+                    NFLGame.season == season,
                     NFLGame.game_date > current_time
                 )
             ).order_by(NFLGame.game_date).first()
-            
+
             return next_game.week if next_game else 1
-            
+
         except Exception as e:
             logger.error(f"Error determining current week: {str(e)}")
             return 1
@@ -73,7 +106,7 @@ class MatchupAnalysisService:
                 and_(
                     DefensiveMatchupRanking.team_abbreviation == team_abbr,
                     DefensiveMatchupRanking.position == position,
-                    DefensiveMatchupRanking.season == 2024,
+                    DefensiveMatchupRanking.season == self.get_current_season(),
                     DefensiveMatchupRanking.week <= week
                 )
             ).order_by(DefensiveMatchupRanking.week.desc()).first()
@@ -117,7 +150,7 @@ class MatchupAnalysisService:
             # Get player's upcoming games
             upcoming_games = self.db.query(NFLGame).filter(
                 and_(
-                    NFLGame.season == 2024,
+                    NFLGame.season == self.get_current_season(),
                     NFLGame.week.between(current_week, current_week + weeks_ahead),
                     or_(
                         NFLGame.home_team == player.team,
@@ -264,13 +297,14 @@ class MatchupAnalysisService:
         try:
             if not week:
                 week = self.get_current_week()
-            
+            season = self.get_current_season()
+
             # Get all defensive matchup rankings for this week
             def_rankings = self.db.query(DefensiveMatchupRanking).filter(
                 and_(
                     DefensiveMatchupRanking.week == week,
                     DefensiveMatchupRanking.position == "DEF",
-                    DefensiveMatchupRanking.season == 2024
+                    DefensiveMatchupRanking.season == season
                 )
             ).order_by(DefensiveMatchupRanking.matchup_rating.desc()).all()
             
@@ -282,7 +316,7 @@ class MatchupAnalysisService:
                 team_games = self.db.query(NFLGame).filter(
                     and_(
                         NFLGame.week == week,
-                        NFLGame.season == 2024,
+                        NFLGame.season == season,
                         or_(
                             NFLGame.home_team == ranking.team_abbreviation,
                             NFLGame.away_team == ranking.team_abbreviation
@@ -353,7 +387,7 @@ class MatchupAnalysisService:
             rankings = self.db.query(DefensiveMatchupRanking).filter(
                 and_(
                     DefensiveMatchupRanking.position == position,
-                    DefensiveMatchupRanking.season == 2024,
+                    DefensiveMatchupRanking.season == self.get_current_season(),
                     DefensiveMatchupRanking.week.between(current_week, current_week + weeks_ahead)
                 )
             ).order_by(
@@ -530,23 +564,24 @@ class MatchupAnalysisService:
     def update_defensive_rankings(self, week: int, defensive_data: List[Dict[str, Any]]):
         """Update defensive rankings for a specific week"""
         try:
+            season = self.get_current_season()
             for team_defense in defensive_data:
                 team = team_defense["team"]
-                
+
                 # Update rankings for each position
                 for position in ["QB", "RB", "WR", "TE", "K", "DEF"]:
                     position_data = team_defense.get(f"{position.lower()}_defense", {})
-                    
+
                     # Check if ranking already exists
                     existing = self.db.query(DefensiveMatchupRanking).filter(
                         and_(
                             DefensiveMatchupRanking.team_abbreviation == team,
                             DefensiveMatchupRanking.position == position,
                             DefensiveMatchupRanking.week == week,
-                            DefensiveMatchupRanking.season == 2024
+                            DefensiveMatchupRanking.season == season
                         )
                     ).first()
-                    
+
                     if existing:
                         # Update existing ranking
                         existing.rank_vs_position = position_data.get("rank", 16)
@@ -558,7 +593,7 @@ class MatchupAnalysisService:
                     else:
                         # Create new ranking
                         new_ranking = DefensiveMatchupRanking(
-                            season=2024,
+                            season=season,
                             week=week,
                             team_abbreviation=team,
                             position=position,

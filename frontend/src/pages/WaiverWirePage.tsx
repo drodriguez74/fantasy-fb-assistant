@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { waiverWire, getErrorMessage } from '../services/api'
+import { waiverWire, matchupAnalysis, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { getPositionColor } from '../components/players/playerDisplay'
 import {
@@ -14,7 +14,9 @@ import {
   CheckCircleIcon,
   BellIcon,
   AdjustmentsHorizontalIcon,
-  MagnifyingGlassIcon
+  MagnifyingGlassIcon,
+  ShieldCheckIcon,
+  NoSymbolIcon
 } from '@heroicons/react/24/outline'
 
 interface WaiverRecommendation {
@@ -81,6 +83,60 @@ interface AddDropAnalysis {
   drop_candidates?: RosterAddDropCandidate[]
 }
 
+// Shape of one entry in defense-streaming's `streaming_recommendations` /
+// `defenses_to_avoid` arrays (backend/app/services/matchup_analysis_service.py
+// via WaiverWireService.get_matchup_driven_defense_recommendations). Fields
+// vary slightly between the "enhanced" (ownership-aware) recommendations and
+// the plain avoid-list entries, so most are optional.
+interface DefenseStreamingTarget {
+  player_id?: number
+  team_name?: string
+  // `streaming_recommendations` entries carry `team_abbreviation`; the plain
+  // `defenses_to_avoid` entries (WaiverWireService.get_weekly_defensive_targets
+  // pass-through) instead carry `team` -- normalize with getTeamAbbr() below
+  // rather than assuming one field name everywhere.
+  team_abbreviation?: string
+  team?: string
+  opponent: string | null
+  is_home_game?: boolean
+  is_home?: boolean
+  matchup_rating: number
+  improvement_over_current?: number
+  ownership_percentage?: number
+  avg_points_allowed?: number
+  recent_trend?: number
+  availability_tier?: string
+  recommendation_strength?: string
+  recommendation?: string
+  tier?: string
+  key_factors?: string[]
+  confidence?: number
+  waiver_priority?: string
+}
+
+interface DefenseStreamingRecommendations {
+  week: number
+  current_defense?: string | null
+  streaming_recommendations?: DefenseStreamingTarget[]
+  defenses_to_avoid?: DefenseStreamingTarget[]
+  analysis_notes?: string[]
+  error?: string
+}
+
+interface PositionOutlookWeek {
+  best_matchups: { team: string; rating: number; rank: number; points_allowed: number }[]
+  worst_matchups: { team: string; rating: number; rank: number; points_allowed: number }[]
+  week_average_rating: number
+}
+
+interface PositionOutlook {
+  position: string
+  weeks_analyzed: number
+  weekly_outlook: Record<string, PositionOutlookWeek>
+  total_rankings_analyzed: number
+  error?: string
+}
+
 // Helper function to get current NFL week
 function getCurrentNFLWeek(): number {
   // Simple calculation - NFL season typically starts first week of September
@@ -126,9 +182,27 @@ function ConfidenceBar({ value }: { value: number }) {
   )
 }
 
+// Matchup ratings from matchup_analysis_service.py are on a 0-10 scale
+// (5.0 = neutral), not a 0-1 ratio -- share the same bar visual but scale
+// against 10 instead of reusing ConfidenceBar directly.
+function MatchupRatingBar({ rating }: { rating: number }) {
+  const pct = Math.max(4, Math.min(100, Math.round((rating / 10) * 100)))
+  return (
+    <div className="w-full bg-ink-100 rounded-full h-2">
+      <div className="bg-accent-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
+    </div>
+  )
+}
+
+// See the DefenseStreamingTarget comment above -- the two shapes this app
+// renders carry the team abbreviation under different field names.
+function getTeamAbbr(target: DefenseStreamingTarget): string {
+  return target.team_abbreviation || target.team || '?'
+}
+
 export function WaiverWirePage() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'recommendations' | 'trending' | 'alerts' | 'analyzer'>('recommendations')
+  const [activeTab, setActiveTab] = useState<'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming'>('recommendations')
   const [recommendations, setRecommendations] = useState<WaiverRecommendation[]>([])
   const [trendingPlayers, setTrendingPlayers] = useState<TrendingPlayer[]>([])
   const [alerts, setAlerts] = useState<WaiverAlert[]>([])
@@ -144,6 +218,13 @@ export function WaiverWirePage() {
   // Roster analyzer
   const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
   const [addDropAnalysis, setAddDropAnalysis] = useState<AddDropAnalysis | null>(null)
+
+  // Defense/kicker streaming (matchup_analysis endpoints)
+  const [streamingCurrentDefense, setStreamingCurrentDefense] = useState<string>('')
+  const [streamingData, setStreamingData] = useState<DefenseStreamingRecommendations | null>(null)
+  const [kickerOutlook, setKickerOutlook] = useState<PositionOutlook | null>(null)
+  const [streamingLoading, setStreamingLoading] = useState(false)
+  const [streamingError, setStreamingError] = useState('')
 
   const loadRecommendations = useCallback(async () => {
     try {
@@ -218,6 +299,33 @@ export function WaiverWirePage() {
       loadAlerts()
     }
   }, [user, activeTab, loadAlerts])
+
+  const loadStreamingTargets = useCallback(async () => {
+    try {
+      setStreamingLoading(true)
+      setStreamingError('')
+
+      const [defenseRes, kickerRes] = await Promise.all([
+        matchupAnalysis.getDefenseStreaming(currentWeek, streamingCurrentDefense.trim() || undefined),
+        matchupAnalysis.getPositionOutlook('K', 3).catch(() => null),
+      ])
+
+      setStreamingData(defenseRes.data.recommendations ?? null)
+      setKickerOutlook(kickerRes?.data?.position_outlook ?? null)
+    } catch (err) {
+      setStreamingError(getErrorMessage(err, 'Failed to load defensive streaming targets'))
+      setStreamingData(null)
+    } finally {
+      setStreamingLoading(false)
+    }
+  }, [currentWeek, streamingCurrentDefense])
+
+  useEffect(() => {
+    if (user && activeTab === 'streaming') {
+      loadStreamingTargets()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeTab, currentWeek])
 
   const analyzeRoster = async () => {
     try {
@@ -300,6 +408,7 @@ export function WaiverWirePage() {
   const tabs = [
     { id: 'recommendations', name: 'Recommendations', icon: PlusIcon },
     { id: 'trending', name: 'Trending', icon: FireIcon },
+    { id: 'streaming', name: 'DEF/K Streaming', icon: ShieldCheckIcon },
     { id: 'alerts', name: 'Alerts', icon: BellIcon },
     { id: 'analyzer', name: 'Roster Analyzer', icon: AdjustmentsHorizontalIcon },
   ]
@@ -361,7 +470,7 @@ export function WaiverWirePage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'recommendations' | 'trending' | 'alerts' | 'analyzer')}
+                onClick={() => setActiveTab(tab.id as 'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-accent-500 text-accent-600'
@@ -669,6 +778,208 @@ export function WaiverWirePage() {
                             </>
                           )}
                         </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'streaming' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-ink-900 mb-1">Defense Streaming Targets — Week {currentWeek}</h3>
+            <p className="text-sm text-ink-600 mb-4">
+              Ranked by how tough this week's matchup is, not by name recognition — the defenses opposing teams
+              have historically struggled to move the ball against.
+            </p>
+            <div className="flex items-end space-x-4 mb-2">
+              <div>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Your current DEF (optional)</label>
+                <input
+                  type="text"
+                  value={streamingCurrentDefense}
+                  onChange={(e) => setStreamingCurrentDefense(e.target.value.toUpperCase())}
+                  placeholder="e.g. NYJ"
+                  maxLength={4}
+                  className="block w-32 rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500 uppercase"
+                />
+              </div>
+              <button
+                onClick={loadStreamingTargets}
+                disabled={streamingLoading}
+                className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 flex items-center space-x-2"
+              >
+                <ShieldCheckIcon className="h-4 w-4" />
+                <span>{streamingCurrentDefense ? 'Compare to my DEF' : 'Refresh'}</span>
+              </button>
+            </div>
+          </div>
+
+          {streamingError && (
+            <div className="bg-danger-50 border border-danger-200 rounded-md p-4">
+              <div className="flex">
+                <ExclamationTriangleIcon className="h-5 w-5 text-danger-400" />
+                <div className="ml-3">
+                  <h3 className="text-sm font-medium text-danger-800">Error</h3>
+                  <div className="mt-2 text-sm text-danger-700">{streamingError}</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {streamingLoading ? (
+            <div className="bg-white rounded-lg shadow p-6 text-center">
+              <ClockIcon className="animate-spin h-8 w-8 text-accent-600 mx-auto mb-2" />
+              <p className="text-sm text-ink-500">Loading matchup data...</p>
+            </div>
+          ) : !streamingError && (streamingData?.error || (!streamingData?.streaming_recommendations?.length && !streamingData?.defenses_to_avoid?.length)) ? (
+            <div className="bg-white rounded-lg shadow p-6 text-center">
+              <DataConfidenceBadge level="insufficient" className="mb-3" />
+              <h3 className="mt-1 text-sm font-medium text-ink-900">No defensive matchup data for Week {currentWeek} yet</h3>
+              <p className="mt-1 text-sm text-ink-500 max-w-md mx-auto">
+                This week's defensive rankings haven't been computed yet. Check back closer to kickoff, or try
+                an earlier week that's already been played.
+              </p>
+            </div>
+          ) : (
+            <>
+              {!!streamingData?.streaming_recommendations?.length && (
+                <div className="space-y-4">
+                  {streamingData.streaming_recommendations.map((target) => (
+                    <div key={getTeamAbbr(target)} className="bg-white rounded-lg shadow p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-2 flex-wrap gap-y-1">
+                            <h4 className="text-lg font-medium text-ink-900">
+                              {target.team_name || `${getTeamAbbr(target)} Defense`}
+                            </h4>
+                            <span className="text-sm text-ink-500">
+                              {(target.is_home_game ?? target.is_home) ? 'vs' : '@'} {target.opponent || 'TBD'}
+                            </span>
+                            {target.waiver_priority && (
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityBadgeColor(target.waiver_priority.toLowerCase())}`}>
+                                {target.waiver_priority.toUpperCase()} PRIORITY
+                              </span>
+                            )}
+                            {target.availability_tier && (
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-600">
+                                {target.availability_tier}
+                              </span>
+                            )}
+                          </div>
+
+                          {!!target.key_factors?.length && (
+                            <div className="flex flex-wrap gap-2 mb-3">
+                              {target.key_factors.map((factor, idx) => (
+                                <span key={idx} className="text-xs bg-ink-50 text-ink-600 px-2 py-1 rounded">
+                                  {factor}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          <div className="max-w-sm">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-ink-700">Matchup Rating</span>
+                              <DataConfidenceBadge level="heuristic" label="Composite rating" />
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1">
+                                <MatchupRatingBar rating={target.matchup_rating} />
+                              </div>
+                              <span className="text-sm text-ink-700 font-medium w-12 text-right">
+                                {target.matchup_rating.toFixed(1)}/10
+                              </span>
+                            </div>
+                            {(target.avg_points_allowed != null || target.recent_trend != null) && (
+                              <p className="mt-1 text-xs text-ink-500">
+                                {target.avg_points_allowed != null && `${target.avg_points_allowed.toFixed(1)} pts allowed (season avg)`}
+                                {target.avg_points_allowed != null && target.recent_trend != null && ' · '}
+                                {target.recent_trend != null && `${target.recent_trend.toFixed(1)} last 4 wks`}
+                              </p>
+                            )}
+                            {!!streamingData?.current_defense && target.improvement_over_current != null && (
+                              <p className="mt-1 text-xs text-success-700 font-medium">
+                                +{target.improvement_over_current.toFixed(1)} better than your current DEF
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {!!streamingData?.defenses_to_avoid?.length && (
+                <div className="bg-white rounded-lg shadow p-6">
+                  <h4 className="font-medium text-ink-900 mb-3 flex items-center space-x-2">
+                    <NoSymbolIcon className="h-5 w-5 text-danger-500" />
+                    <span>Defenses to Avoid This Week</span>
+                  </h4>
+                  <div className="space-y-3">
+                    {streamingData.defenses_to_avoid.map((target) => (
+                      <div key={getTeamAbbr(target)} className="border border-danger-200 bg-danger-50 rounded p-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="font-medium text-ink-900">
+                            {target.team_name || `${getTeamAbbr(target)} Defense`}
+                            <span className="ml-2 text-sm font-normal text-ink-500">
+                              {(target.is_home_game ?? target.is_home) ? 'vs' : '@'} {target.opponent || 'TBD'}
+                            </span>
+                          </span>
+                          <span className="text-xs text-danger-700 font-medium">
+                            {target.matchup_rating.toFixed(1)}/10
+                          </span>
+                        </div>
+                        {target.recommendation && <p className="text-sm text-ink-600">{target.recommendation}</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Kicker matchup outlook -- smaller secondary section, same data source */}
+          <div className="bg-white rounded-lg shadow p-6">
+            <h4 className="font-medium text-ink-900 mb-1">Kicker Matchup Outlook</h4>
+            <p className="text-sm text-ink-600 mb-4">Best and worst upcoming matchups for streaming a kicker.</p>
+            {!kickerOutlook || kickerOutlook.error || !Object.keys(kickerOutlook.weekly_outlook || {}).length ? (
+              <div className="text-center py-4">
+                <DataConfidenceBadge level="insufficient" />
+                <p className="mt-2 text-sm text-ink-500">No kicker matchup data available yet for the upcoming weeks.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {Object.entries(kickerOutlook.weekly_outlook).map(([week, outlook]) => (
+                  <div key={week} className="border border-ink-200 rounded p-3">
+                    <div className="text-sm font-medium text-ink-700 mb-2">Week {week}</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <span className="text-xs uppercase text-ink-500">Best matchups</span>
+                        <ul className="mt-1 space-y-1">
+                          {outlook.best_matchups.map((m) => (
+                            <li key={m.team} className="flex justify-between text-ink-700">
+                              <span>{m.team}</span>
+                              <span className="text-success-700">{m.rating.toFixed(1)}/10</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <span className="text-xs uppercase text-ink-500">Worst matchups</span>
+                        <ul className="mt-1 space-y-1">
+                          {outlook.worst_matchups.map((m) => (
+                            <li key={m.team} className="flex justify-between text-ink-700">
+                              <span>{m.team}</span>
+                              <span className="text-danger-700">{m.rating.toFixed(1)}/10</span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     </div>
                   </div>

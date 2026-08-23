@@ -261,6 +261,23 @@ export const waiverWire = {
     api.post('/waiver-wire/alerts/subscribe', data),
 }
 
+// Matchup analysis endpoints (backend/app/api/v1/endpoints/matchup_analysis.py)
+// -- defensive-streaming targets and position-vs-defense outlook, driven by
+// live NFL schedule + defensive-ranking data rather than a static heuristic.
+export const matchupAnalysis = {
+  getDefenseStreaming: (week: number, currentDefense?: string) =>
+    api.get(`/matchup-analysis/defense-streaming/${week}`, {
+      params: currentDefense ? { current_defense: currentDefense } : undefined,
+    }),
+
+  getPositionOutlook: (position: string, weeksAhead?: number) =>
+    api.get(`/matchup-analysis/position-outlook/${position}`, {
+      params: weeksAhead ? { weeks_ahead: weeksAhead } : undefined,
+    }),
+
+  getCurrentWeek: () => api.get('/matchup-analysis/current-week'),
+}
+
 // Trade analyzer endpoints
 export const trade = {
   searchPlayers: (q: string, limit?: number) =>

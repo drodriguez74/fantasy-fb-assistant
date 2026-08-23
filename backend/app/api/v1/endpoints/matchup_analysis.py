@@ -173,11 +173,11 @@ async def get_current_nfl_week(
     try:
         matchup_service = MatchupAnalysisService(db)
         current_week = matchup_service.get_current_week()
-        
+
         return {
             "success": True,
             "current_week": current_week,
-            "season": 2024
+            "season": matchup_service.get_current_season()
         }
         
     except Exception as e:
