@@ -151,73 +151,95 @@ export function LeagueDetailPage() {
   const [insights, setInsights] = useState<LeagueInsights | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [waiverError, setWaiverError] = useState('')
+  const [tradeError, setTradeError] = useState('')
 
   const loadLeagueData = useCallback(async () => {
-    try {
-      setLoading(true)
-      setError('')
+    setLoading(true)
+    setError('')
+    setWaiverError('')
+    setTradeError('')
 
-      // Load data from specific endpoints that have real ESPN data
-      const [
-        rosterResponse,
-        standingsResponse,
-        insightsResponse,
-        waiverResponse,
-        tradeResponse
-      ] = await Promise.all([
-        api.get(`/leagues/${leagueId}/roster-analysis`),
-        api.get(`/leagues/${leagueId}/standings?season=2025`),
-        api.get(`/leagues/${leagueId}/insights`),
-        api.get(`/leagues/${leagueId}/waiver-recommendations`),
-        api.get(`/leagues/${leagueId}/trade-suggestions`)
-      ])
+    // Fetched independently (not one Promise.all) because waiver/trade
+    // recommendations are, today, only really implemented for Yahoo leagues
+    // (league_management_service.py honestly 400s for ESPN/Sleeper instead
+    // of faking data) -- that known, documented gap must not take down
+    // roster/standings/insights, which work for every connected platform.
+    const [rosterResult, standingsResult, insightsResult, waiverResult, tradeResult] = await Promise.allSettled([
+      api.get(`/leagues/${leagueId}/roster-analysis`),
+      api.get(`/leagues/${leagueId}/standings?season=2025`),
+      api.get(`/leagues/${leagueId}/insights`),
+      api.get(`/leagues/${leagueId}/waiver-recommendations`),
+      api.get(`/leagues/${leagueId}/trade-suggestions`)
+    ])
 
-      // Set league info from roster analysis
-      setLeagueInfo(rosterResponse.data.league_info)
-      setRosterAnalysis(rosterResponse.data.roster_analysis)
+    if (rosterResult.status === 'rejected') {
+      setError(getErrorMessage(rosterResult.reason, 'Failed to load league data'))
+      setLoading(false)
+      return
+    }
+    if (standingsResult.status === 'rejected') {
+      setError(getErrorMessage(standingsResult.reason, 'Failed to load league data'))
+      setLoading(false)
+      return
+    }
+    if (insightsResult.status === 'rejected') {
+      setError(getErrorMessage(insightsResult.reason, 'Failed to load league data'))
+      setLoading(false)
+      return
+    }
 
-      // Identify "your" team by the real team name this league's roster
-      // analysis was computed for, rather than a hardcoded name -- that
-      // hardcoded name only ever matched one specific test league.
-      const userTeamName: string | undefined = rosterResponse.data.roster_analysis?.team_name
+    const rosterResponse = rosterResult.value
+    const standingsResponse = standingsResult.value
+    const insightsResponse = insightsResult.value
 
-      // Set standings data
-      const teams: StandingsTeam[] = standingsResponse.data.teams
-      setStandingsData({
-        teams,
-        user_team_rank: teams.find((team) => team.team_name === userTeamName)?.rank ?? 0,
-        total_teams: teams.length,
-        playoff_teams: 6,
-        updated_at: new Date().toISOString()
-      })
+    // Set league info from roster analysis
+    setLeagueInfo(rosterResponse.data.league_info)
+    setRosterAnalysis(rosterResponse.data.roster_analysis)
 
-      // Set insights
-      setInsights(insightsResponse.data.insights)
+    // Identify "your" team by the real team name this league's roster
+    // analysis was computed for, rather than a hardcoded name -- that
+    // hardcoded name only ever matched one specific test league.
+    const userTeamName: string | undefined = rosterResponse.data.roster_analysis?.team_name
 
-      // Real waiver/trade recommendations from the league analysis service
-      // (these endpoints exist and return real data -- they were previously
-      // replaced with hardcoded empty placeholders here under a comment
-      // that incorrectly called them "missing endpoints").
+    // Set standings data
+    const teams: StandingsTeam[] = standingsResponse.data.teams
+    setStandingsData({
+      teams,
+      user_team_rank: teams.find((team) => team.team_name === userTeamName)?.rank ?? 0,
+      total_teams: teams.length,
+      playoff_teams: 6,
+      updated_at: new Date().toISOString()
+    })
+
+    // Set insights
+    setInsights(insightsResponse.data.insights)
+    setMatchupData(null) // No matchup data for now
+
+    if (waiverResult.status === 'fulfilled') {
+      const waiverResponse = waiverResult.value
       setWaiverRecs({
         recommendations: waiverResponse.data.waiver_recommendations?.recommendations ?? [],
         position_needs: waiverResponse.data.waiver_recommendations?.position_needs ?? {},
         total_available: waiverResponse.data.waiver_recommendations?.total_available ?? 0,
         updated_at: waiverResponse.data.waiver_recommendations?.updated_at ?? new Date().toISOString()
       })
+    } else {
+      setWaiverError(getErrorMessage(waiverResult.reason, 'Waiver recommendations are unavailable for this league right now.'))
+    }
 
+    if (tradeResult.status === 'fulfilled') {
+      const tradeResponse = tradeResult.value
       setTradeRecs({
         suggestions: tradeResponse.data.trade_recommendations?.suggestions ?? [],
         trade_deadline: tradeResponse.data.trade_recommendations?.trade_deadline ?? "Week 13",
         updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString()
       })
-
-      setMatchupData(null) // No matchup data for now
-
-    } catch (err) {
-      setError(getErrorMessage(err, 'Failed to load league data'))
-    } finally {
-      setLoading(false)
+    } else {
+      setTradeError(getErrorMessage(tradeResult.reason, 'Trade suggestions are unavailable for this league right now.'))
     }
+
+    setLoading(false)
   }, [leagueId])
 
   useEffect(() => {
@@ -570,6 +592,15 @@ export function LeagueDetailPage() {
         </div>
       )}
 
+      {activeTab === 'waiver' && !waiverRecs && (
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <FireIcon className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+          <p className="text-sm text-gray-600">
+            {waiverError || 'Loading waiver recommendations…'}
+          </p>
+        </div>
+      )}
+
       {activeTab === 'waiver' && waiverRecs && (
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-6">
@@ -602,6 +633,15 @@ export function LeagueDetailPage() {
               ))}
             </div>
           </div>
+        </div>
+      )}
+
+      {activeTab === 'trades' && !tradeRecs && (
+        <div className="bg-white rounded-lg shadow p-6 text-center">
+          <ArrowsRightLeftIcon className="mx-auto h-8 w-8 text-gray-300 mb-2" />
+          <p className="text-sm text-gray-600">
+            {tradeError || 'Loading trade suggestions…'}
+          </p>
         </div>
       )}
 
