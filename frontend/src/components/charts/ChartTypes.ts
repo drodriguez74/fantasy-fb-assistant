@@ -46,14 +46,7 @@ export interface SituationalData {
   player: string
 }
 
-export interface HeatmapData {
-  x: string
-  y: string
-  value: number
-  label?: string
-}
-
-export interface ChartColors {
+interface ChartColors {
   primary: string
   secondary: string
   success: string
@@ -73,21 +66,6 @@ export const CHART_COLORS: ChartColors = {
   info: '#06B6D4',       // Cyan
   light: '#F3F4F6',      // Light Gray
   dark: '#1F2937'        // Dark Gray
-}
-
-export const POSITION_COLORS = {
-  QB: '#8B5CF6',   // Purple
-  RB: '#F59E0B',   // Orange
-  WR: '#10B981',   // Green
-  TE: '#EF4444',   // Red
-  K: '#6B7280',    // Gray
-  DEF: '#1F2937'   // Dark
-}
-
-export const DIFFICULTY_COLORS = {
-  EASY: '#10B981',      // Green
-  MODERATE: '#F59E0B',  // Yellow
-  DIFFICULT: '#EF4444'  // Red
 }
 
 export const RISK_COLORS = {

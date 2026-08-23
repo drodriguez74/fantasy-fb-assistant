@@ -113,7 +113,6 @@ export const leagues = {
       espn_s2: espnS2,
       team_id: teamId,
     }),
-
   getEspnTeams: (leagueId: string, season?: number, swid?: string, espnS2?: string) =>
     api.get('/leagues/espn/teams', {
       params: { league_id: leagueId, season, swid, espn_s2: espnS2 }
@@ -144,17 +143,6 @@ export const players = {
   getAll: (params?: { position?: string; team?: string; sort?: 'rank' | 'bye_week' | 'consensus'; page?: number; page_size?: number }) =>
     api.get('/players/', { params }),
   
-  getFromDatabase: (params?: { 
-    position?: string; 
-    team?: string; 
-    injury_status?: string;
-    min_projected_points?: number;
-    max_risk_level?: string;
-    page?: number; 
-    page_size?: number;
-  }) =>
-    api.get('/players/database', { params }),
-  
   getById: (id: number) => api.get(`/players/${id}`),
   
   search: (query: string) => api.get(`/players/search/${encodeURIComponent(query)}`),
@@ -183,15 +171,6 @@ export const draft = {
 
   getPositionalRankings: (position: string, params?: { limit?: number }) =>
     api.get(`/draft/positional-rankings/${position}`, { params }),
-
-  getLeagueAnalysis: (leagueId: string) =>
-    api.get(`/draft/league-analysis/${leagueId}`),
-
-  getWaiverCandidates: (leagueId: string) =>
-    api.get(`/draft/waiver-candidates/${leagueId}`),
-
-  getProjections: (week: number, params?: { season?: string }) =>
-    api.get(`/draft/projections/week/${week}`, { params }),
 }
 
 // Historical data endpoints
@@ -206,22 +185,7 @@ export const historical = {
   
   getPlayerTrends: (playerId: number) =>
     api.get(`/historical/players/${playerId}/trends`),
-  
-  getWeeklyPerformance: (playerId: number, season: number) =>
-    api.get(`/historical/players/${playerId}/weekly-performance/${season}`),
-  
-  getPositionAnalysis: (position: string, seasons?: number) =>
-    api.get(`/historical/positions/${position}/analysis`, { params: { seasons } }),
-  
-  comparePlayers: (data: { player_ids: number[]; seasons?: number }) =>
-    api.post('/historical/players/compare', data),
-  
-  getSeasonSummaries: (playerId: number) =>
-    api.get(`/historical/players/${playerId}/season-summaries`),
-  
-  getConsistencyAnalysis: (playerId: number, seasons?: number) =>
-    api.get(`/historical/players/${playerId}/consistency-analysis`, { params: { seasons } }),
-  
+
   getLeagueTrends: (params?: { position?: string; trend_type?: string; limit?: number }) =>
     api.get('/historical/trends/league-wide', { params }),
 }
@@ -230,9 +194,6 @@ export const historical = {
 export const waiverWire = {
   getRecommendations: (params: { week: number; season?: number; position?: string; priority?: string; limit?: number }) =>
     api.get('/waiver-wire/recommendations', { params }),
-  
-  getRecommendationsByPriority: (priority: string, params: { week: number; season?: number; limit?: number }) =>
-    api.get(`/waiver-wire/recommendations/priority/${priority}`, { params }),
   
   analyzeRoster: (data: { roster_player_ids: number[]; week?: number; season?: number }) =>
     api.post('/waiver-wire/analyze-roster', data),
@@ -246,13 +207,6 @@ export const waiverWire = {
 
   generateRecommendations: (params: { week: number; season?: number; force_refresh?: boolean }) =>
     api.post('/waiver-wire/generate-recommendations', null, { params }),
-
-  getPlayerEvaluation: (playerId: number, params: { week: number; season?: number }) =>
-    api.get(`/waiver-wire/player/${playerId}/evaluation`, { params }),
-
-  getWeeklyInsights: (params: { week: number; season?: number }) =>
-    api.get('/waiver-wire/insights/weekly-summary', { params }),
-
   // NOTE: getAlerts/subscribeToAlerts (GET/POST /waiver-wire/alerts*) were
   // removed -- both queried/wrote a table nothing in the backend ever
   // populated. The Alerts tab now reads the real in-app notification center
