@@ -32,6 +32,14 @@ class UpdatePickRequest(BaseModel):
     player_picked: Dict[str, Any]
 
 
+class MarkDraftedRequest(BaseModel):
+    session_id: str
+    # available_players records use "player_id" (see
+    # espn_service_enhanced._format_player / the Sleeper equivalent) --
+    # type varies by platform (ESPN: int, Sleeper: str), so accept either.
+    player_id: Any
+
+
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[str, WebSocket] = {}
@@ -293,6 +301,37 @@ async def update_user_pick(request: UpdatePickRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update pick: {str(e)}")
+
+
+@router.post("/mark-drafted")
+async def mark_player_drafted(request: MarkDraftedRequest):
+    """Manually remove a player from the available pool because some OTHER
+    team drafted them. Distinct from /update-pick (which records the
+    session user's own pick): this exists because ESPN's live draft feed
+    is confirmed to never reflect real in-progress picks (see CLAUDE.md),
+    so available_players silently includes already-drafted players for an
+    entire draft unless corrected this way.
+    """
+    try:
+        result = await draft_assistant.mark_player_drafted(
+            session_id=request.session_id,
+            player_id=request.player_id
+        )
+
+        if "error" in result:
+            raise HTTPException(status_code=404, detail=result["error"])
+
+        await manager.send_update(request.session_id, {
+            "type": "player_marked_drafted",
+            "data": result
+        })
+
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to mark player drafted: {str(e)}")
 
 
 @router.websocket("/ws/{session_id}")

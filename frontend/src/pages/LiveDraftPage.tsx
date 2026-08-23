@@ -221,6 +221,26 @@ export function LiveDraftPage() {
     }
   }
 
+  // Manually flag a player as drafted by some OTHER team. Distinct from
+  // makePick (which records the session user's own pick): ESPN's live
+  // draft feed is confirmed to never reflect real in-progress picks (see
+  // CLAUDE.md), so Available Players silently includes already-drafted
+  // players for an entire draft unless corrected this way.
+  const markPlayerDrafted = async (player: Player) => {
+    if (!currentSession) return
+
+    try {
+      await api.post(`${LIVE_DRAFT_API_PREFIX}/mark-drafted`, {
+        session_id: currentSession.session_id,
+        player_id: player.player_id
+      })
+
+      // Data will be updated via WebSocket
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to mark player as drafted'))
+    }
+  }
+
   // End draft session
   const endSession = async () => {
     if (!currentSession) return
@@ -465,17 +485,34 @@ export function LiveDraftPage() {
                         {player.position} - {player.team}
                       </div>
                     </div>
-                    <div className="text-right">
-                      {player.projected_points && (
-                        <div className="text-sm font-medium text-gray-700">
-                          {player.projected_points.toFixed(1)} pts
-                        </div>
-                      )}
-                      {player.adp && (
-                        <div className="text-xs text-gray-500">
-                          ADP: {player.adp.toFixed(1)}
-                        </div>
-                      )}
+                    <div className="text-right flex items-center gap-3">
+                      <div>
+                        {player.projected_points && (
+                          <div className="text-sm font-medium text-gray-700">
+                            {player.projected_points.toFixed(1)} pts
+                          </div>
+                        )}
+                        {player.adp && (
+                          <div className="text-xs text-gray-500">
+                            ADP: {player.adp.toFixed(1)}
+                          </div>
+                        )}
+                      </div>
+                      {/* ESPN's live draft feed doesn't reflect real
+                          in-progress picks (see CLAUDE.md) -- this lets the
+                          user manually correct the pool when someone else
+                          drafts a player shown here as still available. */}
+                      <button
+                        type="button"
+                        title="Mark as drafted by another team"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          markPlayerDrafted(player)
+                        }}
+                        className="text-xs text-gray-400 hover:text-red-600 border border-gray-300 hover:border-red-300 rounded px-2 py-1 transition-colors"
+                      >
+                        Mark gone
+                      </button>
                     </div>
                   </div>
                 ))}

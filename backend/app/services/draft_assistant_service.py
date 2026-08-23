@@ -123,6 +123,16 @@ class DraftAssistantService:
                 "current_state": draft_state,
                 "user_roster": [],
                 "recommendations_history": [],
+                # Manual "someone else drafted this" corrections. ESPN's
+                # live draft feed is confirmed broken (CLAUDE.md) -- it
+                # never reflects real in-progress picks, so its
+                # available_players list silently includes already-drafted
+                # players for an entire draft. This set is the fallback:
+                # player_ids the user has manually flagged as gone, applied
+                # as a filter in get_live_recommendations on every refresh
+                # (not just once) since _refresh_draft_state wholesale-
+                # replaces available_players from the live feed each poll.
+                "manually_drafted_player_ids": set(),
                 "started_at": datetime.now(),
                 "last_updated": datetime.now()
             }
@@ -166,6 +176,19 @@ class DraftAssistantService:
             updated_state["available_players"] = await self._attach_consensus_ranks(
                 platform, updated_state.get("available_players", [])
             )
+
+            # Re-apply manual "mark as drafted" corrections on every refresh
+            # -- _refresh_draft_state just wholesale-replaced
+            # available_players from the platform's own feed above, which
+            # for ESPN is confirmed to never reflect real in-progress picks
+            # (see CLAUDE.md), so any earlier manual correction would
+            # otherwise silently reappear on the very next poll.
+            manually_drafted = session.get("manually_drafted_player_ids") or set()
+            if manually_drafted:
+                updated_state["available_players"] = [
+                    p for p in updated_state.get("available_players", [])
+                    if p.get("player_id") not in manually_drafted
+                ]
 
             session["current_state"] = updated_state
             session["last_updated"] = datetime.now()
@@ -253,6 +276,34 @@ class DraftAssistantService:
             
         except Exception as e:
             return {"error": f"Failed to update pick: {str(e)}"}
+
+    async def mark_player_drafted(self, session_id: str, player_id: Any) -> Dict[str, Any]:
+        """Manually flag a player as drafted by SOME team (not necessarily
+        the session user) so they drop out of available_players.
+
+        Distinct from update_user_pick, which records a pick onto the
+        user's own roster -- this is the fallback for platforms whose live
+        feed doesn't reflect real in-progress picks (confirmed broken for
+        ESPN, see CLAUDE.md): since this app can't see who actually took a
+        player, all it can honestly do is remove them from the pool on the
+        user's manual say-so, not attribute the pick to any specific team.
+        """
+        if session_id not in self.active_drafts:
+            return {"error": "Draft session not found"}
+
+        try:
+            session = self.active_drafts[session_id]
+            session.setdefault("manually_drafted_player_ids", set()).add(player_id)
+
+            next_recommendations = await self.get_live_recommendations(session_id)
+
+            return {
+                "status": "marked_drafted",
+                "player_id": player_id,
+                "next_recommendations": next_recommendations
+            }
+        except Exception as e:
+            return {"error": f"Failed to mark player drafted: {str(e)}"}
 
     async def get_draft_board(self, session_id: str) -> Dict[str, Any]:
         """Get comprehensive draft board with tiers and rankings"""
