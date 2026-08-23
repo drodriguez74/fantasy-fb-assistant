@@ -70,7 +70,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('access_token')
-      window.location.href = '/login'
+      window.location.href = '/auth'
     }
     return Promise.reject(error)
   }
