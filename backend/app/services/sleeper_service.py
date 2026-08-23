@@ -104,6 +104,53 @@ class SleeperService:
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Request failed: {str(e)}"}
 
+    async def get_user_by_username(self, username: str) -> Dict[str, Any]:
+        """Look up a Sleeper user by username (or numeric user_id) to get their user_id"""
+        try:
+            response = await self.client.get(f"{self.base_url}/user/{username}")
+            response.raise_for_status()
+            data = response.json()
+            if not data:
+                return {"error": f"No Sleeper user found for '{username}'"}
+            return data
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            return {"error": f"Request failed: {str(e)}"}
+
+    async def get_league_teams(self, league_id: str) -> List[Dict[str, Any]]:
+        """Get all teams (rosters merged with their owners) in a league, for
+        display and so a user can pick which roster is theirs when connecting."""
+        try:
+            rosters = await self.get_league_rosters(league_id)
+            if rosters and isinstance(rosters, list) and "error" in rosters[0]:
+                return rosters
+
+            users = await self.get_league_users(league_id)
+            users_by_id = {u.get("user_id"): u for u in users if isinstance(u, dict)}
+
+            teams = []
+            for roster in rosters:
+                if not isinstance(roster, dict):
+                    continue
+                owner_id = roster.get("owner_id")
+                owner = users_by_id.get(owner_id, {})
+                team_name = (
+                    (owner.get("metadata") or {}).get("team_name")
+                    or owner.get("display_name")
+                    or f"Team {roster.get('roster_id')}"
+                )
+                settings = roster.get("settings") or {}
+                teams.append({
+                    "team_id": str(roster.get("roster_id")),
+                    "owner_id": owner_id,
+                    "team_name": team_name,
+                    "owner": owner.get("display_name", "Unknown Owner"),
+                    "wins": settings.get("wins", 0),
+                    "losses": settings.get("losses", 0),
+                })
+            return teams
+        except Exception as e:
+            return [{"error": f"Failed to get league teams: {str(e)}"}]
+
     async def get_user_leagues(self, user_id: str, season: str = "2024") -> List[Dict[str, Any]]:
         """Get leagues for a specific user"""
         try:

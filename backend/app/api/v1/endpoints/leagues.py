@@ -196,6 +196,47 @@ class ESPNConnectRequest(BaseModel):
     season: int = 2025
     swid: Optional[str] = None
     espn_s2: Optional[str] = None
+    # Which team in the league is the user's own. Optional so existing
+    # callers/tests that don't know it yet still work, but the frontend
+    # should always send this after letting the user pick from
+    # GET /espn/teams -- leaving it null blocks every feature (roster
+    # analysis, matchups) that needs to know "your" team.
+    team_id: Optional[str] = None
+
+@router.get("/espn/teams")
+async def get_espn_teams(
+    league_id: str = Query(..., description="ESPN league ID"),
+    season: int = Query(2025, description="Season year"),
+    swid: Optional[str] = Query(None, description="ESPN SWID cookie for private leagues"),
+    espn_s2: Optional[str] = Query(None, description="ESPN espn_s2 cookie for private leagues")
+):
+    """List the teams in an ESPN league, so the user connecting can pick which one is theirs."""
+    try:
+        teams = await espn_service_enhanced.get_league_teams(
+            league_id=league_id,
+            season=season,
+            swid=swid,
+            espn_s2=espn_s2
+        )
+
+        if teams and isinstance(teams, list) and "error" in teams[0]:
+            raise HTTPException(status_code=400, detail=teams[0]["error"])
+
+        return {
+            "teams": [
+                {
+                    "team_id": str(t["team_id"]),
+                    "team_name": t.get("team_name"),
+                    "owner": t.get("owner"),
+                }
+                for t in teams
+            ]
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load ESPN league teams: {str(e)}")
+
 
 @router.post("/espn/connect")
 async def connect_espn_league(
@@ -235,6 +276,7 @@ async def connect_espn_league(
                 "scoring_format": league_info.get("scoring_type", "PPR"),
                 "espn_swid": request.swid,
                 "espn_s2": request.espn_s2,
+                "team_id": request.team_id,
             }
         )
 
@@ -251,7 +293,8 @@ async def connect_espn_league(
                 "league_size": league_info.get("team_count", 10),
                 "scoring_format": league_info.get("scoring_type", "PPR"),
                 "current_week": league_info.get("current_week", 1),
-                "team_count": league_info.get("team_count", 10)
+                "team_count": league_info.get("team_count", 10),
+                "team_id": user_league.team_id,
             },
             "league_info": league_info
         }
@@ -307,6 +350,130 @@ async def espn_diagnostics():
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to run ESPN diagnostics: {str(e)}")
+
+
+@router.get("/sleeper/teams")
+async def get_sleeper_teams(
+    league_id: str = Query(..., description="Sleeper league ID"),
+    username: Optional[str] = Query(None, description="Sleeper username, to auto-suggest which team is yours")
+):
+    """List the rosters/teams in a Sleeper league, for picking which one is yours.
+
+    Sleeper's API is public and needs no auth -- unlike ESPN/Yahoo there's no
+    connect step to test credentials against, so this doubles as the
+    "does this league exist" check before persisting anything.
+    """
+    try:
+        league_info = await sleeper_service.get_league_info(league_id)
+        if "error" in league_info or not league_info.get("league_id"):
+            raise HTTPException(
+                status_code=400,
+                detail=league_info.get("error", f"Sleeper league {league_id} not found")
+            )
+
+        teams = await sleeper_service.get_league_teams(league_id)
+        if teams and isinstance(teams, list) and "error" in teams[0]:
+            raise HTTPException(status_code=400, detail=teams[0]["error"])
+
+        suggested_team_id = None
+        if username:
+            user_info = await sleeper_service.get_user_by_username(username)
+            if "error" not in user_info and user_info.get("user_id"):
+                for team in teams:
+                    if team.get("owner_id") == user_info["user_id"]:
+                        suggested_team_id = team["team_id"]
+                        break
+
+        return {
+            "league_name": league_info.get("name", f"Sleeper League {league_id}"),
+            "season": league_info.get("season"),
+            "teams": teams,
+            "suggested_team_id": suggested_team_id,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to load Sleeper league teams: {str(e)}")
+
+
+class SleeperConnectRequest(BaseModel):
+    league_id: str
+    username: Optional[str] = None
+    # Roster/team ID within the league that belongs to the user, normally
+    # picked from GET /sleeper/teams. If omitted but username is provided,
+    # we try to resolve it server-side from the username.
+    team_id: Optional[str] = None
+
+
+@router.post("/sleeper/connect")
+async def connect_sleeper_league(
+    request: SleeperConnectRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Connect to a Sleeper Fantasy Football league.
+
+    Sleeper's API is public (no OAuth/cookies), so this just validates the
+    league exists and persists it against the current user -- following the
+    same per-user UserLeague pattern as ESPN/Yahoo rather than any shared
+    state.
+    """
+    try:
+        league_info = await sleeper_service.get_league_info(request.league_id)
+        if "error" in league_info or not league_info.get("league_id"):
+            raise HTTPException(
+                status_code=400,
+                detail=league_info.get("error", f"Sleeper league {request.league_id} not found")
+            )
+
+        team_id = request.team_id
+
+        # No team explicitly chosen but we have a username -- try to resolve
+        # which roster is theirs so team_id isn't left null (the same gap
+        # that used to block ESPN's roster/matchup analysis).
+        if not team_id and request.username:
+            user_info = await sleeper_service.get_user_by_username(request.username)
+            if "error" not in user_info and user_info.get("user_id"):
+                rosters = await sleeper_service.get_league_rosters(request.league_id)
+                for roster in rosters:
+                    if isinstance(roster, dict) and roster.get("owner_id") == user_info["user_id"]:
+                        team_id = str(roster.get("roster_id"))
+                        break
+
+        scoring_settings = league_info.get("scoring_settings") or {}
+        scoring_format = "PPR" if scoring_settings.get("rec") else "Standard"
+
+        user_service = UserService(db)
+        user_league = user_service.add_user_league(
+            user_id=current_user.id,
+            platform="sleeper",
+            league_id=request.league_id,
+            league_data={
+                "league_name": league_info.get("name", f"Sleeper League {request.league_id}"),
+                "season": int(league_info.get("season") or datetime.now().year),
+                "league_size": league_info.get("total_rosters", 10),
+                "scoring_format": scoring_format,
+                "team_id": team_id,
+            }
+        )
+
+        return {
+            "success": True,
+            "connected": True,
+            "league": {
+                "id": user_league.id,
+                "league_name": user_league.league_name,
+                "league_key": request.league_id,
+                "platform": "SLEEPER",
+                "league_size": user_league.league_size,
+                "scoring_format": user_league.scoring_format,
+                "team_id": user_league.team_id,
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to connect Sleeper league: {str(e)}")
 
 
 @router.get("/")
