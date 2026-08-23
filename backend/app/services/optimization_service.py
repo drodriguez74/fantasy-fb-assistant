@@ -107,21 +107,41 @@ class OptimizationService:
                     (position == 'FLEX' and player.get('position') in ['RB', 'WR', 'TE'])
                 ]
             
+            flex_base_positions = {'RB', 'WR', 'TE'}
+            has_flex = lineup_constraints.get('FLEX', 0) > 0
+
             for position, required_count in lineup_constraints.items():
                 if position == 'FLEX':
-                    # FLEX can be RB, WR, or TE (excluding those already selected)
-                    flex_eligible = [
-                        i for i, player in enumerate(players) 
-                        if player.get('position') in ['RB', 'WR', 'TE']
-                    ]
-                    prob += pulp.lpSum([player_vars[i] for i in flex_eligible]) >= \
-                             lineup_constraints.get('RB', 0) + lineup_constraints.get('WR', 0) + \
-                             lineup_constraints.get('TE', 0) + required_count
+                    # Handled below together with the base RB/WR/TE requirements via a
+                    # single combined constraint, so the same player pool isn't
+                    # double-constrained (individual == plus a separate FLEX >= over the
+                    # same variables is infeasible whenever a FLEX slot is requested).
+                    continue
+                if not position_groups.get(position):
+                    continue
+                if has_flex and position in flex_base_positions:
+                    # Relax to a floor: exactly how many extra RB/WR/TE players fill the
+                    # FLEX slot(s) is decided by the combined constraint below.
+                    prob += pulp.lpSum([
+                        player_vars[i] for i in position_groups[position]
+                    ]) >= required_count
                 else:
-                    if position_groups.get(position):
-                        prob += pulp.lpSum([
-                            player_vars[i] for i in position_groups[position]
-                        ]) == required_count
+                    prob += pulp.lpSum([
+                        player_vars[i] for i in position_groups[position]
+                    ]) == required_count
+
+            if has_flex and position_groups.get('FLEX'):
+                # Exactly RB_required + WR_required + TE_required + FLEX_required players
+                # are drawn from the combined RB/WR/TE pool. Together with the >= floors
+                # above (each base position still gets at least its own requirement),
+                # this pins down the FLEX slot(s) without any player occupying two slots.
+                total_flex_pool_required = (
+                    lineup_constraints.get('RB', 0) + lineup_constraints.get('WR', 0) +
+                    lineup_constraints.get('TE', 0) + lineup_constraints.get('FLEX', 0)
+                )
+                prob += pulp.lpSum([
+                    player_vars[i] for i in position_groups['FLEX']
+                ]) == total_flex_pool_required
             
             # Total lineup size constraint
             total_positions = sum(lineup_constraints.values())
