@@ -40,7 +40,7 @@ class LeagueManagementService:
                 }
             }
 
-            if league.platform == "YAHOO":
+            if league.platform.value.upper() == "YAHOO":
                 # Get roster analysis
                 roster_analysis = await self._analyze_yahoo_roster(league)
                 analysis["roster_analysis"] = roster_analysis
@@ -60,6 +60,21 @@ class LeagueManagementService:
                 # Get trade recommendations
                 trade_recs = await self._get_trade_recommendations(league)
                 analysis["trade_recommendations"] = trade_recs
+            else:
+                # ESPN/Sleeper roster/matchup/standings/waiver/trade analysis
+                # doesn't exist yet -- every helper above (_analyze_yahoo_roster,
+                # _analyze_current_matchup, etc.) is hardcoded to Yahoo's API.
+                # Say so honestly rather than silently returning only
+                # league_info with no explanation, which is what happened
+                # before this platform check was fixed (it compared an Enum
+                # to a raw string and was always False, so this branch was
+                # unreachable for every platform including Yahoo).
+                analysis["error"] = (
+                    f"Comprehensive analysis (roster, matchups, standings, "
+                    f"waiver/trade recommendations) is only implemented for "
+                    f"Yahoo leagues today. {league.platform.value.upper()} "
+                    f"support is tracked as a follow-up."
+                )
 
             return analysis
 

@@ -351,7 +351,7 @@ async def get_league_analysis(
             raise HTTPException(status_code=404, detail="League not found")
         
         # Get team roster based on platform
-        if league.platform == "YAHOO":
+        if league.platform.value.upper() == "YAHOO":
             if not league.team_id:
                 raise HTTPException(status_code=400, detail="Team ID not set for Yahoo league")
 
@@ -393,7 +393,7 @@ async def get_league_analysis(
                 "analysis_date": "2025-08-13T00:00:00Z"
             }
         
-        elif league.platform == "ESPN":
+        elif league.platform.value.upper() == "ESPN":
             if not league.team_id:
                 raise HTTPException(status_code=400, detail="Team ID not set for ESPN league")
             
@@ -459,7 +459,7 @@ async def get_league_matchups(
         if not league:
             raise HTTPException(status_code=404, detail="League not found")
         
-        if league.platform == "YAHOO":
+        if league.platform.value.upper() == "YAHOO":
             if not league.yahoo_access_token:
                 raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
             if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
@@ -481,7 +481,7 @@ async def get_league_matchups(
                 "matchups": matchups
             }
         
-        elif league.platform == "ESPN":
+        elif league.platform.value.upper() == "ESPN":
             # Get current week if not specified
             if not week:
                 league_info = await espn_service_enhanced.get_league_info(
