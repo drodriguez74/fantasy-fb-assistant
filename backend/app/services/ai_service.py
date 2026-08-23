@@ -14,19 +14,162 @@ class AIProvider(Enum):
 
 
 class AIService:
+    # -------------------------------------------------------------------
+    # Model tiers
+    #
+    # Two tiers per provider, chosen for the two workload shapes this
+    # service actually produces:
+    #
+    #   FAST -- short, bounded, low-stakes generations: a single player's
+    #           write-up, a per-position grade + summary, a batch of
+    #           waiver-wire priority blurbs, a single matchup blurb. These
+    #           are close to "summarize/classify this data" tasks -- they
+    #           don't need frontier reasoning, and paying frontier prices
+    #           for them multiplies cost with no quality payoff a user
+    #           would notice.
+    #   DEEP -- longer, more nuanced, higher-stakes generations: the 5-way
+    #           multi-perspective draft/waiver analysis, the consensus
+    #           synthesis across those 5 perspectives, top-3 draft-pick
+    #           recommendations, and trade proposals that weigh multiple
+    #           rosters against each other. These genuinely benefit from
+    #           stronger reasoning -- they compare/rank multiple players or
+    #           reconcile conflicting viewpoints, and sit closer to the
+    #           product's core value proposition, so it's worth paying more
+    #           for quality here.
+    #
+    # Pricing/capability verified live via WebFetch against
+    # developers.openai.com (official OpenAI docs) and the current Anthropic
+    # model catalog on 2026-08-22 -- both prior defaults ("gpt-4" and
+    # "claude-3-sonnet-20240229") were stale: gpt-4 predates the entire
+    # GPT-5 line, and claude-3-sonnet-20240229 is a retired Claude model.
+    #
+    #   gpt-5-mini        $0.25 / $2.00  per 1M tok -- OpenAI's cheap tier;
+    #                      still reliable enough to follow the JSON-format
+    #                      instructions the FAST calls below depend on.
+    #                      (gpt-5-nano is even cheaper at $0.05/$0.40 and is
+    #                      explicitly tuned for summarization/classification,
+    #                      but is a riskier bet on structured JSON output --
+    #                      several FAST-tier callers here parse the response
+    #                      with json.loads(), so mini's extra headroom is
+    #                      worth the small premium.)
+    #   gpt-5.6-terra     $2.00 / $12.00 per 1M tok -- OpenAI's current
+    #                      "balances intelligence and cost" flagship tier
+    #                      (their own docs' framing). gpt-5.6-sol ($4/$20,
+    #                      "frontier ... complex professional work") would be
+    #                      overkill for a fantasy-football write-up.
+    #   claude-haiku-4-5  $1.00 / $5.00  per 1M tok -- Anthropic's fastest,
+    #                      most cost-effective model; explicitly positioned
+    #                      for simple tasks.
+    #   claude-sonnet-5   $3.00 / $15.00 per 1M tok (intro pricing $2/$10
+    #                      through 2026-08-31) -- "near-Opus quality" on
+    #                      reasoning/synthesis at a fraction of Opus 5's
+    #                      $5/$25 or Fable 5's $10/$50 -- the same
+    #                      "balanced flagship, not top-of-line" choice as
+    #                      gpt-5.6-terra above.
+    # -------------------------------------------------------------------
+    FAST_OPENAI_MODEL = "gpt-5-mini"
+    DEEP_OPENAI_MODEL = "gpt-5.6-terra"
+    FAST_ANTHROPIC_MODEL = "claude-haiku-4-5"
+    DEEP_ANTHROPIC_MODEL = "claude-sonnet-5"
+
+    # Sentinel prefix _generate_with_fallback() returns only when *every*
+    # configured provider genuinely failed. Callers that parse the response
+    # (json.loads, etc.) check for this prefix first so a real, honest error
+    # never gets reported as "failed to parse AI response".
+    FAILURE_PREFIX = "AI generation failed: "
+
+    DEFAULT_SYSTEM_PROMPT = "You are an expert fantasy football analyst."
+
     def __init__(self):
         self.openai_client = None
         self.anthropic_client = None
-        
+
         if settings.OPENAI_API_KEY:
             self.openai_client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-        
+
         if settings.ANTHROPIC_API_KEY:
             self.anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
 
+    # -------------------------------------------------------------------
+    # Consolidated fallback primitive
+    #
+    # Every AI-generation method in this file (and
+    # LeagueManagementService._analyze_current_matchup /
+    # _analyze_position_group / _get_trade_recommendations) routes through
+    # this single method instead of hand-rolling its own try-OpenAI-then-
+    # Anthropic dance. That duplication is exactly what let
+    # generate_multi_perspective_content and generate_consensus_recommendation
+    # skip fallback entirely before this change -- they called
+    # _generate_openai() directly with no fallback and no way to fall back,
+    # so a rate-limited or unconfigured OpenAI client meant "OpenAI client
+    # not configured" got embedded straight into what looked like real AI
+    # analysis.
+    # -------------------------------------------------------------------
+    async def _generate_with_fallback(
+        self,
+        prompt: str,
+        *,
+        prefer_fast_model: bool = False,
+        primary: AIProvider = AIProvider.OPENAI,
+        system: str = DEFAULT_SYSTEM_PROMPT,
+        max_tokens: int = 1000,
+    ) -> str:
+        """Try `primary`, falling back to the other configured provider on
+        failure.
+
+        Rate limits are detected specifically (openai.RateLimitError /
+        anthropic.RateLimitError) so a 429 on the primary provider triggers
+        an immediate, unambiguous fallback -- the scenario explicitly asked
+        for. Any other failure (auth, network, malformed response, a
+        provider simply not being configured, ...) also falls back,
+        matching this app's prior broad-except behavior, just centralized
+        in one place instead of duplicated per method. An auth/billing
+        failure on the primary is *not* assumed to doom the secondary --
+        they're different accounts on different providers -- so the
+        secondary is still attempted.
+
+        prefer_fast_model selects the cheap/fast model tier (see the
+        FAST_*/DEEP_* constants and the comment above them) for short,
+        low-stakes generations; the default is the stronger tier reserved
+        for longer, more nuanced analysis.
+
+        Returns the generated text, or -- only when every configured
+        provider genuinely failed -- a clear, honest error string prefixed
+        with FAILURE_PREFIX naming every provider attempted and why each one
+        failed. Never silently fabricates a success.
+        """
+        other = AIProvider.ANTHROPIC if primary == AIProvider.OPENAI else AIProvider.OPENAI
+        errors: List[str] = []
+
+        for provider in (primary, other):
+            client = self.openai_client if provider == AIProvider.OPENAI else self.anthropic_client
+            if not client:
+                errors.append(f"{provider.value}: not configured")
+                continue
+
+            model = self._model_for(provider, prefer_fast_model)
+            try:
+                if provider == AIProvider.OPENAI:
+                    return await self._call_openai(prompt, model=model, max_tokens=max_tokens, system=system)
+                else:
+                    return await self._call_anthropic(prompt, model=model, max_tokens=max_tokens, system=system)
+            except (openai.RateLimitError, anthropic.RateLimitError) as e:
+                print(f"AI provider '{provider.value}' rate-limited ({model}); falling back")
+                errors.append(f"{provider.value} rate-limited: {str(e)}")
+            except Exception as e:
+                print(f"AI provider '{provider.value}' failed ({type(e).__name__}: {str(e)}); falling back")
+                errors.append(f"{provider.value} error ({type(e).__name__}): {str(e)}")
+
+        return self.FAILURE_PREFIX + "; ".join(errors)
+
+    def _model_for(self, provider: AIProvider, prefer_fast_model: bool) -> str:
+        if provider == AIProvider.OPENAI:
+            return self.FAST_OPENAI_MODEL if prefer_fast_model else self.DEEP_OPENAI_MODEL
+        return self.FAST_ANTHROPIC_MODEL if prefer_fast_model else self.DEEP_ANTHROPIC_MODEL
+
     async def generate_player_analysis(
-        self, 
-        player_name: str, 
+        self,
+        player_name: str,
         player_data: Dict[str, Any],
         historical_data: Optional[Dict[str, Any]] = None,
         provider: AIProvider = AIProvider.OPENAI
@@ -35,20 +178,20 @@ class AIService:
         historical_context = ""
         if historical_data:
             historical_context = f"""
-        
+
         HISTORICAL PERFORMANCE DATA:
         {json.dumps(historical_data, indent=2)}
-        
+
         Consider the player's historical trends, consistency patterns, and performance trajectory when making your analysis.
         """
-        
+
         prompt = f"""
         Analyze the fantasy football player {player_name} based on the following data:
-        
+
         CURRENT SEASON DATA:
         {json.dumps(player_data, indent=2)}
         {historical_context}
-        
+
         Provide a comprehensive analysis including:
         1. Strengths and weaknesses (considering historical performance)
         2. Injury concerns and risk factors (using historical health patterns)
@@ -56,53 +199,20 @@ class AIService:
         4. Performance consistency and reliability (based on historical data)
         5. Rest of season outlook (informed by historical trends)
         6. PPR-specific value assessment
-        
+
         If historical data is available, specifically comment on:
         - Performance trends (improving, declining, stable)
         - Consistency patterns and reliability
         - Historical performance in similar situations
         - Seasonal patterns and splits
-        
+
         Keep the analysis concise but informative, around 200-250 words.
         """
-        
-        # Try OpenAI first, fallback to Anthropic if it fails
-        if provider == AIProvider.OPENAI and self.openai_client:
-            try:
-                result = await self._generate_openai(prompt)
-                # Check if OpenAI returned an error message
-                if result.startswith("OpenAI API error:"):
-                    raise Exception(result)
-                return result
-            except Exception as e:
-                # If OpenAI fails and we have Anthropic available, try it
-                if self.anthropic_client:
-                    print(f"OpenAI failed ({str(e)}), falling back to Anthropic")
-                    try:
-                        return await self._generate_anthropic(prompt)
-                    except Exception as anthropic_error:
-                        return f"AI analysis failed: OpenAI error ({str(e)}), Anthropic error ({str(anthropic_error)})"
-                else:
-                    return f"AI analysis failed: {str(e)}"
-        elif provider == AIProvider.ANTHROPIC and self.anthropic_client:
-            try:
-                result = await self._generate_anthropic(prompt)
-                # Check if Anthropic returned an error message
-                if result.startswith("Anthropic API error:"):
-                    raise Exception(result)
-                return result
-            except Exception as e:
-                # If Anthropic fails and we have OpenAI available, try it
-                if self.openai_client:
-                    print(f"Anthropic failed ({str(e)}), falling back to OpenAI")
-                    try:
-                        return await self._generate_openai(prompt)
-                    except Exception as openai_error:
-                        return f"AI analysis failed: Anthropic error ({str(e)}), OpenAI error ({str(openai_error)})"
-                else:
-                    return f"AI analysis failed: {str(e)}"
-        else:
-            return "AI analysis unavailable - no API key configured"
+
+        # A single player write-up from supplied data is a bounded
+        # summarization task -- FAST tier. `provider` picks which one goes
+        # first; the other is still tried as a fallback.
+        return await self._generate_with_fallback(prompt, prefer_fast_model=True, primary=provider)
 
     async def generate_draft_recommendation(
         self,
@@ -177,34 +287,16 @@ class AIService:
             ]
         }}
         """
-        
-        # Try OpenAI first, fallback to Anthropic if it fails
-        response = None
-        try:
-            if self.openai_client:
-                response = await self._generate_openai(prompt)
-                if response.startswith("OpenAI API error:"):
-                    raise Exception(response)
-            elif self.anthropic_client:
-                response = await self._generate_anthropic(prompt)
-                if response.startswith("Anthropic API error:"):
-                    raise Exception(response)
-            else:
-                return {"recommendations": [], "error": "No AI provider available"}
-        except Exception as e:
-            # Try the other provider as fallback
-            try:
-                if self.anthropic_client and not response:
-                    print(f"OpenAI failed for draft recommendation, trying Anthropic")
-                    response = await self._generate_anthropic(prompt)
-                elif self.openai_client and not response:
-                    print(f"Anthropic failed for draft recommendation, trying OpenAI")
-                    response = await self._generate_openai(prompt)
-                else:
-                    return {"recommendations": [], "error": f"AI generation failed: {str(e)}"}
-            except Exception as fallback_error:
-                return {"recommendations": [], "error": f"All AI providers failed: {str(e)}, {str(fallback_error)}"}
-        
+
+        if not self.openai_client and not self.anthropic_client:
+            return {"recommendations": [], "error": "No AI provider available"}
+
+        # Ranking/comparing multiple players for a live draft pick is
+        # consequential and benefits from stronger reasoning -- DEEP tier.
+        response = await self._generate_with_fallback(prompt, prefer_fast_model=False)
+        if response.startswith(self.FAILURE_PREFIX):
+            return {"recommendations": [], "error": response}
+
         try:
             return json.loads(response)
         except json.JSONDecodeError:
@@ -217,50 +309,30 @@ class AIService:
     ) -> List[Dict[str, Any]]:
         prompt = f"""
         Analyze these waiver wire candidates for fantasy football:
-        
+
         League context: {json.dumps(league_context)}
-        
+
         Candidates:
         {json.dumps(waiver_candidates, indent=2)}
-        
+
         For each player, provide:
         1. Priority level (HIGH/MEDIUM/LOW)
         2. Reasoning for pickup
         3. Expected role/usage
         4. Rest of season outlook
-        
+
         Format as JSON array of player analyses.
         """
-        
-        # Try OpenAI first, fallback to Anthropic if it fails
-        response = None
-        try:
-            if self.openai_client:
-                response = await self._generate_openai(prompt)
-                if response.startswith("OpenAI API error:"):
-                    raise Exception(response)
-            elif self.anthropic_client:
-                response = await self._generate_anthropic(prompt)
-                if response.startswith("Anthropic API error:"):
-                    raise Exception(response)
-            else:
-                return []
-        except Exception as e:
-            # Try the other provider as fallback
-            try:
-                if self.anthropic_client and not response:
-                    print(f"OpenAI failed for waiver analysis, trying Anthropic")
-                    response = await self._generate_anthropic(prompt)
-                elif self.openai_client and not response:
-                    print(f"Anthropic failed for waiver analysis, trying OpenAI")
-                    response = await self._generate_openai(prompt)
-                else:
-                    print(f"Waiver analysis failed: {str(e)}")
-                    return []
-            except Exception as fallback_error:
-                print(f"All AI providers failed for waiver analysis: {str(e)}, {str(fallback_error)}")
-                return []
-        
+
+        if not self.openai_client and not self.anthropic_client:
+            return []
+
+        # Short, per-player waiver-wire blurbs -- FAST tier.
+        response = await self._generate_with_fallback(prompt, prefer_fast_model=True)
+        if response.startswith(self.FAILURE_PREFIX):
+            print(f"Waiver analysis failed: {response}")
+            return []
+
         try:
             return json.loads(response)
         except json.JSONDecodeError:
@@ -275,41 +347,43 @@ class AIService:
         if perspectives is None:
             perspectives = [
                 "Conservative/Risk-Averse",
-                "Aggressive/High-Upside", 
+                "Aggressive/High-Upside",
                 "Data-Driven/Analytics",
                 "Situational/Matchup-Based",
                 "Long-term/Dynasty"
             ]
-        
+
         perspective_analyses = []
-        
+
         for perspective in perspectives:
             prompt = f"""
             Topic: {topic}
-            
+
             Source articles:
             {json.dumps(source_articles, indent=2)}
-            
+
             Analyze this topic from a {perspective} perspective for fantasy football.
-            
+
             Provide:
             1. Key takeaways from this viewpoint
             2. Recommended actions
             3. Risk assessment
             4. Confidence level (1-10)
-            
+
             Keep response focused and actionable, around 100-150 words.
             """
-            
-            analysis = await self._generate_openai(prompt)
+
+            # The flagship multi-perspective analysis -- genuinely nuanced
+            # per-viewpoint reasoning -- DEEP tier.
+            analysis = await self._generate_with_fallback(prompt, prefer_fast_model=False)
             perspective_analyses.append({
                 "perspective": perspective,
                 "analysis": analysis
             })
-            
+
             # Add small delay to avoid rate limits
             await asyncio.sleep(0.1)
-        
+
         return {
             "topic": topic,
             "perspectives": perspective_analyses,
@@ -323,17 +397,17 @@ class AIService:
     ) -> Dict[str, Any]:
         prompt = f"""
         Topic: {topic}
-        
+
         Multiple perspective analyses:
         {json.dumps(perspective_analyses, indent=2)}
-        
+
         Create a consensus recommendation that:
         1. Synthesizes the different viewpoints
         2. Identifies areas of agreement and disagreement
         3. Provides a balanced, actionable recommendation
         4. Assigns a confidence score (1-10)
         5. Highlights key risk factors
-        
+
         Format as JSON:
         {{
             "consensus_recommendation": "Main recommendation text",
@@ -344,85 +418,114 @@ class AIService:
             "action_items": ["action 1", "action 2"]
         }}
         """
-        
-        response = await self._generate_openai(prompt)
+
+        # Synthesizing conflicting viewpoints into one recommendation --
+        # DEEP tier.
+        response = await self._generate_with_fallback(prompt, prefer_fast_model=False)
+        if response.startswith(self.FAILURE_PREFIX):
+            return {"error": response}
+
         try:
             return json.loads(response)
         except json.JSONDecodeError:
             return {"error": "Failed to generate consensus"}
 
-    async def _generate_openai(self, prompt: str, model: str = "gpt-4") -> str:
+    async def _call_openai(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 1000,
+        system: str = DEFAULT_SYSTEM_PROMPT,
+    ) -> str:
+        """Low-level OpenAI call. Raises on any failure -- never returns an
+        error string. This is the single place that actually builds the
+        OpenAI request; both _generate_openai() (legacy, non-raising) and
+        _generate_with_fallback() (new, consolidated) call through here.
+
+        The GPT-5 family (which every model this file uses belongs to --
+        see FAST_OPENAI_MODEL / DEEP_OPENAI_MODEL above) rejects both
+        `max_tokens` and a non-default `temperature` on Chat Completions:
+        confirmed live while wiring this up -- with a real key configured,
+        `max_tokens` 400s with "Unsupported parameter: 'max_tokens' is not
+        supported with this model. Use 'max_completion_tokens' instead.",
+        and any `temperature` other than the default (1) 400s with
+        "Unsupported value: 'temperature' does not support ... Only the
+        default (1) value is supported." Use `max_completion_tokens` and
+        omit `temperature` entirely."""
+        if not self.openai_client:
+            raise RuntimeError("OpenAI client not configured")
+
+        response = await self.openai_client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt}
+            ],
+            max_completion_tokens=max_tokens
+        )
+        return response.choices[0].message.content
+
+    async def _call_anthropic(
+        self,
+        prompt: str,
+        model: str,
+        max_tokens: int = 1000,
+        system: str = DEFAULT_SYSTEM_PROMPT,
+    ) -> str:
+        """Low-level Anthropic call. Raises on any failure -- never returns
+        an error string. Single place that builds the Anthropic request;
+        see _call_openai() docstring for why this split exists.
+
+        `temperature` is intentionally omitted: confirmed live against the
+        installed anthropic SDK (1.0.0) that `messages.create()` no longer
+        accepts it at all on current-generation models (TypeError at the
+        Python level, before any request is even sent) -- matching the
+        current Claude API's removal of temperature/top_p/top_k on
+        Sonnet-5-and-later models."""
+        if not self.anthropic_client:
+            raise RuntimeError("Anthropic client not configured")
+
+        response = await self.anthropic_client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            system=system,
+            messages=[
+                {"role": "user", "content": prompt}
+            ]
+        )
+        # response.content is a list of content blocks (TextBlock,
+        # ThinkingBlock, ...) -- guard on .type before reading .text rather
+        # than indexing content[0] unconditionally.
+        for block in response.content:
+            if block.type == "text":
+                return block.text
+        raise RuntimeError("Anthropic response contained no text content")
+
+    async def _generate_openai(self, prompt: str, model: str = DEEP_OPENAI_MODEL) -> str:
+        """Direct, non-raising OpenAI call kept for existing callers that
+        expect a returned string (including an error string) rather than a
+        raised exception -- e.g. leagues.py's roster-analysis endpoint,
+        which is intentionally left untouched here. New code should call
+        _generate_with_fallback() instead, which adds the fallback-to-
+        Anthropic behavior this method deliberately does not provide."""
         if not self.openai_client:
             return "OpenAI client not configured"
 
         try:
-            response = await self.openai_client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": "You are an expert fantasy football analyst."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1000
-            )
-            return response.choices[0].message.content
-        # Most-specific-first: every branch below is a subclass of
-        # openai.APIStatusError (itself a subclass of openai.APIError), so
-        # order matters -- a broader except above a narrower one would
-        # swallow it and produce a less useful message.
-        except openai.AuthenticationError as e:
-            return f"OpenAI API error: authentication failed - check OPENAI_API_KEY ({e.message})"
-        except openai.PermissionDeniedError as e:
-            return f"OpenAI API error: permission denied ({e.message})"
-        except openai.RateLimitError as e:
-            return f"OpenAI API error: rate limited ({e.message})"
-        except openai.APIConnectionError as e:
-            return f"OpenAI API error: connection failed ({e.message})"
-        except openai.APIStatusError as e:
-            return f"OpenAI API error: {e.status_code} {e.message}"
-        except openai.OpenAIError as e:
+            return await self._call_openai(prompt, model=model)
+        except Exception as e:
             return f"OpenAI API error: {str(e)}"
 
-    async def _generate_anthropic(self, prompt: str, model: str = "claude-sonnet-5") -> str:
+    async def _generate_anthropic(self, prompt: str, model: str = DEEP_ANTHROPIC_MODEL) -> str:
+        """Direct, non-raising Anthropic call. See _generate_openai()
+        docstring -- same rationale, kept for symmetry and any direct
+        callers."""
         if not self.anthropic_client:
             return "Anthropic client not configured"
 
         try:
-            response = await self.anthropic_client.messages.create(
-                model=model,
-                max_tokens=1000,
-                # `temperature` was removed from messages.create() entirely
-                # in current anthropic SDK versions (it's no longer even an
-                # accepted keyword argument, not just rejected server-side
-                # for certain models) -- prompting is the recommended way
-                # to steer output instead.
-                system="You are an expert fantasy football analyst.",
-                messages=[
-                    {"role": "user", "content": prompt}
-                ]
-            )
-            # response.content is a list of content blocks (TextBlock,
-            # ThinkingBlock, ...) -- guard on .type before reading .text
-            # rather than indexing content[0] unconditionally.
-            for block in response.content:
-                if block.type == "text":
-                    return block.text
-            return "Anthropic API error: response contained no text content"
-        # Most-specific-first: every branch below is a subclass of
-        # anthropic.APIStatusError (itself a subclass of anthropic.APIError),
-        # so order matters -- a broader except above a narrower one would
-        # swallow it and produce a less useful message.
-        except anthropic.AuthenticationError as e:
-            return f"Anthropic API error: authentication failed - check ANTHROPIC_API_KEY ({e.message})"
-        except anthropic.PermissionDeniedError as e:
-            return f"Anthropic API error: permission denied ({e.message})"
-        except anthropic.RateLimitError as e:
-            return f"Anthropic API error: rate limited ({e.message})"
-        except anthropic.APIConnectionError as e:
-            return f"Anthropic API error: connection failed ({e.message})"
-        except anthropic.APIStatusError as e:
-            return f"Anthropic API error: {e.status_code} {e.message}"
-        except anthropic.AnthropicError as e:
+            return await self._call_anthropic(prompt, model=model)
+        except Exception as e:
             return f"Anthropic API error: {str(e)}"
 
     async def get_ai_status(self) -> Dict[str, Any]:

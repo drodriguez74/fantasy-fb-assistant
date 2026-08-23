@@ -15,7 +15,7 @@ httpx==0.28.1
 beautifulsoup4==4.15.0
 espn-api==0.46.0
 openai==3.3.1
-anthropic==1.0.0
+anthropic==1.0.0  # 0.7.8 predates the Messages API entirely (no `.messages` attribute) -- fallback to Anthropic was silently broken (AttributeError) until this bump
 python-dotenv==1.2.3
 pytest==9.1.1
 pytest-asyncio==1.4.0
