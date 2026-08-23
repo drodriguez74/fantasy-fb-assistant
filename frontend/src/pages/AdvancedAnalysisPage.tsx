@@ -121,20 +121,116 @@ interface BreakoutCandidates {
   }
 }
 
-interface SituationAnalysisEntry {
-  player: { id: number; name: string }
-  situation_analysis: {
-    home_vs_away: { home_average: number | null; away_average: number | null; preference: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
-    weather_impact: { outdoor_performance: number | null; dome_performance: number | null; weather_sensitivity: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
-    game_script: { leading_games: number | null; trailing_games: number | null; close_games?: number | null; script_preference: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
-  }
-  key_insights: string[]
-  upcoming_context: { outlook: string; data_confidence?: 'computed' | 'heuristic' | 'insufficient' }
+// Game Situations tab: wired to game_situations.py's /game-situations/enhanced-analysis,
+// backed by EnhancedGameSituationService -- the real, most rigorously-labeled
+// analysis in the app (Computed/Heuristic/Insufficient-data throughout), replacing
+// the thinner AdvancedAnalysisService.analyze_game_situations that used to back this
+// tab. Several sub-sections carry an explicit `data_confidence`; for the sections
+// that don't (they're real per-player DB queries, just not individually labeled by
+// the service), the badge below is derived from whether both sides of the split
+// have a nonzero sample.
+type DataConfidence = 'computed' | 'heuristic' | 'insufficient'
+
+interface SituationalStats {
+  avg_points: number
+  games: number
+  consistency: number
+  ceiling: number
+  floor: number
+}
+
+interface HomeAwayAnalysis {
+  home_performance: SituationalStats
+  away_performance: SituationalStats
+  advantage: 'HOME' | 'AWAY'
+  home_away_differential: number
+  venue_specific_performance: Record<string, { avg_points: number; games: number }>
+  travel_impact: { travel_fatigue_factor: string; note?: string; data_confidence: DataConfidence }
+  confidence: 'HIGH' | 'MEDIUM' | 'LOW' | 'VERY_LOW'
+  recommendations: string[]
+}
+
+type DomeVsOutdoor =
+  | { dome_performance: SituationalStats; outdoor_performance: SituationalStats; dome_advantage: number }
+  | { insufficient_data: true }
+
+interface WeatherAnalysis {
+  weather_condition_performance: Record<string, { avg_points: number; games: number }>
+  dome_vs_outdoor: DomeVsOutdoor
+  weather_sensitivity: string
+  upcoming_weather_impact: { note?: string; data_confidence: DataConfidence }
+  recommendations: string[]
+}
+
+interface OpponentAnalysis {
+  defense_strength_performance: Record<string, { avg_points: number; games: number; ceiling: number; floor: number }>
+  matchup_dependency: string
+  division_rival_performance: { division_avg: number | null; non_division_avg: number | null; rivalry_factor: number | null; note?: string; data_confidence: DataConfidence }
+  upcoming_opponents: Array<{ week: number; opponent: string; def_rank: number | null; difficulty: string }>
+  optimal_matchups: string[]
+  avoid_matchups: string[]
+  recommendations: string[]
+}
+
+interface GameScriptAnalysis {
+  game_script_performance: Record<string, { avg_points: number; games: number; avg_targets: number; avg_carries: number }>
+  pace_of_play_impact: Record<string, { avg_points: number; games: number }>
+  garbage_time_performance: { garbage_time_boost: boolean | null; avg_boost: number | null; note?: string; data_confidence: DataConfidence }
+  red_zone_analysis: { red_zone_targets_per_game: number | null; goal_line_carries_per_game: number | null; touchdown_dependency: string; note?: string; data_confidence: DataConfidence }
+  script_dependency: string
+  optimal_game_scripts: string[]
+  recommendations: string[]
+}
+
+interface VenueAnalysis {
+  venue_type_performance: Record<string, { avg_points: number; games: number }>
+  altitude_impact: { high_altitude_games: number; sea_level_avg: number | null; high_altitude_avg: number | null; altitude_impact: number | null; note?: string; data_confidence: DataConfidence }
+  surface_impact: { grass_avg: number | null; turf_avg: number | null; surface_preference: string; note?: string; data_confidence: DataConfidence }
+  venue_recommendations: string[]
+}
+
+interface PrimeTimeAnalysis {
+  prime_time_performance: SituationalStats
+  regular_time_performance: SituationalStats
+  prime_time_advantage: number
+  sample_sizes: { prime_time: number; regular: number }
+  recommendations: string[]
+}
+
+interface RivalryAnalysis {
+  rivalry_performance: SituationalStats
+  non_rivalry_performance: SituationalStats
+  rivalry_impact: number
+  emotional_factor: string
+  recommendations: string[]
+}
+
+interface UpcomingForecast {
+  next_4_weeks: Array<{ week: number; opponent: string; location: string; def_rank: number | null; matchup_rating: number | null }>
+  optimal_weeks: number[]
+  caution_weeks: number[]
+  overall_outlook: string
+  note?: string
+  data_confidence: DataConfidence
+}
+
+interface EnhancedPlayerSituationAnalysis {
+  player: { id: number; name: string; position: string; team: string }
+  home_away_analysis?: HomeAwayAnalysis
+  weather_analysis?: WeatherAnalysis
+  opponent_analysis?: OpponentAnalysis
+  game_script_analysis?: GameScriptAnalysis
+  venue_analysis?: VenueAnalysis
+  prime_time_analysis?: PrimeTimeAnalysis
+  rivalry_analysis?: RivalryAnalysis
+  situational_insights: string[]
+  upcoming_situation_forecast: UpcomingForecast
 }
 
 interface GameSituations {
-  situation_analysis: SituationAnalysisEntry[]
-  cross_player_insights: string[]
+  player_analyses: EnhancedPlayerSituationAnalysis[]
+  comparison_insights: string[]
+  recommendations: string[]
 }
 
 interface WeatherDataItem {
@@ -282,12 +378,22 @@ export function AdvancedAnalysisPage() {
     try {
       setLoading(true)
       setError('')
-      
-      const response = await api.post('/advanced-analysis/game-situations', {
-        player_ids: selectedPlayers.map(p => p.id)
+
+      // Canonical path: EnhancedGameSituationService via game_situations.py.
+      // This replaces the thinner AdvancedAnalysisService.analyze_game_situations
+      // that used to back this tab -- same real, per-player data, but with the
+      // full home/away, weather, opponent, game-script, venue, prime-time, and
+      // rivalry breakdowns and honest Computed/Heuristic/Insufficient-data labeling.
+      const response = await api.post('/game-situations/enhanced-analysis', {
+        player_ids: selectedPlayers.map(p => p.id),
+        analysis_type: 'all'
       })
-      
-      setSituationResult(response.data)
+
+      setSituationResult({
+        player_analyses: response.data.player_analyses || [],
+        comparison_insights: response.data.comparison_insights || [],
+        recommendations: response.data.recommendations || []
+      })
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to analyze game situations'))
     } finally {
@@ -716,42 +822,52 @@ export function AdvancedAnalysisPage() {
   }
 
   // Transform situation data for charts. Players whose section came back
-  // "insufficient data" (nulls) are excluded from that chart rather than
-  // charted as 0 -- a 0 bar would look like a real, unfavorable number
-  // instead of "we don't know yet."
-  const transformSituationData = (situationAnalysis: SituationAnalysisEntry[]): {
+  // "insufficient data" (zero games on one side of the split) are excluded
+  // from that chart rather than charted as 0 -- a 0 bar would look like a
+  // real, unfavorable number instead of "we don't know yet."
+  const transformSituationData = (playerAnalyses: EnhancedPlayerSituationAnalysis[]): {
     homeAwayData: SituationalData[],
     weatherData: WeatherDataItem[],
     gameScriptData: GameScriptDataItem[]
   } => {
-    const homeAwayData: SituationalData[] = situationAnalysis
-      .filter(a => a.situation_analysis.home_vs_away.home_average !== null && a.situation_analysis.home_vs_away.away_average !== null)
-      .map(analysis => ({
+    const homeAwayData: SituationalData[] = playerAnalyses
+      .filter(a => a.home_away_analysis && a.home_away_analysis.home_performance.games > 0 && a.home_away_analysis.away_performance.games > 0)
+      .map(a => ({
         situation: 'Home vs Away',
-        home: analysis.situation_analysis.home_vs_away.home_average as number,
-        away: analysis.situation_analysis.home_vs_away.away_average as number,
-        player: analysis.player.name
+        home: a.home_away_analysis!.home_performance.avg_points,
+        away: a.home_away_analysis!.away_performance.avg_points,
+        player: a.player.name
       }))
 
-    const weatherData = situationAnalysis
-      .filter(a => a.situation_analysis.weather_impact.outdoor_performance !== null && a.situation_analysis.weather_impact.dome_performance !== null)
-      .map(analysis => ({
-        player: analysis.player.name,
-        outdoor: analysis.situation_analysis.weather_impact.outdoor_performance as number,
-        dome: analysis.situation_analysis.weather_impact.dome_performance as number,
-        weatherSensitivity: analysis.situation_analysis.weather_impact.weather_sensitivity
-      }))
-
-    const gameScriptData = situationAnalysis
-      .filter(a => a.situation_analysis.game_script.leading_games !== null && a.situation_analysis.game_script.trailing_games !== null)
-      .map(analysis => {
-        const leading = analysis.situation_analysis.game_script.leading_games as number
-        const trailing = analysis.situation_analysis.game_script.trailing_games as number
+    const weatherData: WeatherDataItem[] = playerAnalyses
+      .filter(a => {
+        const dvo = a.weather_analysis?.dome_vs_outdoor
+        return dvo && 'dome_performance' in dvo && dvo.dome_performance.games > 0 && dvo.outdoor_performance.games > 0
+      })
+      .map(a => {
+        const dvo = a.weather_analysis!.dome_vs_outdoor as Extract<DomeVsOutdoor, { dome_performance: SituationalStats }>
         return {
-          player: analysis.player.name,
+          player: a.player.name,
+          outdoor: dvo.outdoor_performance.avg_points,
+          dome: dvo.dome_performance.avg_points,
+          weatherSensitivity: a.weather_analysis!.weather_sensitivity
+        }
+      })
+
+    const gameScriptData: GameScriptDataItem[] = playerAnalyses
+      .filter(a => {
+        const perf = a.game_script_analysis?.game_script_performance
+        return perf && perf.LEADING && perf.TRAILING
+      })
+      .map(a => {
+        const perf = a.game_script_analysis!.game_script_performance
+        const leading = perf.LEADING.avg_points
+        const trailing = perf.TRAILING.avg_points
+        return {
+          player: a.player.name,
           leading,
           trailing,
-          close: analysis.situation_analysis.game_script.close_games ?? (leading + trailing) / 2
+          close: perf.CLOSE?.avg_points ?? (leading + trailing) / 2
         }
       })
 
@@ -761,16 +877,16 @@ export function AdvancedAnalysisPage() {
   const renderSituationResults = () => {
     if (!situationResult) return null
 
-    const { homeAwayData, weatherData, gameScriptData } = transformSituationData(situationResult.situation_analysis)
+    const { homeAwayData, weatherData, gameScriptData } = transformSituationData(situationResult.player_analyses)
 
     return (
       <div className="space-y-6">
         {/* Cross-Player Insights */}
-        {situationResult.cross_player_insights.length > 0 && (
+        {situationResult.comparison_insights.length > 0 && (
           <div className="bg-blue-50 rounded-lg p-4">
             <h3 className="text-lg font-semibold text-blue-900 mb-3">Key Insights</h3>
             <ul className="space-y-2">
-              {situationResult.cross_player_insights.map((insight, index) => (
+              {situationResult.comparison_insights.map((insight, index) => (
                 <li key={`situation-insight-${index}-${insight.slice(0, 20)}`} className="text-blue-800">• {insight}</li>
               ))}
             </ul>
@@ -782,20 +898,20 @@ export function AdvancedAnalysisPage() {
           <div className="space-y-6">
             <div className="bg-white rounded-lg border border-gray-200 p-6">
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Home vs Away Performance</h3>
-              <SituationalAnalysisChart 
-                data={homeAwayData} 
+              <SituationalAnalysisChart
+                data={homeAwayData}
                 height={300}
                 chartType="comparison"
               />
             </div>
-            
+
             {weatherData.length > 0 && (
               <div className="bg-white rounded-lg border border-gray-200 p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Weather Impact Analysis</h3>
                 <WeatherImpactChart data={weatherData} height={250} />
               </div>
             )}
-            
+
             {gameScriptData.length > 0 && gameScriptData[0] && (
               <div className="bg-white rounded-lg border border-gray-200 p-6">
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Game Script Performance</h3>
@@ -807,89 +923,218 @@ export function AdvancedAnalysisPage() {
 
         {/* Player Situation Analysis */}
         <div className="space-y-6">
-          {situationResult.situation_analysis.map((analysis) => (
-            <div key={analysis.player.id} className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">{analysis.player.name}</h3>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Home vs Away */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">Home vs Away</h4>
-                    <DataConfidenceBadge level={analysis.situation_analysis.home_vs_away.data_confidence ?? 'insufficient'} />
-                  </div>
-                  {analysis.situation_analysis.home_vs_away.home_average !== null ? (
-                    <div className="space-y-1 text-sm">
-                      <div>Home: {analysis.situation_analysis.home_vs_away.home_average} pts</div>
-                      <div>Away: {analysis.situation_analysis.home_vs_away.away_average} pts</div>
-                      <div className="font-medium text-blue-600">
-                        Prefers: {analysis.situation_analysis.home_vs_away.preference}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">Not enough logged home/away games for this player yet.</div>
-                  )}
+          {situationResult.player_analyses.map((analysis) => {
+            const ha = analysis.home_away_analysis
+            const wa = analysis.weather_analysis
+            const oa = analysis.opponent_analysis
+            const ga = analysis.game_script_analysis
+            const va = analysis.venue_analysis
+            const pt = analysis.prime_time_analysis
+            const rv = analysis.rivalry_analysis
+            const domeVsOutdoor = wa?.dome_vs_outdoor && 'dome_performance' in wa.dome_vs_outdoor ? wa.dome_vs_outdoor : null
+
+            return (
+              <div key={analysis.player.id} className="bg-white rounded-lg border border-gray-200 p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-semibold text-gray-900">{analysis.player.name}</h3>
+                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                    {analysis.player.position} - {analysis.player.team}
+                  </span>
                 </div>
 
-                {/* Weather Impact */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">Weather Impact</h4>
-                    <DataConfidenceBadge level={analysis.situation_analysis.weather_impact.data_confidence ?? 'insufficient'} />
-                  </div>
-                  {analysis.situation_analysis.weather_impact.outdoor_performance !== null ? (
-                    <div className="space-y-1 text-sm">
-                      <div>Outdoor: {analysis.situation_analysis.weather_impact.outdoor_performance} pts</div>
-                      <div>Dome: {analysis.situation_analysis.weather_impact.dome_performance} pts</div>
-                      <div className="font-medium text-blue-600">
-                        Sensitivity: {analysis.situation_analysis.weather_impact.weather_sensitivity}
-                      </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {/* Home vs Away */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Home vs Away</h4>
+                      <DataConfidenceBadge level={ha && ha.home_performance.games > 0 && ha.away_performance.games > 0 ? 'computed' : 'insufficient'} />
                     </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">No logged weather data for this player yet.</div>
-                  )}
+                    {ha && ha.home_performance.games > 0 && ha.away_performance.games > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        <div>Home: {ha.home_performance.avg_points} pts ({ha.home_performance.games} games)</div>
+                        <div>Away: {ha.away_performance.avg_points} pts ({ha.away_performance.games} games)</div>
+                        <div className="font-medium text-blue-600">Prefers: {ha.advantage}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">Not enough logged home/away games for this player yet.</div>
+                    )}
+                  </div>
+
+                  {/* Weather Impact */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Weather Impact</h4>
+                      <DataConfidenceBadge level={domeVsOutdoor && domeVsOutdoor.dome_performance.games > 0 && domeVsOutdoor.outdoor_performance.games > 0 ? 'computed' : 'insufficient'} />
+                    </div>
+                    {domeVsOutdoor && domeVsOutdoor.dome_performance.games > 0 && domeVsOutdoor.outdoor_performance.games > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        <div>Outdoor: {domeVsOutdoor.outdoor_performance.avg_points} pts</div>
+                        <div>Dome: {domeVsOutdoor.dome_performance.avg_points} pts</div>
+                        <div className="font-medium text-blue-600">Sensitivity: {wa?.weather_sensitivity}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">No logged weather/venue data for this player yet.</div>
+                    )}
+                  </div>
+
+                  {/* Opponent Strength */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Opponent Strength</h4>
+                      <DataConfidenceBadge level={oa && Object.keys(oa.defense_strength_performance).length > 0 ? 'computed' : 'insufficient'} />
+                    </div>
+                    {oa && Object.keys(oa.defense_strength_performance).length > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        {Object.entries(oa.defense_strength_performance).map(([tier, stats]) => (
+                          <div key={tier}>{tier.replace('_', ' ')}: {stats.avg_points} pts ({stats.games}g)</div>
+                        ))}
+                        <div className="font-medium text-blue-600">Dependency: {oa.matchup_dependency}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">Not enough logged opponent-strength data yet.</div>
+                    )}
+                  </div>
+
+                  {/* Game Script */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Game Script</h4>
+                      <DataConfidenceBadge level={ga && Object.keys(ga.game_script_performance).length > 0 ? 'computed' : 'insufficient'} />
+                    </div>
+                    {ga && Object.keys(ga.game_script_performance).length > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        {Object.entries(ga.game_script_performance).map(([script, stats]) => (
+                          <div key={script}>{script}: {stats.avg_points} pts ({stats.games}g)</div>
+                        ))}
+                        <div className="font-medium text-blue-600">Dependency: {ga.script_dependency}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">No logged game-script data for this player yet.</div>
+                    )}
+                  </div>
+
+                  {/* Red Zone Usage */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Red Zone Usage</h4>
+                      <DataConfidenceBadge level={ga?.red_zone_analysis.data_confidence ?? 'insufficient'} />
+                    </div>
+                    {ga && ga.red_zone_analysis.data_confidence === 'computed' ? (
+                      <div className="space-y-1 text-sm">
+                        <div>RZ targets/gm: {ga.red_zone_analysis.red_zone_targets_per_game}</div>
+                        <div>Goal-line carries/gm: {ga.red_zone_analysis.goal_line_carries_per_game}</div>
+                        <div className="font-medium text-blue-600">TD dependency: {ga.red_zone_analysis.touchdown_dependency}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">{ga?.red_zone_analysis.note ?? 'No logged red-zone usage data yet.'}</div>
+                    )}
+                  </div>
+
+                  {/* Prime Time */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Prime Time</h4>
+                      <DataConfidenceBadge level={pt && pt.sample_sizes.prime_time > 0 && pt.sample_sizes.regular > 0 ? 'computed' : 'insufficient'} />
+                    </div>
+                    {pt && pt.sample_sizes.prime_time > 0 && pt.sample_sizes.regular > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        <div>Prime time: {pt.prime_time_performance.avg_points} pts ({pt.sample_sizes.prime_time}g)</div>
+                        <div>Regular: {pt.regular_time_performance.avg_points} pts ({pt.sample_sizes.regular}g)</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">Not enough logged prime-time games yet.</div>
+                    )}
+                  </div>
+
+                  {/* Rivalry */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Division Rivalry</h4>
+                      <DataConfidenceBadge level={rv && rv.rivalry_performance.games > 0 && rv.non_rivalry_performance.games > 0 ? 'computed' : 'insufficient'} />
+                    </div>
+                    {rv && rv.rivalry_performance.games > 0 && rv.non_rivalry_performance.games > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        <div>Rivalry: {rv.rivalry_performance.avg_points} pts</div>
+                        <div>Non-rivalry: {rv.non_rivalry_performance.avg_points} pts</div>
+                        <div className="font-medium text-blue-600">Factor: {rv.emotional_factor}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">Not enough logged rivalry-game data yet.</div>
+                    )}
+                  </div>
+
+                  {/* Venue Altitude */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Altitude Impact</h4>
+                      <DataConfidenceBadge level={va?.altitude_impact.data_confidence ?? 'insufficient'} />
+                    </div>
+                    {va && va.altitude_impact.altitude_impact !== null ? (
+                      <div className="space-y-1 text-sm">
+                        <div>Sea level: {va.altitude_impact.sea_level_avg} pts</div>
+                        <div>High altitude: {va.altitude_impact.high_altitude_avg} pts</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">{va?.altitude_impact.note ?? 'No logged high-altitude venue data yet.'}</div>
+                    )}
+                  </div>
+
+                  {/* Upcoming Forecast */}
+                  <div className="bg-gray-50 p-4 rounded-lg">
+                    <div className="flex items-center justify-between mb-2">
+                      <h4 className="font-semibold text-gray-900">Upcoming Weeks</h4>
+                      <DataConfidenceBadge level={analysis.upcoming_situation_forecast.data_confidence} />
+                    </div>
+                    {analysis.upcoming_situation_forecast.next_4_weeks.length > 0 ? (
+                      <div className="space-y-1 text-sm">
+                        {analysis.upcoming_situation_forecast.next_4_weeks.map((wk) => (
+                          <div key={wk.week}>Wk {wk.week} vs {wk.opponent} ({wk.location}){wk.matchup_rating !== null ? ` — rating ${wk.matchup_rating}` : ''}</div>
+                        ))}
+                        <div className="font-medium text-blue-600">Outlook: {analysis.upcoming_situation_forecast.overall_outlook}</div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-gray-500">{analysis.upcoming_situation_forecast.note ?? 'No synced schedule data yet.'}</div>
+                    )}
+                  </div>
                 </div>
 
-                {/* Game Script */}
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className="font-semibold text-gray-900">Game Script</h4>
-                    <DataConfidenceBadge level={analysis.situation_analysis.game_script.data_confidence ?? 'insufficient'} />
+                {/* Upcoming Opponents */}
+                {oa && oa.upcoming_opponents.length > 0 && (
+                  <div className="mt-4 bg-gray-50 p-3 rounded-lg">
+                    <span className="text-sm font-medium text-gray-900">Upcoming Opponents: </span>
+                    <span className="text-sm text-gray-700">
+                      {oa.upcoming_opponents.map(o => `Wk ${o.week} ${o.opponent} (${o.difficulty})`).join(', ')}
+                    </span>
                   </div>
-                  {analysis.situation_analysis.game_script.leading_games !== null ? (
-                    <div className="space-y-1 text-sm">
-                      <div>Leading: {analysis.situation_analysis.game_script.leading_games} pts</div>
-                      <div>Trailing: {analysis.situation_analysis.game_script.trailing_games} pts</div>
-                      <div className="font-medium text-blue-600">
-                        Best: {analysis.situation_analysis.game_script.script_preference}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-sm text-gray-500">No logged game-script data for this player yet.</div>
-                  )}
-                </div>
+                )}
+
+                {/* Situational Insights */}
+                {analysis.situational_insights.length > 0 && (
+                  <div className="mt-4 bg-green-50 p-3 rounded-lg">
+                    <span className="text-sm font-medium text-green-900">Situational Insights: </span>
+                    <ul className="mt-1 text-sm text-green-800">
+                      {analysis.situational_insights.map((insight: string, idx: number) => (
+                        <li key={idx}>• {insight}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
-
-              {/* Key Insights */}
-              {analysis.key_insights.length > 0 && (
-                <div className="mt-4 bg-green-50 p-3 rounded-lg">
-                  <span className="text-sm font-medium text-green-900">Key Insights: </span>
-                  <ul className="mt-1 text-sm text-green-800">
-                    {analysis.key_insights.map((insight: string, idx: number) => (
-                      <li key={idx}>• {insight}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Upcoming Context */}
-              <div className="mt-4 bg-blue-50 p-3 rounded-lg">
-                <span className="text-sm font-medium text-blue-900">Next Game: </span>
-                <span className="text-sm text-blue-800">{analysis.upcoming_context.outlook}</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
+
+        {/* Overall Recommendations */}
+        {situationResult.recommendations.length > 0 && (
+          <div className="bg-green-50 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-green-900 mb-2">Recommendations</h3>
+            <ul className="space-y-1">
+              {situationResult.recommendations.map((rec, index) => (
+                <li key={`situation-rec-${index}-${rec.slice(0, 20)}`} className="text-green-800">• {rec}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
     )
   }

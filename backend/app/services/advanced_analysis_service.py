@@ -9,6 +9,7 @@ from app.services.matchup_analysis_service import MatchupAnalysisService
 from datetime import datetime, timedelta
 import statistics
 import numpy as np
+from scipy import stats as scipy_stats
 from collections import defaultdict
 
 class AdvancedAnalysisService:
@@ -61,12 +62,22 @@ class AdvancedAnalysisService:
 
             # Generate comparison insights
             insights = await self._generate_comparison_insights(comparison_data)
-            
+
+            # Real statistical significance testing (ANOVA/Mann-Whitney/Cohen's d),
+            # merged in from advanced_historical_service.py -- see
+            # _perform_statistical_tests for details.
+            points_by_player = [
+                {"id": p["id"], "name": p["name"], "points": self._get_player_points_series(p["id"])}
+                for p in comparison_data
+            ]
+            statistical_analysis = await self._perform_statistical_tests(points_by_player)
+
             return {
                 "success": True,
                 "players": comparison_data,
                 "insights": insights,
                 "head_to_head": await self._generate_head_to_head_analysis(comparison_data),
+                "statistical_analysis": statistical_analysis,
                 "recommendation": await self._generate_comparison_recommendation(comparison_data)
             }
 
@@ -103,7 +114,8 @@ class AdvancedAnalysisService:
                         'difficulty_score': difficulty['score'],
                         'difficulty_rating': difficulty['rating'],
                         'key_factors': difficulty['factors'],
-                        'projected_impact': difficulty['impact']
+                        'projected_impact': difficulty['impact'],
+                        'historical_points_allowed': difficulty['historical_check']
                     })
                     if difficulty['score'] is not None:
                         scored_difficulties.append(difficulty['score'])
@@ -202,8 +214,10 @@ class AdvancedAnalysisService:
             
             breakout_analysis = []
             for player in candidates:
-                # Calculate breakout probability using multiple factors
-                breakout_score = await self._calculate_breakout_probability(player)
+                # Calculate breakout probability using multiple factors, including
+                # a real historical performance trend (see _calculate_breakout_probability)
+                points_series = self._get_player_points_series(player.id)
+                breakout_score = await self._calculate_breakout_probability(player, points_series)
                 
                 if breakout_score['probability'] > 0.3:  # Only include players with >30% breakout chance
                     historical_stats = await self._get_player_historical_stats(player.id)
@@ -296,7 +310,7 @@ class AdvancedAnalysisService:
         if not historical_records:
             return {"games": 0, "avg_points": 0, "consistency": 0}
         
-        points = [record.fantasy_points for record in historical_records if record.fantasy_points]
+        points = [record.fantasy_points_ppr for record in historical_records if record.fantasy_points_ppr]
         
         return {
             "games": len(historical_records),
@@ -307,6 +321,97 @@ class AdvancedAnalysisService:
             "ceiling": max(points) if points else 0,
             "floor": min(points) if points else 0
         }
+
+    def _get_player_points_series(self, player_id: int) -> List[float]:
+        """Real, chronologically-ordered fantasy_points_ppr history for a player
+        (all logged PlayerHistoricalPerformance rows with a non-null value) --
+        the raw series statistical tests below are run against."""
+        records = self.db.query(PlayerHistoricalPerformance).filter(
+            PlayerHistoricalPerformance.player_id == player_id,
+            PlayerHistoricalPerformance.fantasy_points_ppr.isnot(None)
+        ).order_by(PlayerHistoricalPerformance.season, PlayerHistoricalPerformance.week).all()
+        return [r.fantasy_points_ppr for r in records]
+
+    # --- CATEGORY: Computed (merged from advanced_historical_service.py) ---
+    # advanced_historical_service.py's compare_players_advanced() ran real ANOVA
+    # (scipy.stats.f_oneway), pairwise Mann-Whitney U tests, and Cohen's d effect
+    # sizes across players' historical fantasy_points_ppr series -- statistics
+    # this (the wired) service's compare_players() didn't have. Per the product
+    # decision to consolidate on this service as the canonical compare-players
+    # path, that real statistical-significance testing is merged in here rather
+    # than duplicated in the now-decommissioned advanced_historical_service.py.
+    async def _perform_statistical_tests(self, players: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        players: [{"id", "name", "points": List[float]}, ...]. Players with
+        fewer than 2 logged games are excluded from the tests (a significance
+        test on a single data point isn't meaningful) and reported separately
+        rather than silently dropped.
+        """
+        insufficient = [p["name"] for p in players if len(p["points"]) < 2]
+        eligible = [p for p in players if len(p["points"]) >= 2]
+
+        if len(eligible) < 2:
+            return {
+                "anova_test": None,
+                "pairwise_tests": [],
+                "data_confidence": "insufficient",
+                "insufficient_data_players": insufficient,
+                "note": "Need at least 2 players with 2+ logged historical games to run significance tests."
+            }
+
+        groups = [p["points"] for p in eligible]
+        f_stat, anova_p = scipy_stats.f_oneway(*groups)
+        anova_result = {
+            "f_statistic": round(float(f_stat), 4) if not np.isnan(f_stat) else None,
+            "p_value": round(float(anova_p), 4) if not np.isnan(anova_p) else None,
+            "significant": bool(anova_p < 0.05) if not np.isnan(anova_p) else None,
+            "interpretation": (
+                "Statistically significant difference between players' historical scoring"
+                if not np.isnan(anova_p) and anova_p < 0.05
+                else "No statistically significant difference detected between players' historical scoring"
+            )
+        }
+
+        pairwise_tests = []
+        for i in range(len(eligible)):
+            for j in range(i + 1, len(eligible)):
+                p1, p2 = eligible[i], eligible[j]
+                mw_stat, mw_p = scipy_stats.mannwhitneyu(p1["points"], p2["points"], alternative='two-sided')
+
+                mean1, mean2 = statistics.mean(p1["points"]), statistics.mean(p2["points"])
+                std1 = statistics.stdev(p1["points"]) if len(p1["points"]) > 1 else 0.0
+                std2 = statistics.stdev(p2["points"]) if len(p2["points"]) > 1 else 0.0
+                pooled_std = ((std1 ** 2 + std2 ** 2) / 2) ** 0.5
+                cohens_d = (mean1 - mean2) / pooled_std if pooled_std > 0 else 0.0
+
+                pairwise_tests.append({
+                    "player1": p1["name"],
+                    "player2": p2["name"],
+                    "mann_whitney_u": round(float(mw_stat), 3),
+                    "p_value": round(float(mw_p), 4),
+                    "significant": bool(mw_p < 0.05),
+                    "cohens_d": round(float(cohens_d), 3),
+                    "effect_size": self._interpret_effect_size(abs(cohens_d)),
+                    "mean_difference": round(mean1 - mean2, 2)
+                })
+
+        return {
+            "anova_test": anova_result,
+            "pairwise_tests": pairwise_tests,
+            "data_confidence": "computed",
+            "insufficient_data_players": insufficient
+        }
+
+    def _interpret_effect_size(self, cohens_d: float) -> str:
+        """Interpret Cohen's d effect size (standard Cohen 1988 thresholds)."""
+        if cohens_d < 0.2:
+            return "negligible"
+        elif cohens_d < 0.5:
+            return "small"
+        elif cohens_d < 0.8:
+            return "medium"
+        else:
+            return "large"
 
     def _extract_current_metrics(self, player: Player, metrics: List[str]) -> Dict[str, Any]:
         """Extract current season metrics for comparison"""
@@ -390,7 +495,7 @@ class AdvancedAnalysisService:
         if len(recent_performances) < 3:
             return {"trend": "insufficient_data", "direction": "stable", "confidence": 0}
         
-        points = [p.fantasy_points for p in reversed(recent_performances) if p.fantasy_points]
+        points = [p.fantasy_points_ppr for p in reversed(recent_performances) if p.fantasy_points_ppr]
         
         if len(points) < 3:
             return {"trend": "insufficient_data", "direction": "stable", "confidence": 0}
@@ -580,6 +685,7 @@ class AdvancedAnalysisService:
         """
         matchup_service = MatchupAnalysisService(self.db)
         rating = matchup_service.get_defensive_matchup_rating(opponent, position)
+        historical_check = self._get_historical_matchup_difficulty(opponent, position)
 
         if "error" in rating or rating.get("confidence") == "Low":
             return {
@@ -587,7 +693,8 @@ class AdvancedAnalysisService:
                 "rating": "INSUFFICIENT_DATA",
                 "factors": [rating.get("note", "No defensive ranking data available for this opponent/position yet")],
                 "impact": "Insufficient data to project matchup impact",
-                "data_confidence": "insufficient"
+                "data_confidence": "insufficient",
+                "historical_check": historical_check
             }
 
         # matchup_rating is on a 1-10 scale where 10 = best matchup for the
@@ -602,6 +709,43 @@ class AdvancedAnalysisService:
                 f"Fantasy points allowed (season avg): {rating.get('fantasy_points_allowed_avg')}"
             ],
             "impact": f"Recent trend: {rating['recent_trend']} pts/game allowed (last 4)" if rating.get("recent_trend") is not None else "Recent trend data unavailable",
+            "data_confidence": "computed",
+            "historical_check": historical_check
+        }
+
+    # --- CATEGORY: Computed (merged from advanced_historical_service.py) ---
+    # advanced_historical_service.py's analyze_strength_of_schedule() computed a
+    # real, empirical "points allowed to this position" figure straight from
+    # PlayerHistoricalPerformance game logs (every player who has actually faced
+    # this opponent), rather than the forward-looking DefensiveMatchupRanking
+    # table the method above uses. Both are real -- one is a live/projected
+    # ranking, the other is this app's own historical record -- so this is
+    # merged in as a second, empirically-grounded cross-check on each matchup
+    # rather than replacing the already-Computed ranking above.
+    def _get_historical_matchup_difficulty(self, opponent: str, position: str) -> Dict[str, Any]:
+        rows = self.db.query(PlayerHistoricalPerformance).join(
+            Player, PlayerHistoricalPerformance.player_id == Player.id
+        ).filter(
+            and_(
+                PlayerHistoricalPerformance.opponent_team == opponent,
+                PlayerHistoricalPerformance.fantasy_points_ppr.isnot(None),
+                Player.position == position
+            )
+        ).all()
+
+        points = [r.fantasy_points_ppr for r in rows]
+        if len(points) < self.MIN_SPLIT_SAMPLE:
+            return {
+                "avg_points_allowed": None,
+                "sample_size": len(points),
+                "data_confidence": "insufficient",
+                "note": f"Not enough logged historical games against {opponent} at {position} yet."
+            }
+
+        return {
+            "avg_points_allowed": round(statistics.mean(points), 2),
+            "std_dev": round(statistics.stdev(points), 2) if len(points) > 1 else 0.0,
+            "sample_size": len(points),
             "data_confidence": "computed"
         }
 
@@ -623,11 +767,12 @@ class AdvancedAnalysisService:
         else:
             return "Average schedule difficulty - standard expectations"
 
-    async def _calculate_breakout_probability(self, player: Player) -> Dict[str, Any]:
-        """Calculate breakout probability using various factors"""
+    async def _calculate_breakout_probability(self, player: Player, points_series: Optional[List[float]] = None) -> Dict[str, Any]:
+        """Calculate breakout probability using various factors, including a
+        real historical performance trend (see historical_trend below)."""
         probability = 0.5  # Base probability
         factors = []
-        
+
         # Age factor (younger players more likely to break out)
         if player.age and player.age < 25:
             probability += 0.2
@@ -635,37 +780,88 @@ class AdvancedAnalysisService:
         elif player.age and player.age < 27:
             probability += 0.1
             factors.append("Prime age range")
-        
+
         # Opportunity factors
         if player.snap_count_percentage and player.snap_count_percentage > 70:
             probability += 0.15
             factors.append("High snap count share")
-        
+
         if player.target_share and player.target_share > 15:
             probability += 0.1
             factors.append("Good target share")
-        
+
         # Trending factors
         if player.trending_direction and player.trending_direction == "UP":
             probability += 0.1
             factors.append("Positive trending direction")
-        
+
         # Efficiency factors
         if player.projected_points and player.ownership_percentage:
             efficiency = player.projected_points / max(player.ownership_percentage, 1)
             if efficiency > 0.5:
                 probability += 0.15
                 factors.append("High efficiency relative to ownership")
-        
+
         # Team context
         if player.depth_chart_order and player.depth_chart_order <= 2:
             probability += 0.1
             factors.append("Good depth chart position")
-        
+
+        # --- CATEGORY: Computed (merged from advanced_historical_service.py) ---
+        # Everything above is derived from static/current-season Player fields.
+        # advanced_historical_service.py's analyze_breakout_candidates() instead
+        # computed a real recent-vs-earlier-games improvement rate and a
+        # coefficient-of-variation consistency score from actual weekly
+        # PlayerHistoricalPerformance logs -- a genuinely stronger, time-series
+        # signal the static factors above can't see. Merged in here rather than
+        # kept only in the now-decommissioned duplicate. Honestly reports
+        # insufficient data (and contributes nothing to the score) rather than
+        # fabricating a trend when fewer than 4 logged games exist per side.
+        historical_trend: Dict[str, Any]
+        points_series = points_series or []
+        if len(points_series) >= 8:
+            recent = points_series[-6:]
+            earlier = points_series[-12:-6] if len(points_series) >= 12 else points_series[:-6]
+        else:
+            recent, earlier = [], []
+
+        if len(recent) >= 4 and len(earlier) >= 4:
+            recent_avg = statistics.mean(recent)
+            earlier_avg = statistics.mean(earlier)
+            improvement_rate = (recent_avg - earlier_avg) / earlier_avg if earlier_avg > 0 else 0.0
+            cv = statistics.stdev(recent) / recent_avg if recent_avg > 0 and len(recent) > 1 else None
+
+            if improvement_rate > 0.25:
+                probability += 0.15
+                factors.append("Significant real recent-vs-earlier performance improvement")
+            if cv is not None and cv < 0.4:
+                probability += 0.05
+                factors.append("Consistent recent performance (low game-to-game variance)")
+
+            historical_trend = {
+                "recent_avg_points": round(recent_avg, 2),
+                "earlier_avg_points": round(earlier_avg, 2),
+                "improvement_rate": round(improvement_rate * 100, 1),
+                "consistency_cv": round(cv, 3) if cv is not None else None,
+                "games_analyzed": len(recent) + len(earlier),
+                "data_confidence": "computed"
+            }
+        else:
+            historical_trend = {
+                "recent_avg_points": None,
+                "earlier_avg_points": None,
+                "improvement_rate": None,
+                "consistency_cv": None,
+                "games_analyzed": len(points_series),
+                "data_confidence": "insufficient",
+                "note": "Needs at least 4 logged games each in a recent and an earlier window to compute a real trend."
+            }
+
         return {
             "probability": min(probability, 1.0),
             "confidence": "HIGH" if probability > 0.7 else "MEDIUM" if probability > 0.5 else "LOW",
-            "key_factors": factors
+            "key_factors": factors,
+            "historical_trend": historical_trend
         }
 
     async def _identify_breakout_factors(self, player: Player, historical_stats: Dict) -> List[str]:
