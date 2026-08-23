@@ -338,10 +338,8 @@ export function HistoricalPage() {
     }
 
     try {
-      console.log('Searching for:', query)
       const response = await players.search(query)
       const matches = response.data.matches || []
-      console.log('Search results:', matches)
       setPlayerSearchResults(matches)
     } catch (err) {
       console.error('Error searching players:', err)
@@ -353,9 +351,7 @@ export function HistoricalPage() {
     try {
       setLoading(true)
       setError('')
-      console.log('Loading player summary for ID:', playerId)
       const response = await historical.getPlayerSummary(playerId, 3)
-      console.log('Player summary response:', response.data)
       setPlayerSummary(response.data)
     } catch (err) {
       console.error('Error loading player summary:', err)
@@ -604,28 +600,6 @@ export function HistoricalPage() {
               <p className="text-sm text-gray-600 mb-2">
                 Try searching for: Josh Allen, Christian McCaffrey, Tyreek Hill, or Travis Kelce
               </p>
-              {process.env.NODE_ENV === 'development' && (
-                <div className="mt-2 p-2 bg-gray-100 rounded text-xs">
-                  <div>Search Query: {searchQuery}</div>
-                  <div>Search Results Count: {playerSearchResults.length}</div>
-                  <div>Loading: {loading ? 'Yes' : 'No'}</div>
-                  <div>Error: {error || 'None'}</div>
-                  <div className="mt-2 space-x-2">
-                    <button 
-                      onClick={() => searchPlayers('Josh')}
-                      className="px-2 py-1 bg-blue-500 text-white rounded text-xs"
-                    >
-                      Test Josh
-                    </button>
-                    <button 
-                      onClick={() => loadPlayerSummary(1)}
-                      className="px-2 py-1 bg-green-500 text-white rounded text-xs"
-                    >
-                      Load Josh Allen Summary
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
             <div className="relative">
               <input

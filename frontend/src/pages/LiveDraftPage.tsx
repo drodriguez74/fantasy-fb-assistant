@@ -92,7 +92,6 @@ export function LiveDraftPage() {
 
     wsRef.current.onopen = () => {
       setWsConnected(true)
-      console.log('WebSocket connected')
     }
 
     wsRef.current.onmessage = (event) => {
@@ -102,7 +101,6 @@ export function LiveDraftPage() {
 
     wsRef.current.onclose = () => {
       setWsConnected(false)
-      console.log('WebSocket disconnected')
     }
 
     wsRef.current.onerror = (error) => {
