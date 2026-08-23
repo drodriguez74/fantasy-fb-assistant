@@ -20,6 +20,7 @@ const primaryNavigation = [
 ]
 
 const moreNavigation = [
+  { name: 'Draft History', href: '/draft-history' },
   { name: 'Post-Draft Analysis', href: '/post-draft' },
   { name: 'Live Draft', href: '/live-draft' },
   { name: 'Waiver Wire', href: '/waiver-wire' },

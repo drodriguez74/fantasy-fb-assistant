@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { PlusIcon, StarIcon, XMarkIcon } from '@heroicons/react/24/outline'
-import { draft } from '../services/api'
+import { PlusIcon, StarIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
+import { draft, getErrorMessage, type MockDraftResult } from '../services/api'
 import { DraftPickLog, type PickLogEntry } from '../components/draft'
 
 interface DraftSettings {
@@ -53,6 +53,33 @@ function getPositionNeeds(roster: { position: string }[]): string[] {
     .map(([pos]) => pos)
 
   return needs.length > 0 ? needs : ['RB', 'WR']
+}
+
+// Local position-badge colors for the post-draft value table below, matching
+// the palette DraftPickLog.tsx already uses for the same badges elsewhere on
+// this page.
+const POSITION_BADGE_COLORS: Record<string, string> = {
+  QB: 'bg-red-100 text-red-800',
+  RB: 'bg-green-100 text-green-800',
+  WR: 'bg-blue-100 text-blue-800',
+  TE: 'bg-purple-100 text-purple-800',
+  K: 'bg-yellow-100 text-yellow-800',
+  DEF: 'bg-gray-100 text-gray-800',
+}
+
+const GRADE_BADGE_COLORS: Record<string, string> = {
+  A: 'bg-success-100 text-success-800',
+  B: 'bg-accent-100 text-accent-800',
+  C: 'bg-warning-100 text-warning-800',
+  D: 'bg-orange-100 text-orange-800',
+  F: 'bg-danger-100 text-danger-800',
+}
+
+// Keys off the base letter so grade modifiers (A-, B+, ...) still resolve to
+// a color rather than falling through to the "unknown" default.
+function getGradeBadgeColor(grade: string): string {
+  const base = grade.trim().charAt(0).toUpperCase()
+  return GRADE_BADGE_COLORS[base] || 'bg-ink-100 text-ink-700'
 }
 
 // Sleeper's own sentinel for "unranked" -- mirrors the backend's
@@ -174,6 +201,18 @@ export function DraftPage() {
   const [draftStatus, setDraftStatus] = useState<DraftStatus>('setup')
   const [botSimError, setBotSimError] = useState<string | null>(null)
 
+  // Grading the finished mock draft: a real network call (POST
+  // /draft/mock-draft-results), not an instant local computation, so it
+  // gets its own loading/error/result state rather than piggybacking on
+  // `loading` above (which gates the whole page's initial data load).
+  // `hasSubmittedDraftRef` guards against re-submitting the same finished
+  // draft on every re-render once `draftFinished` flips true -- it's reset
+  // whenever a fresh draft starts.
+  const [gradeResult, setGradeResult] = useState<MockDraftResult | null>(null)
+  const [gradeSaving, setGradeSaving] = useState(false)
+  const [gradeError, setGradeError] = useState<string | null>(null)
+  const hasSubmittedDraftRef = useRef(false)
+
   const positions = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K', 'DEF']
 
   const totalPicks = settings.teamCount * settings.totalRounds
@@ -211,6 +250,73 @@ export function DraftPage() {
   const getTeamNeeds = useCallback((): string[] => {
     return getPositionNeeds(draftedPlayers)
   }, [draftedPlayers])
+
+  // Persists the finished mock draft and fetches back its grade. Builds
+  // user_roster from `draftedPlayers` -- the same user-only, round/pick-
+  // annotated derivation from pickLog already used for the "Your Team"
+  // sidebar (entry.pick there is entry.overallPick, matching the shape the
+  // backend expects). search_rank/adp/projected_points are sent as null
+  // when the ranking pool didn't have them for a given player, rather than
+  // omitted, so the backend sees an explicit "unknown" instead of a missing
+  // key.
+  const saveMockDraftResult = useCallback(async () => {
+    setGradeSaving(true)
+    setGradeError(null)
+    try {
+      const response = await draft.saveMockDraftResults({
+        draft_settings: {
+          scoring_format: settings.scoringFormat,
+          team_count: settings.teamCount,
+          draft_position: settings.draftPosition,
+          total_rounds: settings.totalRounds,
+        },
+        user_roster: draftedPlayers.map((player) => ({
+          sleeper_id: player.sleeper_id,
+          full_name: player.full_name,
+          position: player.position,
+          team: player.team,
+          round: player.round,
+          pick: player.pick,
+          search_rank: player.search_rank ?? null,
+          adp: player.adp ?? null,
+          projected_points: player.projected_points ?? null,
+        })),
+      })
+      setGradeResult(response.data)
+    } catch (error) {
+      // Don't silently pretend the draft saved when it didn't -- an honest
+      // error here matters because the user has no other way to get this
+      // grade back (there's no "retry saving" outside this page yet).
+      console.error('Error saving mock draft results:', error)
+      setGradeError(getErrorMessage(error, "Couldn't save your draft results, so a grade isn't available right now."))
+    } finally {
+      setGradeSaving(false)
+    }
+  }, [settings, draftedPlayers])
+
+  // Fires exactly once per completed draft, the moment draftFinished flips
+  // true -- not on every render while it stays true, and not for the
+  // draft-hasn't-started default state (draftFinished is false until
+  // draftStatus becomes 'complete' or pickLog fills up).
+  useEffect(() => {
+    if (!draftFinished || hasSubmittedDraftRef.current) return
+    hasSubmittedDraftRef.current = true
+    saveMockDraftResult()
+  }, [draftFinished, saveMockDraftResult])
+
+  // Called out separately from the full value_analysis list below --
+  // matched by keyword against value_category rather than a fixed enum,
+  // since the exact category vocabulary is the backend's to define. If
+  // nothing in the response happens to read as a "value" or "reach", these
+  // are simply omitted rather than guessing.
+  const bestValuePick = useMemo(
+    () => gradeResult?.value_analysis.find((entry) => /value/i.test(entry.value_category)) ?? null,
+    [gradeResult]
+  )
+  const biggestReachPick = useMemo(
+    () => gradeResult?.value_analysis.find((entry) => /reach/i.test(entry.value_category)) ?? null,
+    [gradeResult]
+  )
 
   // Load initial data
   useEffect(() => {
@@ -340,12 +446,18 @@ export function DraftPage() {
     setBotSimError(null)
     setRecommendationsError(null)
     setDraftStatus('drafting')
+    hasSubmittedDraftRef.current = false
+    setGradeResult(null)
+    setGradeError(null)
   }
 
   const resetDraft = () => {
     setPickLog([])
     setBotSimError(null)
     setDraftStatus('setup')
+    hasSubmittedDraftRef.current = false
+    setGradeResult(null)
+    setGradeError(null)
   }
 
   // Fast-forwards synchronously through consecutive bot picks until it's
@@ -459,17 +571,163 @@ export function DraftPage() {
       )}
 
       {draftFinished && (
-        <div className="bg-success-50 border border-success-200 rounded-lg p-4 flex items-center justify-between gap-4">
-          <p className="text-sm text-success-900">
-            <span className="font-semibold">Draft complete!</span> You drafted {draftedPlayers.length}{' '}
-            players across {settings.totalRounds} rounds. Grade your roster next.
-          </p>
-          <Link
-            to="/post-draft"
-            className="px-3 py-1.5 bg-success-600 text-white text-xs font-medium rounded hover:bg-success-700 shrink-0"
-          >
-            Grade my draft
-          </Link>
+        <div className="space-y-4">
+          <div className="bg-success-50 border border-success-200 rounded-lg p-4 flex items-center justify-between gap-4 flex-wrap">
+            <p className="text-sm text-success-900">
+              <span className="font-semibold">Draft complete!</span> You drafted {draftedPlayers.length}{' '}
+              players across {settings.totalRounds} rounds.
+            </p>
+            <Link
+              to="/draft-history"
+              className="px-3 py-1.5 bg-white border border-success-300 text-success-800 text-xs font-medium rounded hover:bg-success-100 shrink-0"
+            >
+              View draft history
+            </Link>
+          </div>
+
+          {gradeSaving && (
+            <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent-500"></div>
+              <p className="text-sm text-ink-600">Saving your draft and calculating your grade...</p>
+            </div>
+          )}
+
+          {gradeError && (
+            <div className="bg-danger-50 border border-danger-200 rounded-lg p-4 flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex items-start gap-2">
+                <ExclamationTriangleIcon className="w-5 h-5 text-danger-500 shrink-0 mt-0.5" />
+                <p className="text-sm text-danger-800">{gradeError}</p>
+              </div>
+              <button
+                onClick={saveMockDraftResult}
+                className="px-3 py-1.5 bg-danger-600 text-white text-xs font-medium rounded hover:bg-danger-700 shrink-0"
+              >
+                Retry
+              </button>
+            </div>
+          )}
+
+          {gradeResult && (
+            <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6 space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div
+                  className={`flex items-center justify-center w-16 h-16 rounded-full text-2xl font-bold shrink-0 ${getGradeBadgeColor(gradeResult.draft_grade)}`}
+                >
+                  {gradeResult.draft_grade}
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-ink-900">Your Draft Grade</h2>
+                  <p className="text-sm text-ink-600">Composition score: {gradeResult.composition_score}/100</p>
+                </div>
+              </div>
+
+              {gradeResult.final_analysis && (
+                <p className="text-sm text-ink-700 bg-ink-50 rounded-md p-4 border border-ink-100">
+                  {gradeResult.final_analysis}
+                </p>
+              )}
+
+              {Object.keys(gradeResult.position_breakdown ?? {}).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-ink-900 mb-2">Position Breakdown</h3>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                    {Object.entries(gradeResult.position_breakdown).map(([position, breakdown]) => (
+                      <div
+                        key={position}
+                        className={`rounded-md border p-3 text-center ${
+                          breakdown.needs_attention
+                            ? 'border-danger-200 bg-danger-50'
+                            : breakdown.overstocked
+                            ? 'border-warning-200 bg-warning-50'
+                            : 'border-ink-200 bg-ink-50'
+                        }`}
+                      >
+                        <div className="text-xs font-semibold text-ink-900">{position}</div>
+                        <div className="text-lg font-bold text-ink-900">{breakdown.players_drafted}</div>
+                        <div className="text-[11px] text-ink-500">min {breakdown.recommended_minimum}</div>
+                        <div className="text-[11px] text-ink-500 mt-1">Depth {breakdown.depth_score}</div>
+                        {breakdown.needs_attention && (
+                          <div className="text-[11px] text-danger-700 font-medium mt-1">Needs attention</div>
+                        )}
+                        {breakdown.overstocked && (
+                          <div className="text-[11px] text-warning-700 font-medium mt-1">Overstocked</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {(bestValuePick || biggestReachPick) && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {bestValuePick && (
+                    <div className="rounded-md border border-success-200 bg-success-50 p-4">
+                      <div className="text-xs font-semibold text-success-800 uppercase tracking-wide mb-1">
+                        Best Value
+                      </div>
+                      <div className="font-medium text-ink-900">{bestValuePick.player_name}</div>
+                      <div className="text-xs text-ink-600">
+                        {bestValuePick.position} &middot; Round {bestValuePick.round}, Pick {bestValuePick.pick} overall
+                        &middot; {bestValuePick.value_category}
+                      </div>
+                    </div>
+                  )}
+                  {biggestReachPick && (
+                    <div className="rounded-md border border-warning-200 bg-warning-50 p-4">
+                      <div className="text-xs font-semibold text-warning-800 uppercase tracking-wide mb-1">
+                        Biggest Reach
+                      </div>
+                      <div className="font-medium text-ink-900">{biggestReachPick.player_name}</div>
+                      <div className="text-xs text-ink-600">
+                        {biggestReachPick.position} &middot; Round {biggestReachPick.round}, Pick {biggestReachPick.pick}{' '}
+                        overall &middot; {biggestReachPick.value_category}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {gradeResult.value_analysis.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-ink-900 mb-2">Pick-by-Pick Value</h3>
+                  <div className="max-h-64 overflow-y-auto space-y-1.5">
+                    {gradeResult.value_analysis.map((entry, index) => (
+                      <div
+                        key={`${entry.player_name}-${entry.pick}-${index}`}
+                        className="flex items-center justify-between gap-2 p-2 bg-ink-50 rounded text-sm"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-xs text-ink-500 shrink-0 w-20">
+                            Rd {entry.round} &middot; #{entry.pick}
+                          </span>
+                          <span className="font-medium text-ink-900 truncate">{entry.player_name}</span>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
+                              POSITION_BADGE_COLORS[entry.position] || 'bg-ink-100 text-ink-800'
+                            }`}
+                          >
+                            {entry.position}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-xs text-ink-500">{entry.value_category}</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${getGradeBadgeColor(entry.value_grade)}`}>
+                            {entry.value_grade}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-ink-100">
+                <Link to="/draft-history" className="text-sm font-medium text-accent-600 hover:text-accent-700">
+                  View all your mock drafts &rarr;
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

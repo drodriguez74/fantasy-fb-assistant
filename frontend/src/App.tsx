@@ -28,6 +28,7 @@ const WaiverWirePage = lazy(() => import('./pages/WaiverWirePage').then(m => ({ 
 const AdvancedAnalysisPage = lazy(() => import('./pages/AdvancedAnalysisPage').then(m => ({ default: m.AdvancedAnalysisPage })))
 const PostDraftAnalysisPage = lazy(() => import('./pages/PostDraftAnalysisPage').then(m => ({ default: m.PostDraftAnalysisPage })))
 const TradeAnalyzerPage = lazy(() => import('./pages/TradeAnalyzerPage').then(m => ({ default: m.TradeAnalyzerPage })))
+const DraftHistoryPage = lazy(() => import('./pages/DraftHistoryPage').then(m => ({ default: m.DraftHistoryPage })))
 
 function App() {
   return (
@@ -131,6 +132,14 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <TradeAnalyzerPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/draft-history"
+                element={
+                  <ProtectedRoute>
+                    <DraftHistoryPage />
                   </ProtectedRoute>
                 }
               />

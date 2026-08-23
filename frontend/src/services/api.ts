@@ -152,6 +152,89 @@ export const players = {
   generateAnalysis: (playerId: string) => api.post(`/players/${playerId}/analysis`),
 }
 
+// Mock draft grading (POST /draft/mock-draft-results, GET /users/me/drafts*).
+// Shapes mirror the backend contract exactly -- see DraftPage.tsx /
+// DraftHistoryPage.tsx for the UI that consumes these. Built against a fixed
+// contract from a parallel backend change rather than a live-verified
+// response, so treat unfamiliar/optional fields defensively at the call site.
+export interface MockDraftSettingsPayload {
+  scoring_format: string
+  team_count: number
+  draft_position: number
+  total_rounds: number
+}
+
+export interface MockDraftRosterPlayer {
+  sleeper_id: string
+  full_name: string
+  position: string
+  team: string
+  round: number
+  pick: number
+  search_rank?: number | null
+  adp?: number | null
+  projected_points?: number | null
+}
+
+export interface PositionBreakdownEntry {
+  players_drafted: number
+  recommended_minimum: number
+  depth_score: number
+  needs_attention: boolean
+  overstocked: boolean
+}
+
+export interface ValueAnalysisEntry {
+  player_name: string
+  position: string
+  round: number
+  pick: number
+  value_category: string
+  value_grade: string
+}
+
+export interface MockDraftResult {
+  session_id: string
+  draft_grade: string
+  composition_score: number
+  position_breakdown: Record<string, PositionBreakdownEntry>
+  value_analysis: ValueAnalysisEntry[]
+  final_analysis: string
+  completed_at: string
+}
+
+export interface DraftSessionSummary {
+  session_id: string
+  platform: string
+  draft_settings: Record<string, unknown>
+  draft_grade?: string | null
+  is_completed: boolean
+  started_at: string
+  completed_at?: string | null
+}
+
+// The detail endpoint returns "the full session" -- summary fields plus the
+// full roster/analysis. Extra grade-detail fields are optional here since
+// the exact detail shape wasn't nailed down when this was written against
+// the contract rather than a live-verified response.
+export interface DraftSessionDetail extends DraftSessionSummary {
+  user_roster: MockDraftRosterPlayer[]
+  final_analysis?: string | null
+  composition_score?: number | null
+  position_breakdown?: Record<string, PositionBreakdownEntry> | null
+  value_analysis?: ValueAnalysisEntry[] | null
+}
+
+// Past draft sessions (mock drafts today; potentially live-draft sessions
+// later) for the signed-in user.
+export const users = {
+  getDraftHistory: () =>
+    api.get<{ draft_sessions: DraftSessionSummary[]; total: number }>('/users/me/drafts'),
+
+  getDraftDetail: (sessionId: string) =>
+    api.get<DraftSessionDetail>(`/users/me/drafts/${sessionId}`),
+}
+
 // Draft endpoints
 export const draft = {
   // Direct draft recommendations (non-session based)
@@ -168,6 +251,14 @@ export const draft = {
 
   getPositionalRankings: (position: string, params?: { limit?: number }) =>
     api.get(`/draft/positional-rankings/${position}`, { params }),
+
+  // Called once a client-side mock draft (DraftPage.tsx) finishes -- grades
+  // the user's drafted roster and persists the session so it shows up in
+  // draft history (the `users` export above).
+  saveMockDraftResults: (data: {
+    draft_settings: MockDraftSettingsPayload
+    user_roster: MockDraftRosterPlayer[]
+  }) => api.post<MockDraftResult>('/draft/mock-draft-results', data),
 }
 
 // Historical data endpoints
