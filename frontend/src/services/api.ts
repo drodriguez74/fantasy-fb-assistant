@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const API_BASE_URL = 'http://localhost:8000/api/v1'
+// Set VITE_API_URL in Vercel's project env vars to point a deployed frontend
+// at its deployed backend; local dev needs no env file and defaults to the
+// local backend.
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000/api/v1'
 
 // Backend error details are sometimes raw exception/traceback text (e.g. a
 // leaked SQLAlchemy/psycopg2 error) rather than a friendly message. We never
