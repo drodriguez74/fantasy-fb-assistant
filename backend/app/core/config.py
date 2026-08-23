@@ -23,7 +23,20 @@ class Settings(BaseSettings):
     YAHOO_CLIENT_SECRET: Optional[str] = None
     
     SLEEPER_API_URL: str = "https://api.sleeper.app/v1"
-    
+
+    # Outbound email (SMTP) for real verification/password-reset delivery --
+    # see email_service.py. Optional like the API keys above: when
+    # SMTP_SERVER and SMTP_USERNAME are both unset, EmailService stays in
+    # its honest dev-log mode (logs the email instead of sending, still
+    # returns True) rather than crashing. Set all of SMTP_SERVER/
+    # SMTP_PORT/SMTP_USERNAME/SMTP_PASSWORD/FROM_EMAIL together to enable
+    # real sending.
+    SMTP_SERVER: Optional[str] = None
+    SMTP_PORT: Optional[int] = None
+    SMTP_USERNAME: Optional[str] = None
+    SMTP_PASSWORD: Optional[str] = None
+    FROM_EMAIL: Optional[str] = None
+
     CORS_ORIGINS: list[str] = ["*"]  # Allow all origins for development
 
     model_config = SettingsConfigDict(env_file=".env")
