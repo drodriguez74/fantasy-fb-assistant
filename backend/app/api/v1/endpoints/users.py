@@ -7,6 +7,9 @@ from app.schemas.user import (
     UserUpdate, UserResponse, UserStats, LeagueAdd, UserLeagueResponse,
     UserPublic
 )
+from app.schemas.draft_session import (
+    DraftSessionListResponse, DraftSessionSummary, DraftSessionDetail
+)
 from app.models.user import User
 
 router = APIRouter()
@@ -150,7 +153,7 @@ async def remove_league(
 
 
 # Draft History
-@router.get("/me/drafts")
+@router.get("/me/drafts", response_model=DraftSessionListResponse)
 async def get_my_draft_sessions(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
@@ -158,16 +161,44 @@ async def get_my_draft_sessions(
 ):
     """Get user's recent draft sessions"""
     user_service = UserService(db)
-    
+
     draft_sessions = user_service.get_user_draft_sessions(
         user_id=current_user.id,
         limit=limit
     )
-    
+
     return {
         "draft_sessions": draft_sessions,
         "total": len(draft_sessions)
     }
+
+
+@router.get("/me/drafts/{session_id}", response_model=DraftSessionDetail)
+async def get_my_draft_session_detail(
+    session_id: str,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Get full detail (including full roster and analysis text) for one past draft session"""
+    user_service = UserService(db)
+
+    session = user_service.get_draft_session_by_session_id(session_id)
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Draft session not found"
+        )
+
+    # 404 (not 403) on a session that exists but isn't this user's, to avoid
+    # leaking whether a given session_id exists at all.
+    if session.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Draft session not found"
+        )
+
+    return session
 
 
 # Public Profile (for sharing/social features)

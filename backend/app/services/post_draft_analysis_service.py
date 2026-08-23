@@ -21,6 +21,7 @@ from app.services.sleeper_service import SleeperService
 from app.services.scoring_calculation_service import ScoringCalculationService
 from app.services.matchup_analysis_service import MatchupAnalysisService
 from app.models.league_scoring import LeagueScoring
+from app.services.grading import grade_from_score
 
 logger = logging.getLogger(__name__)
 
@@ -649,12 +650,12 @@ class PostDraftAnalysisService:
         }
     
     def _grade_from_score(self, score: float) -> str:
-        """Convert numeric score to letter grade"""
-        if score >= 90: return "A"
-        elif score >= 80: return "B"
-        elif score >= 70: return "C"
-        elif score >= 60: return "D"
-        else: return "F"
+        """Convert numeric score to letter grade.
+
+        Delegates to the shared `grading.grade_from_score` so this and the
+        mock-draft grading path (`mock_draft_service.py`) can't drift apart.
+        """
+        return grade_from_score(score)
     
     def _get_scoring_context(self, player: Player, league_scoring_id: int) -> Dict[str, Any]:
         """Get scoring context for a player in a specific league"""

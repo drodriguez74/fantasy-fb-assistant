@@ -1,7 +1,9 @@
 from fastapi import APIRouter, HTTPException, Query, Depends
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+from uuid import uuid4
 import logging
 from app.services.ai_service import ai_service
 from app.services.sleeper_service import sleeper_service
@@ -10,6 +12,7 @@ from app.services.yahoo_service import yahoo_service
 from app.services.user_service import UserService
 from app.services.consensus_ranking_service import consensus_ranking_service
 from app.services.fantasypros_service import fantasypros_service
+from app.services.mock_draft_service import grade_mock_draft
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 
@@ -285,3 +288,84 @@ async def get_draft_projections(week: int, season: str = "2024"):
         return {"projections": projections, "week": week, "season": season}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get projections: {str(e)}")
+
+
+class MockDraftPlayerResult(BaseModel):
+    sleeper_id: str
+    full_name: str
+    position: str
+    team: str
+    round: int
+    pick: int
+    search_rank: Optional[int] = None
+    adp: Optional[float] = None
+    projected_points: Optional[float] = None
+
+
+class MockDraftResultsRequest(BaseModel):
+    draft_settings: Dict[str, Any]  # scoring_format, team_count, draft_position, total_rounds
+    user_roster: List[MockDraftPlayerResult]
+
+
+@router.post("/mock-draft-results")
+async def save_mock_draft_results(
+    request: MockDraftResultsRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Grade a completed client-side mock draft and persist it as a DraftSession.
+
+    The mock draft (frontend/src/pages/DraftPage.tsx) is simulated entirely in
+    the browser against real Sleeper ranking data, so there's no local DB
+    Player row guaranteed for any of these players -- grading is computed
+    purely from the roster payload the frontend sends (see
+    `mock_draft_service.grade_mock_draft`), never from a DB lookup.
+    """
+    try:
+        user_roster_dicts = [player.model_dump() for player in request.user_roster]
+
+        grading = grade_mock_draft(request.draft_settings, user_roster_dicts)
+
+        user_service = UserService(db)
+        session_id = f"mock-{uuid4()}"
+
+        user_service.create_draft_session(
+            user_id=current_user.id,
+            session_data={
+                "session_id": session_id,
+                "platform": "mock",
+                "league_id": "mock",
+                "draft_settings": request.draft_settings,
+            }
+        )
+
+        completed_at = datetime.now(timezone.utc)
+        updated_session = user_service.update_draft_session(
+            session_id,
+            {
+                "user_roster": user_roster_dicts,
+                "draft_grade": grading["draft_grade"],
+                "final_analysis": grading["final_analysis"],
+                "is_completed": True,
+                "is_active": False,
+                "completed_at": completed_at,
+            }
+        )
+
+        if not updated_session:
+            raise HTTPException(status_code=500, detail="Failed to save mock draft session")
+
+        return {
+            "session_id": session_id,
+            "draft_grade": grading["draft_grade"],
+            "composition_score": grading["composition_score"],
+            "position_breakdown": grading["position_breakdown"],
+            "value_analysis": grading["value_analysis"],
+            "final_analysis": grading["final_analysis"],
+            "completed_at": completed_at.isoformat(),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to save mock draft results: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to save mock draft results: {str(e)}")

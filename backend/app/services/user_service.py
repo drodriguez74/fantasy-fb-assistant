@@ -304,6 +304,17 @@ class UserService:
             DraftSession.user_id == user_id
         ).order_by(DraftSession.started_at.desc()).limit(limit).all()
 
+    def get_draft_session_by_session_id(self, session_id: str) -> Optional[DraftSession]:
+        """Get a single draft session by its (string) session_id, regardless of owner.
+
+        Callers that need to scope this to the requesting user (e.g. the
+        GET /users/me/drafts/{session_id} endpoint) must check
+        `session.user_id` themselves after calling this.
+        """
+        return self.db.query(DraftSession).filter(
+            DraftSession.session_id == session_id
+        ).first()
+
     def get_user_stats(self, user_id: int) -> Dict[str, Any]:
         """Get user statistics"""
         user = self.get_user_by_id(user_id)
