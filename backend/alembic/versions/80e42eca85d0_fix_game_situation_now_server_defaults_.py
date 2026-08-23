@@ -19,7 +19,7 @@ func.now()) for documentation/consistency and so future
 changing the actual Postgres default value.
 
 Revision ID: 80e42eca85d0
-Revises: e6668d9d2d31
+Revises: 099d20c27ac2
 Create Date: 2026-08-23 10:01:58.160791
 
 """
@@ -31,7 +31,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '80e42eca85d0'
-down_revision: Union[str, None] = 'e6668d9d2d31'
+down_revision: Union[str, None] = '099d20c27ac2'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
