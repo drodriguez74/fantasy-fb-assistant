@@ -3,6 +3,18 @@ Email Service for Fantasy Football Assistant
 
 Handles sending verification emails, password reset emails, and other notifications.
 Supports both SMTP and development mode.
+
+This is a deliberately separate channel from notification_service.py's
+in-app notification center: that service creates real, DB-backed
+`Notification` rows derived from live in-app events (e.g. Sleeper trending
+adds) for the notification bell inside the app itself. EmailService instead
+delivers to the user's actual inbox for auth-critical, out-of-band flows
+(prove-you-own-this-address verification, password reset) where the user by
+definition cannot be relied on to be inside the app already. Same
+"notification" vocabulary, genuinely different transport and trigger model
+-- if a shared "channel status" concept (which channels exist, are they
+live) is ever needed, add it as a thin read-only aggregator over both,
+rather than merging them.
 """
 
 import smtplib
@@ -17,14 +29,21 @@ logger = logging.getLogger(__name__)
 
 class EmailService:
     """Email service for sending notifications and verification emails"""
-    
+
     def __init__(self):
-        self.smtp_server = getattr(settings, 'SMTP_SERVER', 'smtp.gmail.com')
-        self.smtp_port = getattr(settings, 'SMTP_PORT', 587)
-        self.smtp_username = getattr(settings, 'SMTP_USERNAME', None)
-        self.smtp_password = getattr(settings, 'SMTP_PASSWORD', None)
-        self.from_email = getattr(settings, 'FROM_EMAIL', 'noreply@fantasyfootball.com')
-        self.development_mode = getattr(settings, 'DEVELOPMENT_MODE', True)
+        self.smtp_server = settings.SMTP_SERVER or 'smtp.gmail.com'
+        self.smtp_port = settings.SMTP_PORT or 587
+        self.smtp_username = settings.SMTP_USERNAME
+        self.smtp_password = settings.SMTP_PASSWORD
+        self.from_email = settings.FROM_EMAIL or 'noreply@fantasyfootball.com'
+        # No dedicated DEVELOPMENT_MODE setting exists (and none is being
+        # added here -- see email_service.py's file boundary). Real
+        # "configured" state is derived from whether credentials are
+        # actually present: with no SMTP_USERNAME, sending would fail
+        # anyway, so degrade to dev-log mode honestly instead of pretending
+        # readiness. Providing real SMTP_USERNAME/SMTP_PASSWORD (and
+        # SMTP_SERVER) is what actually leaves dev-log mode -- not a flag.
+        self.development_mode = not settings.SMTP_USERNAME
     
     async def send_verification_email(self, email: str, verification_token: str) -> bool:
         """Send email verification email"""
@@ -32,7 +51,7 @@ class EmailService:
             subject = "Verify Your Fantasy Football Assistant Account"
             
             # Create verification URL
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3001')
             verification_url = f"{frontend_url}/verify-email?token={verification_token}"
             
             html_content = f"""
@@ -85,7 +104,7 @@ class EmailService:
             subject = "Reset Your Fantasy Football Assistant Password"
             
             # Create reset URL
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:3001')
             reset_url = f"{frontend_url}/reset-password?token={reset_token}"
             
             html_content = f"""
@@ -141,8 +160,9 @@ class EmailService:
     ) -> bool:
         """Send email via SMTP or log in development mode"""
         try:
-            if self.development_mode or not self.smtp_username:
-                # Development mode - log email instead of sending
+            if self.development_mode:
+                # No real SMTP credentials configured (SMTP_USERNAME unset)
+                # -- log the email instead of sending it.
                 logger.info(f"EMAIL SENT (Dev Mode) - To: {to_email}, Subject: {subject}")
                 logger.info(f"Email content:\n{text_content}")
                 return True
