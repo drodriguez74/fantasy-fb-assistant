@@ -712,8 +712,16 @@ async def get_roster_analysis(
             raise HTTPException(status_code=400, detail=roster_data["error"])
 
         players = roster_data.get("players", [])
-        starting_lineup = [p for p in players if p.get("slot_position") != "BENCH"]
-        bench_players = [p for p in players if p.get("slot_position") == "BENCH"]
+        # "lineup_slot" (espn_api's real lineupSlot attribute, e.g.
+        # "QB"/"RB"/"BE"/"IR") replaced a previous "slot_position" field
+        # that didn't exist on the underlying object and always evaluated
+        # to "BENCH" for every player, making every ESPN roster look
+        # 100% benched regardless of real lineup. "BE" is ESPN's own
+        # bench label (see get_scoring_and_roster_settings's identical
+        # "BE" check for this league's roster-slot settings); IR is a
+        # real slot but not a "starting" one either.
+        starting_lineup = [p for p in players if p.get("lineup_slot") not in ("BE", "IR")]
+        bench_players = [p for p in players if p.get("lineup_slot") in ("BE", "IR")]
 
         return {
             "league_info": league_info,

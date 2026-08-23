@@ -583,8 +583,14 @@ class ESPNFantasyServiceEnhanced:
             formatted_roster = []
             for player in roster:
                 player_data = self._format_player(player)
+                # espn_api's real Player attribute is `lineupSlot` (e.g.
+                # "QB", "RB", "BE", "IR" -- see POSITION_MAP in the
+                # installed espn_api.football.player module). There is no
+                # `slot_position` attribute on this object at all -- a
+                # previous version of this code read that nonexistent name,
+                # so getattr's default ('BENCH') silently won for every
+                # single player, making every roster look 100% benched.
                 player_data["lineup_slot"] = getattr(player, 'lineupSlot', None)
-                player_data["slot_position"] = getattr(player, 'slot_position', 'BENCH')
                 formatted_roster.append(player_data)
             return formatted_roster
         except Exception as e:
