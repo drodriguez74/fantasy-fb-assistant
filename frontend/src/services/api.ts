@@ -103,21 +103,42 @@ export const leagues = {
       params: { league_id: leagueId, season, swid, espn_s2: espnS2 } 
     }),
   
-  connectEspn: (leagueId: string, season?: number, swid?: string, espnS2?: string) =>
-    api.post('/leagues/espn/connect', { 
-      league_id: leagueId, 
-      season: season || 2024, 
-      swid, 
-      espn_s2: espnS2 
+  connectEspn: (leagueId: string, season?: number, swid?: string, espnS2?: string, teamId?: string) =>
+    api.post('/leagues/espn/connect', {
+      league_id: leagueId,
+      season: season || 2024,
+      swid,
+      espn_s2: espnS2,
+      team_id: teamId,
     }),
-  
+
+  getEspnTeams: (leagueId: string, season?: number, swid?: string, espnS2?: string) =>
+    api.get('/leagues/espn/teams', {
+      params: { league_id: leagueId, season, swid, espn_s2: espnS2 }
+    }),
+
+  getSleeperTeams: (leagueId: string, username?: string) =>
+    api.get('/leagues/sleeper/teams', {
+      params: { league_id: leagueId, username: username || undefined }
+    }),
+
+  connectSleeper: (leagueId: string, teamId?: string, username?: string) =>
+    api.post('/leagues/sleeper/connect', {
+      league_id: leagueId,
+      team_id: teamId,
+      username: username || undefined,
+    }),
+
   getAnalysis: (leagueId: number) => api.get(`/leagues/${leagueId}/analysis`),
   
   getMatchups: (leagueId: number, week?: number) => 
     api.get(`/leagues/${leagueId}/matchups${week ? `?week=${week}` : ''}`),
   
   getStandings: (leagueId: number) => api.get(`/leagues/${leagueId}/standings`),
-  
+
+  updateSettings: (leagueId: number, settings: Record<string, unknown>) =>
+    api.put(`/leagues/${leagueId}/settings`, settings),
+
   disconnect: (leagueId: number) => api.delete(`/leagues/${leagueId}`),
 }
 
