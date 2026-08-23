@@ -1,10 +1,13 @@
 import httpx
 from typing import Dict, List, Optional, Any
 import asyncio
+import logging
 from datetime import datetime
 import base64
 import json
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class YahooFantasyService:
@@ -39,14 +42,30 @@ class YahooFantasyService:
     def _error_detail(e: Exception) -> str:
         """httpx.HTTPStatusError's default str() is just the status code and
         URL -- it discards the response body, which for Yahoo's API usually
-        names the actual reason (bad scope, revoked token, etc). Surface it
-        so errors are self-diagnosing instead of needing this file's print()
-        debug lines re-run live to find out why.
+        names the actual reason (bad scope, revoked token, etc).
+
+        Always logs the FULL untruncated detail server-side (this file had
+        zero logging on this path before -- a live 403 here produced no
+        terminal output at all, nothing to diagnose from). The returned
+        string is deliberately short: frontend/src/services/api.ts treats
+        any error message over 300 chars as "looks like a raw server
+        error" and silently replaces it with a generic fallback, so a long
+        "helpful" detail here was actually making the UI show *less*
+        information than before this method existed.
         """
         if isinstance(e, httpx.HTTPStatusError):
+            status = e.response.status_code
             body = e.response.text.strip()
             if body:
-                return f"{e} -- response body: {body[:500]}"
+                logger.error(f"Yahoo API {status} for {e.request.url}: {body}")
+                # Response bodies are commonly XML/JSON with real structure;
+                # a short prefix is usually enough to identify the reason
+                # (e.g. an error code/message) without re-triggering the
+                # frontend's raw-error-length filter.
+                return f"Yahoo API returned {status}: {body[:150]}"
+            logger.error(f"Yahoo API {status} for {e.request.url}: <empty response body>")
+        else:
+            logger.error(f"Yahoo API request failed: {e}")
         return str(e)
 
     @property
