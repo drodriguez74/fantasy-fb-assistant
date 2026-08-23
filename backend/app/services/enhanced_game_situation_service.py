@@ -120,7 +120,8 @@ class EnhancedGameSituationService:
                     'consistency': round(1 - (statistics.stdev(points) / statistics.mean(points)), 3) if statistics.mean(points) > 0 else 0
                 }
         
-        # Travel distance impact (placeholder for real implementation)
+        # Travel distance impact: honestly reports insufficient data rather
+        # than a real calculation -- see _analyze_travel_impact's docstring.
         travel_impact = await self._analyze_travel_impact(player_id, away_games)
         
         return {

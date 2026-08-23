@@ -32,6 +32,19 @@ UserLeague.user = relationship("User", back_populates="leagues")
 # Add relationships to DraftSession model
 DraftSession.user = relationship("User", back_populates="draft_sessions")
 
+# Add relationships to Player model (re-enabled: these were previously
+# commented out inline on Player itself; back_populates counterparts live on
+# PlayerHistoricalPerformance/PlayerSeasonSummary/PlayerTrend in
+# historical_performance.py and on WaiverWireRecommendation/WaiverWireTrend/
+# PlayerEvaluation/WaiverWireAlert in waiver_wire.py)
+Player.historical_performances = relationship("PlayerHistoricalPerformance", back_populates="player")
+Player.season_summaries = relationship("PlayerSeasonSummary", back_populates="player")
+Player.trends = relationship("PlayerTrend", back_populates="player")
+Player.waiver_recommendations = relationship("WaiverWireRecommendation", back_populates="player")
+Player.waiver_trends = relationship("WaiverWireTrend", back_populates="player")
+Player.evaluations = relationship("PlayerEvaluation", back_populates="player")
+Player.waiver_alerts = relationship("WaiverWireAlert", back_populates="player")
+
 __all__ = [
     "Base", "User", "UserLeague", "DraftSession", "Player", "BlogPost",
     "GameSituation", "DefensiveRanking", "VenueData", "WeatherHistory", "SituationalTrend",

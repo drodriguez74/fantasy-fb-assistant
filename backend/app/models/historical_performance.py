@@ -76,7 +76,7 @@ class PlayerHistoricalPerformance(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    player = relationship("Player")
+    player = relationship("Player", back_populates="historical_performances")
 
 class PlayerSeasonSummary(Base):
     """Season-level summary statistics and metrics"""
@@ -137,7 +137,7 @@ class PlayerSeasonSummary(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    player = relationship("Player")
+    player = relationship("Player", back_populates="season_summaries")
 
 class MatchupHistory(Base):
     """Historical matchup data between teams and positions"""
@@ -221,7 +221,7 @@ class PlayerTrend(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    player = relationship("Player")
+    player = relationship("Player", back_populates="trends")
 
 class FantasyLeagueHistory(Base):
     """Historical league and team performance data"""
@@ -270,13 +270,9 @@ class FantasyLeagueHistory(Base):
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# Update the Player model to include relationships
-# This should be added to the existing Player model in app/models/player.py:
-"""
-Add these relationships to the Player class:
-
-    # Historical performance relationships
-    historical_performances = relationship("PlayerHistoricalPerformance", back_populates="player")
-    season_summaries = relationship("PlayerSeasonSummary", back_populates="player")
-    trends = relationship("PlayerTrend", back_populates="player")
-"""
+# The reverse (Player -> these models) relationships are wired in
+# app/models/__init__.py, following this codebase's convention of attaching
+# cross-model relationship()s there after all models are imported (see the
+# comment at the top of that file). Player.historical_performances,
+# Player.season_summaries, and Player.trends are all defined there with
+# back_populates="player" matching the relationships above.
