@@ -17,10 +17,17 @@ export function YahooCallbackPage() {
       
       // Send error message to parent window
       if (window.opener) {
+        // targetOrigin must be the OPENER's origin, not this popup's own
+        // (window.location.origin here would be the tunnel domain Yahoo
+        // redirected through, e.g. an ngrok host -- not localhost:3001,
+        // where the opener actually lives). A mismatched targetOrigin
+        // makes the browser silently drop the message with no error, which
+        // looked like "the popup just closes and nothing happens" -- the
+        // OAuth code was arriving, it just never reached the opener.
         window.opener.postMessage({
           type: 'YAHOO_AUTH_ERROR',
           error: error
-        }, window.location.origin)
+        }, '*')
         window.close()
       } else {
         // If no parent window, redirect after a delay
@@ -38,7 +45,7 @@ export function YahooCallbackPage() {
         window.opener.postMessage({
           type: 'YAHOO_AUTH_SUCCESS',
           code: authorizationCode
-        }, window.location.origin)
+        }, '*')
         window.close()
       } else {
         // If no parent window, redirect after a delay
@@ -52,7 +59,7 @@ export function YahooCallbackPage() {
         window.opener.postMessage({
           type: 'YAHOO_AUTH_ERROR',
           error: 'No authorization code'
-        }, window.location.origin)
+        }, '*')
         window.close()
       } else {
         setTimeout(() => navigate('/leagues'), 3000)

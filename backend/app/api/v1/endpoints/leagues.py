@@ -38,7 +38,12 @@ async def get_yahoo_auth_url():
         f"?client_id={yahoo_service.client_id}"
         f"&redirect_uri={redirect_uri}"
         f"&response_type=code"
-        f"&scope=fspt-r"  # Fantasy Sports Read permission
+        # This app's Yahoo console registration grants "Fantasy Sports -
+        # Read/Write" (fspt-w), not Read-only (fspt-r) -- requesting a
+        # narrower scope than what's actually provisioned for the client_id
+        # got rejected live with error=invalid_scope. Request what's
+        # actually granted.
+        f"&scope=fspt-w"
     )
     
     return {
