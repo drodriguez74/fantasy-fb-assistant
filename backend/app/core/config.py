@@ -1,5 +1,8 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
+import json
+
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+from typing import Annotated, Optional
 
 
 class Settings(BaseSettings):
@@ -45,7 +48,36 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     FROM_EMAIL: Optional[str] = None
 
-    CORS_ORIGINS: list[str] = ["*"]  # Allow all origins for development
+    # Origins allowed to call this API with credentials. Defaults to the
+    # frontend's local dev URLs (matches vite.config.ts's non-default port
+    # and its 127.0.0.1 equivalent, plus the backend's own two forms) so
+    # local dev needs zero config. In production, set this to the real
+    # deployed frontend URL(s) -- a bare "*" is invalid here per the CORS
+    # spec once allow_credentials=True is set below, so this is never a
+    # wildcard. Accepts either a comma-separated string (easiest to hand-type
+    # in a .env, e.g. "https://foo.vercel.app,https://bar.com") or a JSON
+    # array string (pydantic-settings' default list[str] parsing).
+    CORS_ORIGINS: Annotated[list[str], NoDecode] = [
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    ]
+
+    @field_validator("CORS_ORIGINS", mode="before")
+    @classmethod
+    def _split_cors_origins(cls, v):
+        # NoDecode means we always receive the raw env string here (never
+        # pydantic-settings' own JSON auto-decode) -- handle both a JSON
+        # array and a plain comma-separated list ourselves.
+        if isinstance(v, str):
+            stripped = v.strip()
+            if stripped.startswith("["):
+                return json.loads(stripped)
+            return [origin.strip() for origin in stripped.split(",") if origin.strip()]
+        return v
 
     # extra="ignore": this app's real per-user ESPN/Yahoo credentials are
     # stored in the database (UserLeague rows), not here -- but a .env can
