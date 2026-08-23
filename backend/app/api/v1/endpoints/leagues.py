@@ -171,7 +171,8 @@ async def connect_yahoo_league(
 
 class ESPNConnectRequest(BaseModel):
     league_id: str
-    season: int = 2025
+    # season is optional; endpoint will default to the current year when not provided
+    season: Optional[int] = None
     swid: Optional[str] = None
     espn_s2: Optional[str] = None
     # Which team in the league is the user's own. Optional so existing
@@ -184,12 +185,16 @@ class ESPNConnectRequest(BaseModel):
 @router.get("/espn/teams")
 async def get_espn_teams(
     league_id: str = Query(..., description="ESPN league ID"),
-    season: int = Query(2025, description="Season year"),
+    season: Optional[int] = Query(None, description="Season year"),
     swid: Optional[str] = Query(None, description="ESPN SWID cookie for private leagues"),
     espn_s2: Optional[str] = Query(None, description="ESPN espn_s2 cookie for private leagues")
 ):
     """List the teams in an ESPN league, so the user connecting can pick which one is theirs."""
     try:
+        # Default season to current year when not explicitly provided
+        if season is None:
+            season = datetime.utcnow().year
+
         teams = await espn_service_enhanced.get_league_teams(
             league_id=league_id,
             season=season,
@@ -224,10 +229,13 @@ async def connect_espn_league(
 ):
     """Connect to ESPN Fantasy Football league"""
     try:
+        # Use current year when the request did not include a season
+        season_to_use = request.season or datetime.utcnow().year
+
         # Test connection and get league info
         connection_result = await espn_service_enhanced.connect_league(
             league_id=request.league_id,
-            season=request.season,
+            season=season_to_use,
             swid=request.swid,
             espn_s2=request.espn_s2
         )
@@ -249,7 +257,7 @@ async def connect_espn_league(
             league_id=request.league_id,
             league_data={
                 "league_name": league_info.get("league_name", f"ESPN League {request.league_id}"),
-                "season": request.season,
+                "season": season_to_use,
                 "league_size": league_info.get("team_count", 10),
                 "scoring_format": league_info.get("scoring_type", "PPR"),
                 "espn_swid": request.swid,
@@ -286,12 +294,15 @@ async def connect_espn_league(
 @router.get("/espn/test-connection")
 async def test_espn_connection(
     league_id: str,
-    season: int = Query(2025, description="Season year"),
+    season: Optional[int] = Query(None, description="Season year"),
     swid: Optional[str] = Query(None, description="ESPN SWID cookie for private leagues"),
     espn_s2: Optional[str] = Query(None, description="ESPN espn_s2 cookie for private leagues")
 ):
     """Test ESPN league connection without storing"""
     try:
+        if season is None:
+            season = datetime.utcnow().year
+
         connection_result = await espn_service_enhanced.connect_league(
             league_id=league_id,
             season=season,
