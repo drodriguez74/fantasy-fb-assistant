@@ -54,28 +54,55 @@ export function LeaguesPage() {
     try {
       setConnecting(true)
       setError('')
-      
+
       // Get Yahoo auth URL
       const authResponse = await leagues.getYahooAuthUrl()
       const authUrl = authResponse.data.auth_url
-      
+
       // Open Yahoo OAuth in new window
-      window.open(authUrl, 'yahooAuth', 'width=600,height=700')
-      
+      const popup = window.open(authUrl, 'yahooAuth', 'width=600,height=700')
+
+      if (!popup) {
+        // window.open returned null -- almost always a browser popup blocker.
+        setError('Your browser blocked the Yahoo sign-in popup. Please allow popups for this site and try again.')
+        setConnecting(false)
+        return
+      }
+
       // Listen for the callback
       const handleCallback = (event: MessageEvent) => {
         if (event.data.type === 'YAHOO_AUTH_SUCCESS') {
-          window.removeEventListener('message', handleCallback)
+          cleanup()
           handleYahooCallback(event.data.code)
         } else if (event.data.type === 'YAHOO_AUTH_ERROR') {
-          window.removeEventListener('message', handleCallback)
+          cleanup()
           setError('Yahoo authentication failed')
           setConnecting(false)
         }
       }
-      
+
+      // If the popup lands on a page we don't control (e.g. Yahoo's own
+      // OAuth error page for a misconfigured client_id/redirect_uri) it
+      // never reaches our /yahoo/callback route, so postMessage never
+      // fires. Without this, the popup being closed -- by the user, or
+      // because Yahoo itself dead-ends the flow -- left `connecting` stuck
+      // true forever, with the Yahoo/ESPN buttons disabled until a full
+      // page reload.
+      const closedPoll = window.setInterval(() => {
+        if (popup.closed) {
+          cleanup()
+          setError('Yahoo sign-in was closed before it completed. Please try again.')
+          setConnecting(false)
+        }
+      }, 500)
+
+      function cleanup() {
+        window.removeEventListener('message', handleCallback)
+        window.clearInterval(closedPoll)
+      }
+
       window.addEventListener('message', handleCallback)
-      
+
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to start Yahoo connection'))
       setConnecting(false)
