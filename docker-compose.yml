@@ -13,26 +13,31 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  redis:
-    image: redis:7-alpine
-    restart: always
-    ports:
-      - "6379:6379"
+  # NOTE: no `redis` or Celery worker/beat services here. There were 7 well-formed
+  # @celery_app.task functions (backend/app/tasks/*.py) but no beat_schedule, no
+  # .delay()/.apply_async() caller anywhere, and no worker/beat services -- pure
+  # inert scaffolding. Decommissioned rather than wired up: 4 of the 7 tasks called
+  # into either the abandoned `content_service.py` (superseded by
+  # `content_generation_service.py`, see DECOMMISSION_TASK_LIST.md) or
+  # `scraper_service.py` methods that are explicitly mocked, and the remaining
+  # "real" sync tasks never persisted their results anywhere. Scheduling more of
+  # that on a timer wasn't worth standing up Redis/Celery infra for. If real
+  # background jobs are needed later, re-add a `redis` service here plus
+  # `celery worker`/`celery beat` services, and rebuild app/core/celery_app.py +
+  # app/tasks/*.py against the *live* content_generation_service.py.
 
   backend:
-    build: 
+    build:
       context: ./backend
       dockerfile: Dockerfile
     restart: always
     environment:
       DATABASE_URL: postgresql://fantasy_user:fantasy_pass@db:5432/fantasy_football_db
-      REDIS_URL: redis://redis:6379
       SECRET_KEY: dev-secret-key-change-in-production
     ports:
       - "8000:8000"
     depends_on:
       - db
-      - redis
     volumes:
       - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
