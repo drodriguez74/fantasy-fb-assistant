@@ -6,6 +6,26 @@ Full exhaustive audit of the entire codebase — every one of 19 backend endpoin
 
 ---
 
+## ⚠️ STALE AS OF 2026-08-23 — re-verify before trusting any item below
+
+This doc is a point-in-time snapshot and the codebase has moved fast since it was written. A verification pass on 2026-08-23 (`git log`, direct file reads, live `pytest` runs — not just re-reading this doc) confirmed **every single item checked in Cross-Cutting Patterns 1/2/5, the entire Critical section, and the Alembic migration chain problems are already fixed**, most with explicit "this used to be broken, here's the fix" comments left in the code. Specifically verified fixed, with commit refs where identified:
+
+- Pattern 1 (enum-vs-string) — both instances — `2adc989`-era cleanup
+- Pattern 2 (hardcoded `season == 2024` / 12-team assumption) — `players.py`, `fantasypros_service.py`, `draft_assistant_service.py` fixed by `203b1a5`; `matchup_analysis_service.py` (9 occurrences) fixed by `bbe7e78`
+- Pattern 5 (auth/ownership gaps) — all 3 items fixed
+- All 6 "Critical" isolated bugs (FLEX optimizer, `content.py` missing `func` import, `/login`→`/auth` redirect, `live_draft.py` bad-signature dead routes, `post_draft_analysis_service.py` `or`/`or_()` bug, `game_situation.py` `server_default` string bug)
+- Alembic migration chain (enum collision, duplicate `blog_posts`, 12 missing tables) — chain is sound end-to-end
+- "Game situations canonical path" decision — resolved: `advanced_historical_service.py` deleted, merged into `enhanced_game_situation_service.py`
+- `enhanced_game_situation_service.py::_analyze_travel_impact` fake data — already returns an honest `insufficient_data` state (no real venue-coordinate data exists to compute it honestly; not the old `10.5` fake value)
+- `waiver_wire.py` `GET /trending` — already sources from a real live Sleeper trending feed, not the dead `WaiverWireTrend` table; `GET/POST /alerts` already removed in favor of the real in-app notification center
+- `matchup_analysis.py` surfacing decision — resolved by `bbe7e78` (`DEF/K Streaming` tab in `WaiverWirePage.tsx`) for `defense-streaming` and `position-outlook`; **3 routes still genuinely unsurfaced**: `POST /roster-matchup-analysis`, `GET /player-matchups/{player_id}`, `GET /player-vs-defense/{player_id}/{opponent_team}` (not in `api.ts`, no frontend caller) — smaller open item than the original framing
+
+**NOT re-verified this pass** (still reflects the original audit, could easily also be stale — check before acting): the entire "Dead Code — Decommission Candidates" section, "Functional Gap" items other than the two named above, "Minor — Cleanup" section, and the `content_generation_service.py` 8/10-templates gap (CLAUDE.md already flags that one as a deliberate, tracked, non-bug capability gap, not something to "fix" without a product decision).
+
+---
+
+---
+
 ## Cross-Cutting Patterns (fix once, resolves multiple findings)
 
 These aren't isolated bugs — they're the same mistake made repeatedly across the codebase. Fixing the pattern is higher leverage than fixing each instance separately.
