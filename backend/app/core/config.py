@@ -24,7 +24,19 @@ class Settings(BaseSettings):
     
     YAHOO_CLIENT_ID: Optional[str] = None
     YAHOO_CLIENT_SECRET: Optional[str] = None
-    
+
+    # Yahoo requires HTTPS redirect URIs with no localhost/127.0.0.1
+    # exception (confirmed live: their app console rejects a plain http://
+    # entry outright with "URI must be https."). Plain local dev therefore
+    # can't complete the Yahoo OAuth flow at all -- an HTTPS tunnel (e.g.
+    # ngrok) pointed at the local frontend is required, and its URL must be
+    # registered in Yahoo's app console AND set here, since both the
+    # authorization step (GET /yahoo/auth-url) and the token-exchange step
+    # (POST /yahoo/connect's default) must send the exact same redirect_uri.
+    # Falls back to the plain-localhost value for every other platform's
+    # dev flow (ESPN/Sleeper don't use this at all).
+    YAHOO_REDIRECT_URI: Optional[str] = None
+
     SLEEPER_API_URL: str = "https://api.sleeper.app/v1"
 
     # FantasyPros' real public Consensus Rankings/ADP API (see

@@ -10,9 +10,15 @@ from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.league_management_service import LeagueManagementService
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
+from app.core.config import settings
 from datetime import datetime, timedelta
 
 router = APIRouter()
+
+# Yahoo rejects plain http:// redirect URIs outright (no localhost
+# exception) -- see settings.YAHOO_REDIRECT_URI's docstring in config.py.
+# Both the auth-url and connect steps must send the identical value.
+YAHOO_REDIRECT_URI = settings.YAHOO_REDIRECT_URI or "http://localhost:3001/yahoo/callback"
 
 
 @router.get("/yahoo/auth-url")
@@ -25,8 +31,8 @@ async def get_yahoo_auth_url():
             detail="Yahoo API credentials not configured. Please set YAHOO_CLIENT_ID and YAHOO_CLIENT_SECRET in your .env file."
         )
     
-    redirect_uri = "http://localhost:3001/yahoo/callback"
-    
+    redirect_uri = YAHOO_REDIRECT_URI
+
     auth_url = (
         f"https://api.login.yahoo.com/oauth2/request_auth"
         f"?client_id={yahoo_service.client_id}"
@@ -43,7 +49,7 @@ async def get_yahoo_auth_url():
 
 class YahooConnectRequest(BaseModel):
     authorization_code: str
-    redirect_uri: str = "http://localhost:3001/yahoo/callback"
+    redirect_uri: str = YAHOO_REDIRECT_URI
 
 @router.post("/yahoo/connect")
 async def connect_yahoo_league(
