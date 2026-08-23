@@ -306,13 +306,18 @@ class ESPNFantasyServiceEnhanced:
         try:
             league = self._get_league(league_id, season, swid, espn_s2)
             
-            # Find the specific team
+            # Find the specific team. team.team_id comes from the espn_api
+            # library as an int (ESPN's raw JSON "id" field); team_id here is
+            # whatever UserLeague.team_id (a DB String column) was passed in
+            # -- compare as strings so a real "1" == 1 match isn't silently
+            # missed, which previously made every ESPN roster lookup fail
+            # regardless of which team was actually selected.
             target_team = None
             for team in league.teams:
-                if team.team_id == team_id:
+                if str(team.team_id) == str(team_id):
                     target_team = team
                     break
-            
+
             if not target_team:
                 return {"error": f"Team {team_id} not found in league"}
             
