@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { waiverWire, matchupAnalysis, getErrorMessage } from '../services/api'
+import { waiverWire, matchupAnalysis, notifications as notificationsApi, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { getPositionColor } from '../components/players/playerDisplay'
+import type { Notification } from '../types'
 import {
   PlusIcon,
   FireIcon,
@@ -41,31 +42,23 @@ interface WaiverRecommendation {
   }
 }
 
-interface WaiverAlert {
-  id: number
-  player_name: string
-  position: string
-  team: string
-  alert_type: string
-  title: string
-  message: string
-  urgency: string
-  trigger_event: string
-  expires_at: string | null
-  created_at: string
-  is_active: boolean
-}
+// The "Alerts" tab now reads the app's real in-app notification center
+// (see backend/app/services/notification_service.py) instead of the old
+// GET /waiver-wire/alerts stub, which queried a WaiverWireAlert table
+// nothing ever wrote to. `Notification` is the real, shared shape used by
+// the navbar bell too -- see src/types/index.ts.
 
 interface TrendingPlayer {
   player_id: number
   player_name: string
   position: string
   team: string
-  ownership_change: number
-  pickup_rate: number
-  drop_rate: number
-  recent_performance: number
-  upcoming_matchup_rating: number
+  // Real live snapshot from Sleeper's trending add/drop feed (last 24h) --
+  // see WaiverWireService.get_live_trending_players. Not a historical
+  // ownership/pickup-rate time series; Sleeper doesn't expose one.
+  trend_direction: 'up' | 'down'
+  count_24h: number
+  reason: string
 }
 
 interface RosterAddDropCandidate {
@@ -205,7 +198,7 @@ export function WaiverWirePage() {
   const [activeTab, setActiveTab] = useState<'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming'>('recommendations')
   const [recommendations, setRecommendations] = useState<WaiverRecommendation[]>([])
   const [trendingPlayers, setTrendingPlayers] = useState<TrendingPlayer[]>([])
-  const [alerts, setAlerts] = useState<WaiverAlert[]>([])
+  const [alerts, setAlerts] = useState<Notification[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -273,8 +266,10 @@ export function WaiverWirePage() {
     try {
       setLoading(true)
 
-      const response = await waiverWire.getAlerts()
-      setAlerts(response.data.alerts || [])
+      // Real in-app notifications (see NotificationBell for the same data
+      // source) rather than the old dead WaiverWireAlert-backed endpoint.
+      const response = await notificationsApi.list({ page_size: 20 })
+      setAlerts(response.data.notifications || [])
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load alerts'))
     } finally {
@@ -650,11 +645,21 @@ export function WaiverWirePage() {
             </div>
           </div>
 
-          {/* Trending Players List */}
+          {/* Trending Players List -- real live snapshot from Sleeper's
+              trending add/drop feed (last 24h), not a historical trend
+              line. See WaiverWireService.get_live_trending_players. */}
           {loading ? (
             <div className="bg-white rounded-lg shadow p-6 text-center">
               <ClockIcon className="animate-spin h-8 w-8 text-accent-600 mx-auto mb-2" />
               <p className="text-sm text-ink-500">Loading trending players...</p>
+            </div>
+          ) : trendingPlayers.length === 0 ? (
+            <div className="bg-white rounded-lg shadow p-6 text-center py-8">
+              <FireIcon className="mx-auto h-12 w-12 text-ink-400" />
+              <h3 className="mt-2 text-sm font-medium text-ink-900">No trending players found</h3>
+              <p className="mt-1 text-sm text-ink-500">
+                Try a different direction or clear the position filter.
+              </p>
             </div>
           ) : (
             <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -665,22 +670,19 @@ export function WaiverWirePage() {
                       Player
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
-                      Ownership Change
+                      Direction
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
-                      Pickup Rate
+                      Adds/Drops (24h)
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
-                      Recent Performance
-                    </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
-                      Matchup Rating
+                      Source
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-ink-200">
                   {trendingPlayers.map((player) => (
-                    <tr key={player.player_id} className="hover:bg-ink-50">
+                    <tr key={`${player.trend_direction}-${player.player_id}`} className="hover:bg-ink-50">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0">
@@ -696,36 +698,19 @@ export function WaiverWirePage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
-                          {player.ownership_change > 0 ? (
-                            <ArrowTrendingUpIcon className="h-4 w-4 text-success-600 mr-1" />
-                          ) : (
-                            <ArrowTrendingDownIcon className="h-4 w-4 text-danger-600 mr-1" />
-                          )}
-                          <span className={`text-sm font-medium ${
-                            player.ownership_change > 0 ? 'text-success-700' : 'text-danger-700'
+                          {getTrendIcon(player.trend_direction)}
+                          <span className={`ml-1 text-sm font-medium ${
+                            player.trend_direction === 'up' ? 'text-success-700' : 'text-danger-700'
                           }`}>
-                            {player.ownership_change > 0 ? '+' : ''}{player.ownership_change.toFixed(1)}%
+                            {player.trend_direction === 'up' ? 'Trending up' : 'Trending down'}
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
-                        {player.pickup_rate.toFixed(1)}%
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink-900">
+                        {player.count_24h.toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
-                        {player.recent_performance?.toFixed(1) || 'N/A'} pts
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="w-16 bg-ink-100 rounded-full h-2">
-                            <div
-                              className="bg-accent-500 h-2 rounded-full"
-                              style={{ width: `${(player.upcoming_matchup_rating / 10) * 100}%` }}
-                            ></div>
-                          </div>
-                          <span className="ml-2 text-xs text-ink-500">
-                            {player.upcoming_matchup_rating?.toFixed(1) || 'N/A'}/10
-                          </span>
-                        </div>
+                      <td className="px-6 py-4 text-sm text-ink-500">
+                        {player.reason}
                       </td>
                     </tr>
                   ))}
@@ -740,6 +725,10 @@ export function WaiverWirePage() {
         <div className="space-y-6">
           <div className="bg-white rounded-lg shadow p-6">
             <h3 className="text-lg font-medium text-ink-900 mb-4">Waiver Wire Alerts</h3>
+            <p className="text-sm text-ink-500 mb-4">
+              Real, backend-tracked notifications generated from genuine waiver-wire
+              signal -- the same feed behind the bell icon in the navbar.
+            </p>
             {alerts.length === 0 ? (
               <div className="text-center py-8">
                 <BellIcon className="mx-auto h-12 w-12 text-ink-400" />
@@ -752,29 +741,21 @@ export function WaiverWirePage() {
               <div className="space-y-4">
                 {alerts.map((alert) => (
                   <div key={alert.id} className={`border-l-4 p-4 ${
-                    alert.urgency === 'urgent' ? 'border-danger-500 bg-danger-50' :
-                    alert.urgency === 'high' ? 'border-warning-500 bg-warning-50' :
-                    'border-accent-500 bg-accent-50'
+                    alert.is_read ? 'border-ink-300 bg-ink-50' : 'border-accent-500 bg-accent-50'
                   }`}>
                     <div className="flex">
                       <div className="flex-shrink-0">
-                        {alert.urgency === 'urgent' ? (
-                          <ExclamationTriangleIcon className="h-5 w-5 text-danger-400" />
-                        ) : (
-                          <BellIcon className="h-5 w-5 text-accent-400" />
-                        )}
+                        <BellIcon className={`h-5 w-5 ${alert.is_read ? 'text-ink-400' : 'text-accent-400'}`} />
                       </div>
                       <div className="ml-3 flex-1">
                         <h4 className="text-sm font-medium text-ink-900">{alert.title}</h4>
-                        <p className="mt-1 text-sm text-ink-600">{alert.message}</p>
+                        <p className="mt-1 text-sm text-ink-600">{alert.body}</p>
                         <div className="mt-2 flex items-center space-x-4 text-xs text-ink-500">
-                          <span>{alert.player_name} ({alert.position} - {alert.team})</span>
-                          <span>•</span>
-                          <span>{new Date(alert.created_at).toLocaleDateString()}</span>
-                          {alert.expires_at && (
+                          <span>{new Date(alert.created_at).toLocaleString()}</span>
+                          {!alert.is_read && (
                             <>
                               <span>•</span>
-                              <span>Expires: {new Date(alert.expires_at).toLocaleDateString()}</span>
+                              <span className="font-medium text-accent-700">Unread</span>
                             </>
                           )}
                         </div>
