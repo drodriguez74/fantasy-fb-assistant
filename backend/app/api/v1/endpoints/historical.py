@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
@@ -606,187 +606,20 @@ async def get_league_wide_trends(
         raise HTTPException(status_code=500, detail=f"Failed to get league-wide trends: {str(e)}")
 
 
-# ADVANCED ANALYSIS ENDPOINTS
-
-@router.post("/advanced/compare-players")
-async def compare_players_advanced(
-    player_ids: List[int],
-    seasons: int = Query(3, description="Number of seasons to analyze"),
-    analysis_type: str = Query("comprehensive", description="Type of analysis"),
-    db: Session = Depends(get_db)
-):
-    """Advanced player comparison with statistical significance testing"""
-    try:
-        from app.services.advanced_historical_service import AdvancedHistoricalService
-        
-        if len(player_ids) < 2:
-            raise HTTPException(status_code=400, detail="At least 2 players required for comparison")
-        
-        if len(player_ids) > 5:
-            raise HTTPException(status_code=400, detail="Maximum 5 players can be compared")
-        
-        advanced_service = AdvancedHistoricalService(db)
-        result = await advanced_service.compare_players_advanced(
-            player_ids=player_ids,
-            seasons=seasons,
-            analysis_type=analysis_type
-        )
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Advanced comparison failed: {str(e)}")
-
-
-@router.get("/advanced/strength-of-schedule/{player_id}")
-async def analyze_strength_of_schedule(
-    player_id: int,
-    season: int = Query(2024, description="Season to analyze"),
-    db: Session = Depends(get_db)
-):
-    """Analyze strength of schedule for a player's opponents"""
-    try:
-        from app.services.advanced_historical_service import AdvancedHistoricalService
-        
-        advanced_service = AdvancedHistoricalService(db)
-        result = await advanced_service.analyze_strength_of_schedule(
-            player_id=player_id,
-            season=season
-        )
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"SOS analysis failed: {str(e)}")
-
-
-@router.get("/advanced/breakout-candidates")
-async def analyze_breakout_candidates(
-    position: Optional[str] = Query(None, description="Filter by position"),
-    min_games: int = Query(8, description="Minimum games for analysis"),
-    db: Session = Depends(get_db)
-):
-    """Identify potential breakout candidates based on advanced metrics"""
-    try:
-        from app.services.advanced_historical_service import AdvancedHistoricalService
-        
-        advanced_service = AdvancedHistoricalService(db)
-        result = await advanced_service.analyze_breakout_candidates(
-            position=position,
-            min_games=min_games
-        )
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Breakout analysis failed: {str(e)}")
-
-
-@router.get("/advanced/game-situation-analysis/{player_id}")
-async def analyze_game_situations(
-    player_id: int,
-    situation_type: str = Query("all", description="Type of situation to analyze"),
-    seasons: int = Query(2, description="Number of seasons to analyze"),
-    db: Session = Depends(get_db)
-):
-    """Analyze player performance in different game situations"""
-    try:
-        from app.models.historical_performance import PlayerHistoricalPerformance
-        from app.models.player import Player
-        from sqlalchemy import and_
-        import numpy as np
-        from datetime import datetime
-        
-        # Check if player exists
-        player = db.query(Player).filter(Player.id == player_id).first()
-        if not player:
-            raise HTTPException(status_code=404, detail="Player not found")
-        
-        current_year = datetime.now().year
-        season_range = list(range(current_year - seasons + 1, current_year + 1))
-        
-        # Get performances
-        performances = db.query(PlayerHistoricalPerformance).filter(
-            and_(
-                PlayerHistoricalPerformance.player_id == player_id,
-                PlayerHistoricalPerformance.season.in_(season_range),
-                PlayerHistoricalPerformance.fantasy_points_ppr.isnot(None)
-            )
-        ).all()
-        
-        if not performances:
-            raise HTTPException(status_code=404, detail="No performance data found")
-        
-        # Analyze different situations
-        situation_analysis = {
-            "player_id": player_id,
-            "player_name": player.name,
-            "seasons_analyzed": seasons,
-            "total_games": len(performances)
-        }
-        
-        # Home vs Away
-        home_games = [p for p in performances if p.game_location and p.game_location.value == "home"]
-        away_games = [p for p in performances if p.game_location and p.game_location.value == "away"]
-        
-        if home_games and away_games:
-            home_points = [p.fantasy_points_ppr for p in home_games]
-            away_points = [p.fantasy_points_ppr for p in away_games]
-            
-            situation_analysis["home_vs_away"] = {
-                "home_games": len(home_games),
-                "home_avg": float(np.mean(home_points)),
-                "home_std": float(np.std(home_points)),
-                "away_games": len(away_games),
-                "away_avg": float(np.mean(away_points)),
-                "away_std": float(np.std(away_points)),
-                "home_advantage": float(np.mean(home_points) - np.mean(away_points)),
-                "statistical_significance": "pending"  # Could add t-test
-            }
-        
-        # Early vs Late Season
-        season_thirds = len(performances) // 3
-        early_season = performances[:season_thirds]
-        late_season = performances[-season_thirds:]
-        
-        if early_season and late_season:
-            early_points = [p.fantasy_points_ppr for p in early_season]
-            late_points = [p.fantasy_points_ppr for p in late_season]
-            
-            situation_analysis["seasonal_timing"] = {
-                "early_season_games": len(early_season),
-                "early_season_avg": float(np.mean(early_points)),
-                "late_season_games": len(late_season),
-                "late_season_avg": float(np.mean(late_points)),
-                "late_season_improvement": float(np.mean(late_points) - np.mean(early_points))
-            }
-        
-        # Prime Time Games (if we can identify them by day)
-        # This would require additional data about game times
-        
-        # Recent Trend (Last 8 games)
-        recent_games = performances[-8:] if len(performances) >= 8 else performances
-        all_games_avg = np.mean([p.fantasy_points_ppr for p in performances])
-        recent_avg = np.mean([p.fantasy_points_ppr for p in recent_games])
-        
-        situation_analysis["recent_form"] = {
-            "recent_games": len(recent_games),
-            "recent_avg": float(recent_avg),
-            "season_avg": float(all_games_avg),
-            "recent_vs_season": float(recent_avg - all_games_avg),
-            "trending": "up" if recent_avg > all_games_avg else "down"
-        }
-        
-        return situation_analysis
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Game situation analysis failed: {str(e)}")
+# NOTE: This file used to also carry a set of "/advanced/*" routes
+# (compare-players, strength-of-schedule/{player_id}, breakout-candidates,
+# game-situation-analysis/{player_id}) backed by AdvancedHistoricalService
+# and an inline reimplementation. They had zero frontend callers (verified via
+# grep across frontend/src) and were fully duplicative:
+#   - compare-players / strength-of-schedule / breakout-candidates: the real
+#     statistical methods (ANOVA, Mann-Whitney U, Cohen's d) were merged into
+#     AdvancedAnalysisService (backend/app/services/advanced_analysis_service.py),
+#     the version actually wired to AdvancedAnalysisPage.tsx, so the live UI
+#     now benefits from them via POST /advanced-analysis/{compare-players,
+#     strength-of-schedule,breakout-candidates}.
+#   - game-situation-analysis/{player_id}: superseded by the more rigorous,
+#     honestly-labeled EnhancedGameSituationService, now wired into
+#     AdvancedAnalysisPage.tsx's Game Situations tab via
+#     POST /game-situations/enhanced-analysis.
+# advanced_historical_service.py itself was deleted alongside these routes
+# once this was confirmed to be its only remaining caller.
