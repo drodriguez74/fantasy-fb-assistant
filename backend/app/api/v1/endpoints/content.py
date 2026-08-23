@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import Optional, List, Dict, Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime
@@ -428,7 +429,7 @@ async def get_content_statistics(
         
         # Posts by category
         category_stats = {}
-        posts_by_category = db.query(BlogPost.category, db.func.count(BlogPost.id)).filter(
+        posts_by_category = db.query(BlogPost.category, func.count(BlogPost.id)).filter(
             BlogPost.created_at >= cutoff_date
         ).group_by(BlogPost.category).all()
         

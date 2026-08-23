@@ -215,6 +215,73 @@ async def get_projections(week: int, season: str = "2024"):
         raise HTTPException(status_code=500, detail=f"Failed to get projections: {str(e)}")
 
 
+@router.get("/database")
+async def get_players_from_database(
+    db: Session = Depends(get_db),
+    position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE, K, DEF)"),
+    team: Optional[str] = Query(None, description="Filter by team"),
+    injury_status: Optional[str] = Query(None, description="Filter by injury status"),
+    min_projected_points: Optional[float] = Query(None, description="Minimum projected points"),
+    max_risk_level: Optional[str] = Query(None, description="Maximum risk level (LOW, MEDIUM, HIGH)"),
+    page: int = Query(1, description="Page number (1-based)", ge=1),
+    page_size: int = Query(50, description="Number of players per page", ge=1, le=200)
+):
+    """Get players from database with advanced filtering and pagination"""
+    try:
+        player_service = PlayerDataService(db)
+        result = player_service.get_players_by_criteria(
+            position=position,
+            team=team,
+            injury_status=injury_status,
+            min_projected_points=min_projected_points,
+            max_risk_level=max_risk_level,
+            page=page,
+            page_size=page_size
+        )
+
+        # Convert Player objects to dictionaries for JSON response
+        players_data = []
+        for player in result["players"]:
+            player_data = {
+                "id": player.id,
+                "name": player.name,
+                "team": player.team,
+                "position": player.position.value if player.position else None,
+                "projected_points": player.projected_points,
+                "adp": player.adp,
+                "bye_week": player.bye_week,
+                "injury_status": player.injury_status.value if player.injury_status else None,
+                "injury_body_part": player.injury_body_part,
+                "target_share": player.target_share,
+                "snap_count_percentage": player.snap_count_percentage,
+                "depth_chart_order": player.depth_chart_order,
+                "risk_level": player.risk_level.value if player.risk_level else None,
+                "tier": player.tier,
+                "position_rank": player.position_rank,
+                "trending_direction": player.trending_direction,
+                "consistency_rating": player.consistency_rating,
+                "ceiling_score": player.ceiling_score,
+                "floor_score": player.floor_score,
+                "age": player.age,
+                "years_exp": player.years_exp,
+                "created_at": player.created_at.isoformat() if player.created_at else None,
+                "updated_at": player.updated_at.isoformat() if player.updated_at else None
+            }
+            players_data.append(player_data)
+
+        return {
+            "players": players_data,
+            "pagination": result["pagination"]
+        }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get players from database: {str(e)}")
+
+
+# NOTE: this route MUST be registered before /{player_id} below -- FastAPI
+# matches routes in registration order, so a literal path like /database
+# has to come first or it gets shadowed (matched as player_id="database").
+# This bug was live-confirmed and documented in API_GUIDE.md before this fix.
 @router.get("/{player_id}")
 async def get_player(player_id: str):
     """Get detailed player information including AI analysis"""
@@ -601,15 +668,20 @@ async def get_enhanced_players(
     """Get enhanced player data with advanced filtering"""
     try:
         player_service = PlayerDataService(db)
-        players = player_service.get_players_by_criteria(
+        # get_players_by_criteria's real signature takes page/page_size, not
+        # limit -- it returns {"players": [...], "pagination": {...}}, not a
+        # bare list. This endpoint's own `limit` query param maps onto a
+        # single page of that size.
+        criteria_result = player_service.get_players_by_criteria(
             position=position,
             team=team,
             injury_status=injury_status,
             min_projected_points=min_projected_points,
             max_risk_level=max_risk_level,
-            limit=limit
+            page_size=limit
         )
-        
+        players = criteria_result["players"]
+
         # Convert to dict format
         players_data = []
         for player in players:
@@ -824,66 +896,3 @@ async def compare_players(
         raise HTTPException(status_code=400, detail="Invalid player ID format")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to compare players: {str(e)}")
-
-
-@router.get("/database")
-async def get_players_from_database(
-    db: Session = Depends(get_db),
-    position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE, K, DEF)"),
-    team: Optional[str] = Query(None, description="Filter by team"),
-    injury_status: Optional[str] = Query(None, description="Filter by injury status"),
-    min_projected_points: Optional[float] = Query(None, description="Minimum projected points"),
-    max_risk_level: Optional[str] = Query(None, description="Maximum risk level (LOW, MEDIUM, HIGH)"),
-    page: int = Query(1, description="Page number (1-based)", ge=1),
-    page_size: int = Query(50, description="Number of players per page", ge=1, le=200)
-):
-    """Get players from database with advanced filtering and pagination"""
-    try:
-        player_service = PlayerDataService(db)
-        result = player_service.get_players_by_criteria(
-            position=position,
-            team=team,
-            injury_status=injury_status,
-            min_projected_points=min_projected_points,
-            max_risk_level=max_risk_level,
-            page=page,
-            page_size=page_size
-        )
-        
-        # Convert Player objects to dictionaries for JSON response
-        players_data = []
-        for player in result["players"]:
-            player_data = {
-                "id": player.id,
-                "name": player.name,
-                "team": player.team,
-                "position": player.position.value if player.position else None,
-                "projected_points": player.projected_points,
-                "adp": player.adp,
-                "bye_week": player.bye_week,
-                "injury_status": player.injury_status.value if player.injury_status else None,
-                "injury_body_part": player.injury_body_part,
-                "target_share": player.target_share,
-                "snap_count_percentage": player.snap_count_percentage,
-                "depth_chart_order": player.depth_chart_order,
-                "risk_level": player.risk_level.value if player.risk_level else None,
-                "tier": player.tier,
-                "position_rank": player.position_rank,
-                "trending_direction": player.trending_direction,
-                "consistency_rating": player.consistency_rating,
-                "ceiling_score": player.ceiling_score,
-                "floor_score": player.floor_score,
-                "age": player.age,
-                "years_exp": player.years_exp,
-                "created_at": player.created_at.isoformat() if player.created_at else None,
-                "updated_at": player.updated_at.isoformat() if player.updated_at else None
-            }
-            players_data.append(player_data)
-        
-        return {
-            "players": players_data,
-            "pagination": result["pagination"]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get players from database: {str(e)}")
