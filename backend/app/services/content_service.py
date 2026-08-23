@@ -189,7 +189,13 @@ class ContentGenerationService:
                 category=category,
                 is_published=False,
                 created_by_ai=True,
-                ai_model_used="gpt-4"
+                # Content here comes from generate_multi_perspective_content /
+                # generate_consensus_recommendation, both DEEP-tier calls --
+                # reference ai_service's own constant instead of a second,
+                # independently-stale hardcoded model string ("gpt-4" here
+                # previously named a model that predates ai_service's entire
+                # current model line).
+                ai_model_used=ai_service.DEEP_OPENAI_MODEL
             )
             
             db.add(blog_post)

@@ -164,8 +164,13 @@ class LeagueManagementService:
             Format as JSON with keys: grade, summary, strengths, concerns, recommendations
             """
             
-            ai_response = await ai_service._generate_openai(analysis_prompt)
-            
+            # Single position-group grade + summary -- bounded, low-stakes
+            # note, so use the fast/cheap model tier. This now also gets
+            # automatic fallback to the other configured provider (it
+            # called ai_service._generate_openai() directly before, which
+            # had no fallback at all).
+            ai_response = await ai_service._generate_with_fallback(analysis_prompt, prefer_fast_model=True)
+
             try:
                 analysis = json.loads(ai_response)
             except:
@@ -231,7 +236,15 @@ class LeagueManagementService:
             4. Recommended lineup changes
             """
 
-            ai_analysis = await ai_service._generate_openai(analysis_prompt)
+            # Single matchup blurb -- bounded, low-stakes -- fast/cheap
+            # model tier, with automatic fallback to the other configured
+            # provider (this previously called ai_service._generate_openai()
+            # directly with no fallback: an unconfigured/rate-limited/failed
+            # OpenAI client meant the literal string "OpenAI client not
+            # configured" -- or a real rate-limit error string -- got
+            # embedded as this matchup's "ai_analysis" with no exception
+            # ever raised).
+            ai_analysis = await ai_service._generate_with_fallback(analysis_prompt, prefer_fast_model=True)
 
             return {
                 "week": current_week,
@@ -359,8 +372,11 @@ class LeagueManagementService:
             Format as JSON array with: target_player, offer_players, reasoning, likelihood
             """
 
-            ai_response = await ai_service._generate_openai(analysis_prompt)
-            
+            # Suggesting real trades across multiple rosters is
+            # consequential and benefits from stronger reasoning -- deep
+            # model tier, with automatic fallback.
+            ai_response = await ai_service._generate_with_fallback(analysis_prompt, prefer_fast_model=False)
+
             try:
                 trade_suggestions = json.loads(ai_response)
             except:

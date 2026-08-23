@@ -374,17 +374,21 @@ Remember to consider your league's waiver wire priority and budget constraints w
 
     async def _get_ai_model_name(self) -> Optional[str]:
         """Best-effort label for whichever model an AI-backed content path
-        actually attempts. ai_service tries OpenAI first (its default
-        provider and the model _generate_openai defaults to is "gpt-4"),
-        falling back to Anthropic's "claude-3-sonnet-20240229" only if
-        OpenAI isn't configured. This mirrors that same precedence so the
-        label reflects what's really configured instead of a hardcoded
-        guess."""
+        actually attempts. Every content path that reaches this helper goes
+        through generate_multi_perspective_content /
+        generate_consensus_recommendation, both DEEP-tier calls in
+        ai_service's model-tier scheme (see the comment above
+        AIService.FAST_OPENAI_MODEL). Reference ai_service's own DEEP-tier
+        constants rather than hardcoding a second copy of the model name
+        here, so this label can't drift out of sync the way the old
+        hardcoded "gpt-4" / "claude-3-sonnet-20240229" strings did (both
+        stale/retired models). ai_service tries OpenAI first by default and
+        falls back to Anthropic, so mirror that same precedence."""
         status = await ai_service.get_ai_status()
         if status.get("openai_available"):
-            return "gpt-4"
+            return ai_service.DEEP_OPENAI_MODEL
         if status.get("anthropic_available"):
-            return "claude-3-sonnet-20240229"
+            return ai_service.DEEP_ANTHROPIC_MODEL
         return None
 
     async def _build_player_context(self, player: Player) -> Dict[str, Any]:
