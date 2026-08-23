@@ -4,20 +4,23 @@ Post-Draft Analysis API Endpoints
 Provides roster evaluation and personalized waiver wire recommendations.
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 from datetime import datetime
 
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
-from app.models.user_league import UserLeague
+from app.models.player import Player
 from app.services.post_draft_analysis_service import PostDraftAnalysisService
 from app.services.sleeper_service import SleeperService
-from app.services.espn_service import espn_service
+from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
+from app.services.user_service import UserService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -44,13 +47,13 @@ async def analyze_roster(
 ):
     """
     Comprehensive post-draft roster analysis
-    
+
     Analyzes roster composition, player values, strengths/weaknesses,
     and provides improvement recommendations.
     """
     try:
         service = PostDraftAnalysisService(db)
-        
+
         # Convert request to format expected by service
         roster_data = []
         for player in request.roster:
@@ -62,21 +65,21 @@ async def analyze_roster(
                 'round': player.round,
                 'pick': player.pick
             })
-        
+
         analysis = await service.analyze_roster_comprehensive(
             user_roster=roster_data,
             league_settings=request.league_settings
         )
-        
+
         if "error" in analysis:
             raise HTTPException(status_code=400, detail=analysis["error"])
-        
+
         return {
             "success": True,
             "analysis": analysis,
             "user_id": current_user.id
         }
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -93,13 +96,13 @@ async def get_personalized_waiver_targets(
 ):
     """
     Get personalized waiver wire recommendations based on roster composition
-    
+
     Analyzes current roster and recommends waiver targets that address
     specific positional needs and weaknesses.
     """
     try:
         service = PostDraftAnalysisService(db)
-        
+
         # Convert request format
         roster_data = []
         for player in request.roster:
@@ -111,22 +114,22 @@ async def get_personalized_waiver_targets(
                 'round': player.round,
                 'pick': player.pick
             })
-        
+
         targets = await service.get_personalized_waiver_targets(
             user_roster=roster_data,
             week=week
         )
-        
+
         if "error" in targets:
             raise HTTPException(status_code=400, detail=targets["error"])
-        
+
         return {
             "success": True,
             "week": week,
             "personalized_recommendations": targets,
             "user_id": current_user.id
         }
-        
+
     except Exception as e:
         raise HTTPException(
             status_code=500,
@@ -134,313 +137,229 @@ async def get_personalized_waiver_targets(
         )
 
 
-@router.get("/roster-grade")
-async def calculate_roster_grade(
-    player_ids: List[int] = Query(...),
+@router.get("/import-roster/{league_id}")
+async def import_roster_from_league(
+    league_id: int,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Quick roster grade calculation based on player IDs
-    
-    Provides a simple A-F grade for your roster based on 
-    draft value and position balance.
-    """
-    try:
-        service = PostDraftAnalysisService(db)
-        
-        # Convert player IDs to roster format
-        roster_data = []
-        for i, player_id in enumerate(player_ids):
-            from app.models.player import Player
-            player = db.query(Player).filter(Player.id == player_id).first()
-            if player:
-                roster_data.append({
-                    'player_id': player_id,
-                    'player_name': player.name,
-                    'position': player.position.value if player.position else 'UNKNOWN',
-                    'team': player.team,
-                    'round': i + 1,  # Approximate round
-                    'pick': i + 1
-                })
-        
-        if not roster_data:
-            raise HTTPException(status_code=400, detail="No valid players found")
-        
-        analysis = await service.analyze_roster_comprehensive(roster_data, {})
-        
-        return {
-            "success": True,
-            "roster_grade": analysis.get("roster_analysis", {}).get("overall_grade", {}),
-            "quick_summary": {
-                "total_players": len(roster_data),
-                "composition_score": analysis.get("roster_analysis", {}).get("composition", {}).get("composition_score", 0)
-            }
-        }
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to calculate roster grade: {str(e)}"
-        )
+    Import the current user's roster from one of their connected leagues for
+    post-draft analysis. `league_id` is the UserLeague row id (scoped to the
+    requesting user), not a raw platform league id.
 
+    Real data only: each platform branch calls the actual platform service.
+    If a real fetch genuinely isn't possible (no team_id configured yet, no
+    matching roster found, or the platform isn't wired up), this returns an
+    honest error rather than fabricated roster data.
+    """
+    user_service = UserService(db)
+    user_league = user_service.get_user_league(current_user.id, league_id)
 
-@router.get("/import-roster/{league_id}")
-async def import_roster_from_league(league_id: int):
-    """
-    Import user's roster from their connected league for analysis - NO MOCK DATA
-    """
+    if not user_league:
+        raise HTTPException(status_code=404, detail="League not found")
+
+    platform = user_league.platform.value.upper()
+
     try:
-        from app.utils.league_data_loader import get_league_info
-        from app.services.espn_service_enhanced import espn_service_enhanced
-        import asyncio
-        
-        league_info = get_league_info(league_id)
-        
-        # Only proceed if we have real ESPN connection
-        if not (league_info.get("espn_league_id") and league_info.get("espn_swid") and league_info.get("espn_s2")):
-            raise HTTPException(status_code=400, detail="No ESPN league connection found")
-        
-        # Since ESPN API calls are timing out for live season access, 
-        # return demo roster data that matches your expected 2025 team
-        # This allows the post-draft analysis to work while ESPN API issues are resolved
-        demo_roster = [
-            {
-                "player_id": 12345,
-                "player_name": "Lamar Jackson",
-                "position": "QB",
-                "team": "BAL",
-                "round": 4,
-                "pick": 38
-            },
-            {
-                "player_id": 12346,
-                "player_name": "Derrick Henry",
-                "position": "RB",
-                "team": "BAL",
-                "round": 2,
-                "pick": 23
-            },
-            {
-                "player_id": 12347,
-                "player_name": "Cooper Kupp",
-                "position": "WR",
-                "team": "LAR",
-                "round": 1,
-                "pick": 10
-            },
-            {
-                "player_id": 12348,
-                "player_name": "Travis Kelce",
-                "position": "TE",
-                "team": "KC",
-                "round": 3,
-                "pick": 35
-            },
-            {
-                "player_id": 12349,
-                "player_name": "Christian McCaffrey",
-                "position": "RB",
-                "team": "SF",
-                "round": 1,
-                "pick": 5
+        if platform == "ESPN":
+            if not user_league.team_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Team ID not set for this ESPN league. Set it via PUT /leagues/{league_id}/settings first."
+                )
+
+            roster_data = await espn_service_enhanced.get_team_roster(
+                league_id=user_league.league_id,
+                team_id=int(user_league.team_id),
+                season=user_league.season,
+                swid=user_league.espn_swid,
+                espn_s2=user_league.espn_s2
+            )
+
+            if "error" in roster_data:
+                raise HTTPException(status_code=400, detail=roster_data["error"])
+
+            roster = [
+                {
+                    "player_id": None,
+                    "player_name": p.get("name", "Unknown Player"),
+                    "position": p.get("position", "UNKNOWN"),
+                    "team": p.get("team", "FA"),
+                    "round": None,
+                    "pick": None
+                }
+                for p in roster_data.get("players", [])
+            ]
+            team_info = {
+                "team_id": roster_data.get("team_id", user_league.team_id),
+                "team_name": roster_data.get("team_name", "Your Team"),
+                "owner": roster_data.get("owner", "You")
             }
-        ]
-        
+
+        elif platform == "YAHOO":
+            if not user_league.team_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Team ID not set for this Yahoo league. Set it via PUT /leagues/{league_id}/settings first."
+                )
+
+            roster_data = await yahoo_service.get_team_roster(user_league.team_id)
+
+            if "error" in roster_data:
+                raise HTTPException(status_code=400, detail=roster_data["error"])
+
+            roster = [
+                {
+                    "player_id": None,
+                    "player_name": p.get("name", "Unknown Player"),
+                    "position": p.get("position", "UNKNOWN"),
+                    "team": p.get("team", "FA"),
+                    "round": None,
+                    "pick": None
+                }
+                for p in roster_data.get("players", [])
+            ]
+            team_info = {
+                "team_id": user_league.team_id,
+                "team_name": user_league.league_name or "Your Team",
+                "owner": "You"
+            }
+
+        elif platform == "SLEEPER":
+            if not user_league.team_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Team ID not set for this Sleeper league. Set it via PUT /leagues/{league_id}/settings first."
+                )
+
+            sleeper = SleeperService()
+            rosters = await sleeper.get_league_rosters(user_league.league_id)
+
+            if rosters and isinstance(rosters, list) and isinstance(rosters[0], dict) and "error" in rosters[0]:
+                raise HTTPException(status_code=400, detail=rosters[0]["error"])
+
+            target_roster = next(
+                (
+                    r for r in rosters
+                    if str(r.get("owner_id")) == str(user_league.team_id)
+                    or str(r.get("roster_id")) == str(user_league.team_id)
+                ),
+                None
+            )
+
+            if not target_roster:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Could not find a roster matching this team_id in the Sleeper league"
+                )
+
+            sleeper_player_ids = target_roster.get("players") or []
+
+            # Resolve as many players as possible against our own DB first,
+            # which avoids pulling Sleeper's full (multi-MB) player directory
+            # unless we actually have unmatched players.
+            known_players = {}
+            if sleeper_player_ids:
+                db_players = db.query(Player).filter(Player.sleeper_id.in_(sleeper_player_ids)).all()
+                known_players = {p.sleeper_id: p for p in db_players}
+
+            missing_ids = [pid for pid in sleeper_player_ids if pid not in known_players]
+            sleeper_directory: Dict[str, Any] = {}
+            if missing_ids:
+                fetched = await sleeper.get_all_players()
+                if isinstance(fetched, dict) and "error" not in fetched:
+                    sleeper_directory = fetched
+
+            roster = []
+            for pid in sleeper_player_ids:
+                if pid in known_players:
+                    player = known_players[pid]
+                    roster.append({
+                        "player_id": player.id,
+                        "player_name": player.name,
+                        "position": player.position.value if player.position else "UNKNOWN",
+                        "team": player.team or "FA",
+                        "round": None,
+                        "pick": None
+                    })
+                else:
+                    info = sleeper_directory.get(pid, {})
+                    full_name = (
+                        info.get("full_name")
+                        or f"{info.get('first_name', '')} {info.get('last_name', '')}".strip()
+                        or "Unknown Player"
+                    )
+                    roster.append({
+                        "player_id": None,
+                        "player_name": full_name,
+                        "position": info.get("position", "UNKNOWN"),
+                        "team": info.get("team") or "FA",
+                        "round": None,
+                        "pick": None
+                    })
+
+            team_info = {
+                "team_id": user_league.team_id,
+                "team_name": user_league.league_name or "Your Team",
+                "owner": "You"
+            }
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Roster import is not implemented for platform '{platform}' yet"
+            )
+
         return {
             "success": True,
             "league_info": {
-                "id": league_info["id"],
-                "name": league_info["name"],
-                "platform": league_info["platform"],
-                "scoring_format": league_info["scoring_format"],
-                "season": 2025
+                "id": user_league.id,
+                "name": user_league.league_name,
+                "platform": platform,
+                "scoring_format": user_league.scoring_format,
+                "season": user_league.season
             },
-            "roster": demo_roster,
-            "roster_count": len(demo_roster),
+            "roster": roster,
+            "roster_count": len(roster),
             "import_timestamp": datetime.utcnow().isoformat(),
-            "data_source": "demo_data",  # Updated to indicate this is demo data
-            "season_detected": 2025,
-            "team_info": {
-                "team_id": 1,
-                "team_name": "Your Team",
-                "owner": "You"
-            },
-            "note": "Using demo roster data while ESPN API connectivity is resolved"
+            "data_source": platform.lower(),
+            "team_info": team_info
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        import traceback
-        print(f"Roster import error: {traceback.format_exc()}")
+        logger.error(f"Roster import error: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to import roster: {str(e)}")
 
 
 @router.get("/user-leagues")
-async def get_user_leagues_for_analysis():
-    """
-    Get user's connected leagues for roster import
-    """
-    try:
-        from app.utils.league_data_loader import get_all_user_leagues
-        leagues = get_all_user_leagues()
-        
-        return {
-            "success": True,
-            "leagues": leagues,
-            "total_leagues": len(leagues)
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get user leagues: {str(e)}")
-
-
-async def _import_sleeper_roster(user_league: UserLeague) -> Dict[str, Any]:
-    """Import roster from Sleeper league"""
-    try:
-        sleeper_service = SleeperService()
-        
-        # For demo, return mock roster data
-        # In production, would call sleeper API with user_league.league_id and user_league.team_id
-        return {
-            "roster": [
-                {
-                    "player_id": None,
-                    "player_name": "Josh Allen",
-                    "position": "QB",
-                    "team": "BUF",
-                    "round": 3,
-                    "pick": 25
-                },
-                {
-                    "player_id": None,
-                    "player_name": "Christian McCaffrey",
-                    "position": "RB",
-                    "team": "SF",
-                    "round": 1,
-                    "pick": 2
-                },
-                {
-                    "player_id": None,
-                    "player_name": "Cooper Kupp",
-                    "position": "WR",
-                    "team": "LAR",
-                    "round": 2,
-                    "pick": 19
-                },
-                {
-                    "player_id": None,
-                    "player_name": "Travis Kelce",
-                    "position": "TE",
-                    "team": "KC",
-                    "round": 4,
-                    "pick": 42
-                }
-            ]
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to import Sleeper roster: {str(e)}"}
-
-
-async def _import_espn_roster(user_league: UserLeague) -> Dict[str, Any]:
-    """Import roster from ESPN league"""
-    try:
-        # For demo, return mock data
-        return {
-            "roster": [
-                {
-                    "player_id": None,
-                    "player_name": "Lamar Jackson",
-                    "position": "QB",
-                    "team": "BAL",
-                    "round": 4,
-                    "pick": 38
-                },
-                {
-                    "player_id": None,
-                    "player_name": "Derrick Henry",
-                    "position": "RB",
-                    "team": "BAL",
-                    "round": 2,
-                    "pick": 23
-                }
-            ]
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to import ESPN roster: {str(e)}"}
-
-
-async def _import_yahoo_roster(user_league: UserLeague) -> Dict[str, Any]:
-    """Import roster from Yahoo league"""
-    try:
-        # For demo, return mock data
-        return {
-            "roster": [
-                {
-                    "player_id": None,
-                    "player_name": "Patrick Mahomes",
-                    "position": "QB",
-                    "team": "KC",
-                    "round": 5,
-                    "pick": 57
-                }
-            ]
-        }
-        
-    except Exception as e:
-        return {"error": f"Failed to import Yahoo roster: {str(e)}"}
-
-
-@router.get("/improvement-suggestions")
-async def get_improvement_suggestions(
-    position: Optional[str] = Query(None),
-    week: int = Query(1, ge=1, le=18),
+async def get_user_leagues_for_analysis(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
     """
-    Get general improvement suggestions for roster building
-    
-    Provides waiver wire targets and strategies for improving
-    specific positions or overall roster depth.
+    Get the current user's connected leagues for roster import
     """
     try:
-        service = PostDraftAnalysisService(db)
-        
-        # Get general waiver recommendations with position filter
-        waiver_recs = await service.waiver_service.generate_weekly_recommendations(
-            week=week,
-            max_recommendations=25
-        )
-        
-        # Filter by position if specified
-        if position and position != 'ALL':
-            filtered_recs = [rec for rec in waiver_recs if rec.get('position') == position.upper()]
-        else:
-            filtered_recs = waiver_recs
-        
-        # Add improvement context
-        improvement_suggestions = []
-        for rec in filtered_recs[:10]:  # Top 10
-            suggestion = {
-                **rec,
-                "improvement_context": f"Strong {rec.get('position', 'player')} option for depth or starting lineup",
-                "roster_impact": rec.get('recommendation_type', 'depth_add')
-            }
-            improvement_suggestions.append(suggestion)
-        
+        user_service = UserService(db)
+        leagues = user_service.get_user_leagues(current_user.id)
+
         return {
             "success": True,
-            "week": week,
-            "position_filter": position,
-            "suggestions": improvement_suggestions,
-            "total_available": len(filtered_recs)
+            "leagues": [
+                {
+                    "id": league.id,
+                    "name": league.league_name,
+                    "platform": league.platform.value.upper(),
+                    "scoring_format": league.scoring_format,
+                    "season": league.season,
+                    "is_active": league.is_active
+                }
+                for league in leagues
+            ],
+            "total_leagues": len(leagues)
         }
-        
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get improvement suggestions: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=f"Failed to get user leagues: {str(e)}")

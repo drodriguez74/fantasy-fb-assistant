@@ -48,8 +48,10 @@ class PostDraftAnalysisService:
             roster_players = []
             for roster_player in user_roster:
                 player = self.db.query(Player).filter(
-                    Player.id == roster_player.get('player_id') or
-                    Player.name == roster_player.get('player_name')
+                    or_(
+                        Player.id == roster_player.get('player_id'),
+                        Player.name == roster_player.get('player_name')
+                    )
                 ).first()
                 if player:
                     roster_players.append({
