@@ -431,45 +431,26 @@ Remember to consider your league's waiver wire priority and budget constraints w
         }
 
     async def _get_matchup_info(self, team: str, week: int) -> Dict[str, Any]:
-        """Get matchup information for a team (placeholder implementation)"""
-        # This would integrate with external APIs for matchup data
-        return {
-            "opponent": "TBD",
-            "home_away": "HOME",
-            "difficulty_rating": 5,
-            "pace_rank": 15,
-            "points_allowed_rank": 10
-        }
-
-    def _calculate_waiver_priority(self, player: Player, context: Dict[str, Any]) -> int:
-        """Calculate waiver wire priority score"""
-        score = 0
-        
-        # High projected points
-        if player.projected_points and player.projected_points > 12:
-            score += 3
-        elif player.projected_points and player.projected_points > 8:
-            score += 2
-            
-        # Low ownership
-        if player.ownership_percentage and player.ownership_percentage < 20:
-            score += 3
-        elif player.ownership_percentage and player.ownership_percentage < 50:
-            score += 1
-            
-        # Trending up
-        if player.trending_count and player.trending_count > 1000:
-            score += 2
-            
-        # High upside (good ceiling)
-        if player.ceiling_score and player.ceiling_score > 15:
-            score += 2
-            
-        # Healthy
-        if player.injury_status and player.injury_status.value == "HEALTHY":
-            score += 1
-            
-        return score
+        """Get matchup information for a team in a given week"""
+        try:
+            # This is a simplified implementation
+            # In a real application, you'd fetch actual NFL schedule data
+            return {
+                "opponent": "TBD",
+                "location": "TBD",
+                "difficulty": "Medium",
+                "defense_rank": 15,
+                "points_allowed": 22.5
+            }
+        except Exception as e:
+            logger.error(f"Error getting matchup info: {str(e)}")
+            return {
+                "opponent": "Unknown",
+                "location": "Unknown",
+                "difficulty": "Medium",
+                "defense_rank": 16,
+                "points_allowed": 20.0
+            }
 
     def _assess_fantasy_impact(self, player: Player) -> str:
         """Assess fantasy impact of injury"""
@@ -555,31 +536,6 @@ Remember to consider your league's waiver wire priority and budget constraints w
             content += "## Recent News\n\n"
             for article in news[:3]:
                 content += f"- {article.get('title', 'News update')}\n"
-        
-        return content
-
-    def _format_waiver_wire(self, week: int, candidates: List, 
-                          perspectives: List, consensus: Dict) -> str:
-        """Format waiver wire content"""
-        content = f"# Week {week} Waiver Wire Targets\n\n"
-        
-        content += "## Top Recommendations\n\n"
-        content += consensus.get("consensus_recommendation", "Waiver recommendations unavailable.") + "\n\n"
-        
-        content += "## Priority Targets\n\n"
-        for i, candidate in enumerate(candidates[:5], 1):
-            player = candidate["player"]
-            content += f"### {i}. {player.name} ({player.team})\n"
-            content += f"**Position:** {player.position.value}\n"
-            if player.ownership_percentage:
-                content += f"**Ownership:** {player.ownership_percentage:.1f}%\n"
-            content += f"**Priority Score:** {candidate['priority']}/10\n"
-            content += f"{candidate['analysis'][:200]}...\n\n"
-        
-        content += "## Expert Perspectives\n\n"
-        for perspective in perspectives:
-            content += f"### {perspective['perspective']}\n"
-            content += f"{perspective['analysis']}\n\n"
         
         return content
 
@@ -730,57 +686,6 @@ Remember to consider your league's waiver wire priority and budget constraints w
         except Exception as e:
             logger.error(f"Error saving content: {str(e)}")
             return {"error": str(e)}
-
-    async def _get_matchup_info(self, team: str, week: int) -> Dict[str, Any]:
-        """Get matchup information for a team in a given week"""
-        try:
-            # This is a simplified implementation
-            # In a real application, you'd fetch actual NFL schedule data
-            return {
-                "opponent": "TBD",
-                "location": "TBD", 
-                "difficulty": "Medium",
-                "defense_rank": 15,
-                "points_allowed": 22.5
-            }
-        except Exception as e:
-            logger.error(f"Error getting matchup info: {str(e)}")
-            return {
-                "opponent": "Unknown",
-                "location": "Unknown",
-                "difficulty": "Medium",
-                "defense_rank": 16,
-                "points_allowed": 20.0
-            }
-
-    def _format_weekly_rankings(self, position: str, week: int, players: List[Dict], 
-                               perspectives: List[Dict], consensus: Dict) -> str:
-        """Format weekly rankings content"""
-        content = f"# Week {week} {position} Fantasy Football Rankings\n\n"
-        content += f"## Top Players for Week {week}\n\n"
-        
-        # Top players list
-        for i, player in enumerate(players[:10], 1):
-            content += f"{i}. **{player['name']}** ({player['team']}) - {player['position']}\n"
-            content += f"   - Projected Points: {player.get('projected_points', 'N/A')}\n"
-            content += f"   - Injury Status: {player.get('injury_status', 'Healthy')}\n"
-            if player.get('matchup_info'):
-                content += f"   - Matchup: vs {player['matchup_info'].get('opponent', 'TBD')}\n"
-            content += "\n"
-        
-        # Expert perspectives
-        if perspectives:
-            content += "\n## Expert Analysis\n\n"
-            for perspective in perspectives:
-                content += f"### {perspective.get('perspective', 'Expert View')}\n"
-                content += f"{perspective.get('analysis', 'Analysis not available')}\n\n"
-        
-        # Consensus recommendation
-        if consensus and consensus.get('recommendation'):
-            content += "\n## Consensus Recommendation\n\n"
-            content += f"{consensus['recommendation']}\n\n"
-        
-        return content
 
     async def _generate_start_sit(self, topic: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Generate start/sit recommendations"""

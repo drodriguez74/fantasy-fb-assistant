@@ -15,6 +15,7 @@ from app.models.user import User
 from app.models.league_scoring import LeagueScoring, ScoringPreset
 from app.models.player import Player
 from app.models.user_league import UserLeague
+from app.models.player import Player
 from app.services.scoring_calculation_service import ScoringCalculationService
 
 router = APIRouter()
@@ -269,22 +270,48 @@ async def compare_players_scoring_systems(
     Compare how players perform under different scoring systems
     """
     try:
+        # IDOR fix: this endpoint used to require auth via current_user but
+        # never checked that scoring_config_ids actually belonged to that
+        # user, so any authenticated user could pass another user's
+        # LeagueScoring ids and see their comparison data. Verify every
+        # requested id resolves to a LeagueScoring row owned (via
+        # UserLeague.user_id) by the requesting user before running anything.
+        owned_config_ids = {
+            row[0]
+            for row in db.query(LeagueScoring.id)
+            .join(UserLeague, LeagueScoring.user_league_id == UserLeague.id)
+            .filter(
+                LeagueScoring.id.in_(scoring_config_ids),
+                UserLeague.user_id == current_user.id,
+            )
+            .all()
+        }
+        unauthorized_ids = set(scoring_config_ids) - owned_config_ids
+        if unauthorized_ids:
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "Scoring config(s) not found or not owned by user: "
+                    f"{sorted(unauthorized_ids)}"
+                ),
+            )
+
         scoring_service = ScoringCalculationService(db)
-        
+
         comparisons = {}
-        
+
         for player_id in player_ids:
             player = db.query(Player).filter(Player.id == player_id).first()
             if not player:
                 continue
-            
+
             player_comparison = scoring_service.compare_scoring_systems(
                 player_id, scoring_config_ids, season
             )
-            
+
             if "error" not in player_comparison:
                 comparisons[player.name] = player_comparison
-        
+
         return {
             "success": True,
             "season": season,
@@ -292,7 +319,11 @@ async def compare_players_scoring_systems(
             "scoring_systems_compared": len(scoring_config_ids),
             "comparisons": comparisons
         }
-        
+
+    except HTTPException:
+        # Don't let the ownership-check 403 above get swallowed and
+        # rewritten into a 500 by the generic handler below.
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500,

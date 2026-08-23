@@ -4,7 +4,10 @@ from typing import List, Dict, Any, Optional
 import asyncio
 from datetime import datetime, timedelta
 import re
+import logging
 from urllib.parse import urljoin, urlparse
+
+logger = logging.getLogger(__name__)
 
 
 class FantasyContentScraper:
@@ -197,66 +200,52 @@ class FantasyContentScraper:
         return articles
 
     async def _search_player_news(self, source: str, player_name: str) -> List[Dict[str, Any]]:
-        """Search for player-specific news from a source"""
-        articles = []
-        try:
-            # This would typically involve using the site's search functionality
-            # For now, we'll return mock data structure
-            search_query = player_name.replace(" ", "+")
-            
-            # Mock implementation - in reality, you'd search each site
-            articles.append({
-                "source": source.title(),
-                "title": f"Latest news on {player_name}",
-                "content": f"Recent updates and analysis for {player_name}...",
-                "url": f"https://example.com/search?q={search_query}",
-                "scraped_at": datetime.now().isoformat(),
-                "category": "player_news",
-                "player": player_name
-            })
-            
-        except Exception as e:
-            print(f"Error searching {source} for {player_name}: {str(e)}")
-        
-        return articles
+        """Search for player-specific news from a source.
+
+        NOT IMPLEMENTED: there is no real per-source search integration wired
+        up here (no real HTTP call to `source`'s search functionality). This
+        used to fabricate a canned "Latest news on {player_name}..." article
+        pointing at a fake https://example.com URL, which presented made-up
+        content as real news. That was worse than admitting we don't have it,
+        so this now honestly returns no results instead. Replace with a real
+        per-source search/RSS integration before re-enabling.
+        """
+        logger.warning(
+            "_search_player_news(%s, %s): real search is not implemented; "
+            "returning no results instead of fabricated data",
+            source, player_name,
+        )
+        return []
 
     async def _scrape_fantasypros_trending(self) -> List[Dict[str, Any]]:
-        """Scrape trending topics from FantasyPros"""
-        topics = []
-        try:
-            # Mock implementation for trending topics
-            topics.append({
-                "source": "FantasyPros",
-                "topic": "Waiver Wire Pickups Week 12",
-                "description": "Top waiver wire targets for the upcoming week",
-                "url": "https://fantasypros.com/trending",
-                "scraped_at": datetime.now().isoformat(),
-                "trend_score": 85
-            })
-            
-        except Exception as e:
-            print(f"Error scraping FantasyPros trending: {str(e)}")
-        
-        return topics
+        """Scrape trending topics from FantasyPros.
+
+        NOT IMPLEMENTED: this used to fabricate a single hardcoded "trending"
+        topic rather than actually scraping fantasypros.com. Returning that
+        presented fake content as real trending data, so this now honestly
+        returns no results instead. Replace with a real scrape/fetch of
+        FantasyPros trending content before re-enabling.
+        """
+        logger.warning(
+            "_scrape_fantasypros_trending: real scraping is not implemented; "
+            "returning no results instead of fabricated data"
+        )
+        return []
 
     async def _scrape_espn_trending(self) -> List[Dict[str, Any]]:
-        """Scrape trending topics from ESPN"""
-        topics = []
-        try:
-            # Mock implementation for trending topics
-            topics.append({
-                "source": "ESPN",
-                "topic": "NFL Playoff Race Impact on Fantasy",
-                "description": "How playoff implications affect fantasy relevance",
-                "url": "https://espn.com/fantasy/trending",
-                "scraped_at": datetime.now().isoformat(),
-                "trend_score": 78
-            })
-            
-        except Exception as e:
-            print(f"Error scraping ESPN trending: {str(e)}")
-        
-        return topics
+        """Scrape trending topics from ESPN.
+
+        NOT IMPLEMENTED: this used to fabricate a single hardcoded "trending"
+        topic rather than actually scraping espn.com. Returning that
+        presented fake content as real trending data, so this now honestly
+        returns no results instead. Replace with a real scrape/fetch of ESPN
+        trending content before re-enabling.
+        """
+        logger.warning(
+            "_scrape_espn_trending: real scraping is not implemented; "
+            "returning no results instead of fabricated data"
+        )
+        return []
 
     async def close(self):
         """Close the HTTP client"""
