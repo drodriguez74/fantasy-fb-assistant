@@ -4,6 +4,8 @@ League Scoring Configuration API Endpoints
 Manages custom scoring settings, bonuses, and league-specific rules.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -17,6 +19,11 @@ from app.models.player import Player
 from app.models.user_league import UserLeague
 from app.models.player import Player
 from app.services.scoring_calculation_service import ScoringCalculationService
+from app.services.scoring_rules import describe_scoring_rules
+from app.services.espn_service_enhanced import espn_service_enhanced
+from app.services.sleeper_service import sleeper_service
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -200,10 +207,39 @@ async def get_league_scoring(
         ).first()
         
         if not scoring_config:
+            # No manual override -- try to surface this league's real,
+            # auto-detected scoring rules (the same extraction
+            # draft_assistant_service.py already uses to generate real
+            # recommendations) instead of only naming a generic fallback
+            # format. Best-effort: a platform without real detection
+            # support yet (or a live API hiccup) just omits detected_scoring
+            # rather than failing this endpoint or fabricating numbers.
+            detected_scoring = None
+            try:
+                platform = user_league.platform.value.upper()
+                if platform == "ESPN":
+                    settings_result = await espn_service_enhanced.get_scoring_and_roster_settings(
+                        league_id=user_league.league_id,
+                        season=user_league.season,
+                        swid=user_league.espn_swid,
+                        espn_s2=user_league.espn_s2
+                    )
+                    if "error" not in settings_result:
+                        detected_scoring = settings_result.get("scoring_rules")
+                elif platform == "SLEEPER":
+                    league_info = await sleeper_service.get_league_info(user_league.league_id)
+                    parsed = sleeper_service.parse_league_settings(league_info)
+                    if "error" not in parsed:
+                        detected_scoring = parsed.get("scoring_rules")
+            except Exception as detect_err:
+                logger.warning(f"Scoring auto-detection failed for league {league_id}: {detect_err}")
+
             return {
                 "has_custom_scoring": False,
                 "league_id": league_id,
-                "default_scoring": user_league.scoring_format or "PPR"
+                "default_scoring": user_league.scoring_format or "PPR",
+                "detected_scoring": detected_scoring,
+                "detected_scoring_description": describe_scoring_rules(detected_scoring) if detected_scoring else None
             }
         
         return {

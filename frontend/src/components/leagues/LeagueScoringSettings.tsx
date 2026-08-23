@@ -92,9 +92,19 @@ interface ScoringSettingsResponse {
   target_points?: number
 }
 
+interface DetectedScoringRules {
+  passing: { completion: number; incompletion: number; attempt: number; yard: number; td: number; interception: number }
+  rushing: { attempt: number; yard: number; td: number }
+  receiving: { reception: number; yard: number; td: number; target: number }
+  fumbles: { lost: number }
+  source: string
+}
+
 interface LeagueScoringGetResponse {
   has_custom_scoring: boolean
   default_scoring?: string
+  detected_scoring?: DetectedScoringRules | null
+  detected_scoring_description?: string | null
   scoring_config?: {
     passing_settings: ScoringSettingsResponse
     rushing_settings: ScoringSettingsResponse
@@ -138,6 +148,8 @@ export function LeagueScoringSettings({ leagueId }: LeagueScoringSettingsProps) 
   const [success, setSuccess] = useState('')
   const [hasCustomScoring, setHasCustomScoring] = useState(false)
   const [defaultScoring, setDefaultScoring] = useState('PPR')
+  const [detectedScoring, setDetectedScoring] = useState<DetectedScoringRules | null>(null)
+  const [detectedDescription, setDetectedDescription] = useState('')
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState<ScoringFormState>(DEFAULT_FORM)
 
@@ -153,6 +165,8 @@ export function LeagueScoringSettings({ leagueId }: LeagueScoringSettingsProps) 
       } else {
         setHasCustomScoring(false)
         setDefaultScoring(data.default_scoring || 'PPR')
+        setDetectedScoring(data.detected_scoring ?? null)
+        setDetectedDescription(data.detected_scoring_description ?? '')
       }
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load scoring configuration'))
@@ -217,7 +231,9 @@ export function LeagueScoringSettings({ leagueId }: LeagueScoringSettingsProps) 
           <p className="text-sm text-ink-500 mt-1 max-w-2xl">
             {hasCustomScoring
               ? 'A manual scoring override is active for this league. The draft assistant uses these values instead of what it auto-detects from the platform.'
-              : `No custom scoring configured — the draft assistant auto-detects this league's real scoring rules from the connected platform (falling back to ${defaultScoring} if that fails). Set a custom override here to replace that, e.g. to model a hypothetical rule change.`}
+              : detectedScoring
+                ? "No manual override — showing this league's real scoring rules, detected live from the connected platform."
+                : `No custom scoring configured — the draft assistant auto-detects this league's real scoring rules from the connected platform (falling back to ${defaultScoring} if that fails). Set a custom override here to replace that, e.g. to model a hypothetical rule change.`}
           </p>
         </div>
         {!editing && (
@@ -243,6 +259,48 @@ export function LeagueScoringSettings({ leagueId }: LeagueScoringSettingsProps) 
         <div className="bg-success-50 border border-success-200 text-success-700 rounded-md p-3 text-sm flex items-start gap-2">
           <CheckCircleIcon className="h-4 w-4 mt-0.5 flex-shrink-0" />
           <span>{success}</span>
+        </div>
+      )}
+
+      {!hasCustomScoring && !editing && detectedScoring && (
+        <div className="pt-3 border-t border-ink-100 space-y-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
+            <div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Per reception</div>
+              <div className="font-medium text-ink-900">{detectedScoring.receiving.reception}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Passing TD</div>
+              <div className="font-medium text-ink-900">{detectedScoring.passing.td}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Rushing / Receiving TD</div>
+              <div className="font-medium text-ink-900">{detectedScoring.rushing.td}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Interception</div>
+              <div className="font-medium text-ink-900">{detectedScoring.passing.interception}</div>
+            </div>
+            <div>
+              <div className="text-xs text-ink-500 uppercase tracking-wide">Fumble lost</div>
+              <div className="font-medium text-ink-900">{detectedScoring.fumbles.lost}</div>
+            </div>
+            {!!detectedScoring.passing.completion && (
+              <div>
+                <div className="text-xs text-ink-500 uppercase tracking-wide">Per completion</div>
+                <div className="font-medium text-ink-900">{detectedScoring.passing.completion}</div>
+              </div>
+            )}
+            {!!detectedScoring.passing.incompletion && (
+              <div>
+                <div className="text-xs text-ink-500 uppercase tracking-wide">Per incompletion</div>
+                <div className="font-medium text-ink-900">{detectedScoring.passing.incompletion}</div>
+              </div>
+            )}
+          </div>
+          {detectedDescription && (
+            <p className="text-xs text-ink-500 italic">{detectedDescription}</p>
+          )}
         </div>
       )}
 
