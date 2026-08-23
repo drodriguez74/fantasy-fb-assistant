@@ -499,11 +499,29 @@ export function DraftPage() {
     setPickLog(prev => [...prev, entry])
   }
 
-  const filteredPlayers = selectedPosition === 'ALL'
-    ? availablePlayers
-    : availablePlayers.filter(p => p.position === selectedPosition)
+  const filteredPlayers = useMemo(() => {
+    // When viewing ALL positions, present a single global ranking rather than
+    // the positional concatenation order (which biased the list toward RBs).
+    // Prefer an explicit overall rank (search_rank) when present, fall back to
+    // ADP, and finally the UNRANKED_SENTINEL so unranked players sort last.
+    if (selectedPosition === 'ALL') {
+      return [...availablePlayers].sort((a, b) => {
+        const aRank = (a.search_rank ?? a.adp ?? UNRANKED_SENTINEL)
+        const bRank = (b.search_rank ?? b.adp ?? UNRANKED_SENTINEL)
+        return aRank - bRank
+      })
+    }
 
-  const availableFilteredPlayers = filteredPlayers.filter(p => !draftedIds.has(p.sleeper_id))
+    return [...availablePlayers]
+      .filter((p) => p.position === selectedPosition)
+      .sort((a, b) => {
+        const aRank = (a.search_rank ?? a.adp ?? UNRANKED_SENTINEL)
+        const bRank = (b.search_rank ?? b.adp ?? UNRANKED_SENTINEL)
+        return aRank - bRank
+      })
+  }, [availablePlayers, selectedPosition])
+
+  const availableFilteredPlayers = filteredPlayers.filter((p) => !draftedIds.has(p.sleeper_id))
 
   if (loading) {
     return (
