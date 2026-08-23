@@ -7,7 +7,7 @@ pydantic==2.13.4
 pydantic-settings==2.11.0
 python-jose[cryptography]==3.5.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.3.0  # passlib 1.7.4 is unmaintained and breaks on bcrypt>=4.1's internal API changes; pin the last known-compatible bcrypt 4.x
+bcrypt==4.0.1  # passlib 1.7.4 is unmaintained and reads bcrypt.__about__.__version__ directly with no fallback; that module was removed in bcrypt 4.1, so anything >=4.1 raises AttributeError on every hash/verify call. 4.0.1 is the last version that still has it.
 python-multipart==0.0.32
 httpx==0.28.1
 beautifulsoup4==4.15.0
