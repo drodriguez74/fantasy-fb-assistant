@@ -172,21 +172,29 @@ class UserService:
         ).first()
 
         if existing:
-            # Yahoo access tokens are short-lived (~1 hour, unlike ESPN's
-            # long-lived cookies), so a reconnect needs to actually refresh
-            # the stored credentials rather than silently no-op like this
-            # branch always used to. Gated to YAHOO specifically so ESPN's
-            # and Sleeper's existing reconnect behavior (return the existing
-            # row as-is) is unchanged.
-            if platform_enum == PlatformType.YAHOO:
-                if 'yahoo_access_token' in league_data:
-                    existing.yahoo_access_token = league_data.get('yahoo_access_token')
-                if 'yahoo_refresh_token' in league_data:
-                    existing.yahoo_refresh_token = league_data.get('yahoo_refresh_token')
-                if 'yahoo_token_expires_at' in league_data:
-                    existing.yahoo_token_expires_at = league_data.get('yahoo_token_expires_at')
-                self.db.commit()
-                self.db.refresh(existing)
+            # A reconnect needs to actually refresh the stored row -- e.g.
+            # corrected ESPN cookies, a team_id that wasn't captured on the
+            # first attempt, a league that rolled over to a new season --
+            # rather than silently no-op and return stale data, which used
+            # to happen for every platform except Yahoo (whose short-lived
+            # access tokens forced a narrower fix here first). Only
+            # overwrite a field when the caller supplied a real (non-None)
+            # value -- some call sites (e.g. ESPN connect before the user
+            # has picked their team from GET /espn/teams) always pass
+            # `team_id` as a dict key even when it's None, and a reconnect
+            # in that state must not blank out a team_id a previous, more
+            # complete connect call already set.
+            updatable_fields = (
+                'league_name', 'league_key', 'season', 'scoring_format',
+                'league_size', 'team_id', 'is_commissioner',
+                'espn_swid', 'espn_s2',
+                'yahoo_access_token', 'yahoo_refresh_token', 'yahoo_token_expires_at',
+            )
+            for field in updatable_fields:
+                if league_data.get(field) is not None:
+                    setattr(existing, field, league_data[field])
+            self.db.commit()
+            self.db.refresh(existing)
             return existing
 
         user_league = UserLeague(
