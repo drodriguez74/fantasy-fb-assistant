@@ -61,8 +61,9 @@ def create_password_reset_token(email: str) -> str:
     delta = timedelta(hours=1)  # 1 hour expiry
     now = datetime.utcnow()
     expires = now + delta
+    exp = expires.timestamp()
     encoded_jwt = jwt.encode(
-        {"exp": expires, "nbf": now, "sub": email, "type": "password_reset"},
+        {"exp": exp, "nbf": now, "sub": email, "type": "password_reset"},
         settings.SECRET_KEY,
         algorithm=ALGORITHM,
     )
@@ -85,8 +86,9 @@ def create_email_verification_token(email: str) -> str:
     delta = timedelta(hours=24)  # 24 hour expiry
     now = datetime.utcnow()
     expires = now + delta
+    exp = expires.timestamp()
     encoded_jwt = jwt.encode(
-        {"exp": expires, "nbf": now, "sub": email, "type": "email_verification"},
+        {"exp": exp, "nbf": now, "sub": email, "type": "email_verification"},
         settings.SECRET_KEY,
         algorithm=ALGORITHM,
     )

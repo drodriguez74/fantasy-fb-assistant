@@ -117,18 +117,17 @@ class Player(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
-    # historical_performances, season_summaries, trends, waiver_recommendations,
-    # waiver_trends, evaluations, and waiver_alerts are wired onto this class
-    # in app/models/__init__.py (after all models are imported), per this
-    # codebase's convention of attaching cross-model relationship()s there
-    # rather than inline -- see the comment at the top of that file. Each is
-    # back_populates-paired with a `player = relationship("Player", ...)` on
-    # the corresponding model in waiver_wire.py / historical_performance.py.
-
-    # game_situations / situational_trends (GameSituation / SituationalTrend,
-    # defined in app/models/game_situation.py) are NOT wired the same way yet.
-    # That file's `player = relationship("Player")` on both classes has no
-    # back_populates, so pairing it from this side needs a matching one-line
-    # change in game_situation.py too (out of scope for this pass) to avoid
-    # SQLAlchemy's overlapping-relationship warning. Not a circular-import or
-    # mapper-configuration failure -- just needs that one coordinated edit.
+    # Relationships commented out to avoid circular imports
+    # historical_performances = relationship("PlayerHistoricalPerformance", back_populates="player")
+    # season_summaries = relationship("PlayerSeasonSummary", back_populates="player")
+    # trends = relationship("PlayerTrend", back_populates="player")
+    
+    # Waiver wire relationships
+    # waiver_recommendations = relationship("WaiverWireRecommendation", back_populates="player")
+    # waiver_trends = relationship("WaiverWireTrend", back_populates="player") 
+    # evaluations = relationship("PlayerEvaluation", back_populates="player")
+    # waiver_alerts = relationship("WaiverWireAlert", back_populates="player")
+    
+    # Game situation relationships - temporarily commented to fix immediate issue
+    # game_situations = relationship("GameSituation", back_populates="player")
+    # situational_trends = relationship("SituationalTrend", back_populates="player")

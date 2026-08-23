@@ -186,8 +186,9 @@ async def request_password_reset(
         
         # Send password reset email
         background_tasks.add_task(send_password_reset_email, user.email, reset_token)
-
-        return {"message": "Password reset email sent"}
+        
+        # For development, return token (remove in production)
+        return {"message": "Password reset email sent", "token": reset_token}
     
     # Always return success to prevent email enumeration
     return {"message": "If an account with that email exists, a password reset email has been sent"}
@@ -259,7 +260,8 @@ async def resend_verification_email(
         
         # Send verification email
         background_tasks.add_task(send_verification_email, user.email, verification_token)
-
-        return {"message": "Verification email sent"}
+        
+        # For development, return token (remove in production)
+        return {"message": "Verification email sent", "token": verification_token}
     
     return {"message": "If an unverified account with that email exists, a verification email has been sent"}

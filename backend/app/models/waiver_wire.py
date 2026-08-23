@@ -58,7 +58,7 @@ class WaiverWireRecommendation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    player = relationship("Player", back_populates="waiver_recommendations")
+    player = relationship("Player")
 
 
 class WaiverWireTrend(Base):
@@ -88,7 +88,7 @@ class WaiverWireTrend(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Relationships
-    player = relationship("Player", back_populates="waiver_trends")
+    player = relationship("Player")
 
 
 class PlayerEvaluation(Base):
@@ -136,7 +136,7 @@ class PlayerEvaluation(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
     # Relationships
-    player = relationship("Player", back_populates="evaluations")
+    player = relationship("Player")
 
 
 class WaiverWireAlert(Base):
@@ -167,12 +167,15 @@ class WaiverWireAlert(Base):
     acknowledged_at = Column(DateTime)
     
     # Relationships
-    player = relationship("Player", back_populates="waiver_alerts")
+    player = relationship("Player")
 
 
-# The reverse (Player -> these models) relationships are wired in
-# app/models/__init__.py, following this codebase's convention of attaching
-# cross-model relationship()s there after all models are imported (see the
-# comment at the top of that file). Player.waiver_recommendations,
-# Player.waiver_trends, Player.evaluations, and Player.waiver_alerts are all
-# defined there with back_populates="player" matching the relationships above.
+# Add reverse relationships to Player model
+# These would be added to app/models/player.py:
+"""
+# Add these to the Player class:
+waiver_recommendations = relationship("WaiverWireRecommendation", back_populates="player")
+waiver_trends = relationship("WaiverWireTrend", back_populates="player") 
+evaluations = relationship("PlayerEvaluation", back_populates="player")
+waiver_alerts = relationship("WaiverWireAlert", back_populates="player")
+"""

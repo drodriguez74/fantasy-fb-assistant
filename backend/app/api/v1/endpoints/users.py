@@ -194,7 +194,8 @@ async def get_user_by_id(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get user by ID (own profile, or any profile if the caller is a superuser)"""
+    """Get user by ID (admin only for now, can be expanded)"""
+    # For now, users can only see their own profile via this endpoint
     if current_user.id != user_id and not current_user.is_superuser:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
