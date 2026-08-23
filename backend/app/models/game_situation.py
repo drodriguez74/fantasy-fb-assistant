@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Text, func
 from sqlalchemy.orm import relationship
 from sqlalchemy.ext.declarative import declarative_base
 from app.db.base import Base
@@ -92,8 +92,8 @@ class GameSituation(Base):
     red_zone_targets = Column(Integer)
     goal_line_carries = Column(Integer)
     
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships - temporarily remove back_populates to fix immediate issue
     player = relationship("Player")
@@ -138,8 +138,8 @@ class DefensiveRanking(Base):
     man_coverage_rate = Column(Float)
     zone_coverage_rate = Column(Float)
     
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 class VenueData(Base):
     """
@@ -174,8 +174,8 @@ class VenueData(Base):
     has_retractable_roof = Column(Boolean, default=False)
     typical_weather_impact = Column(String)
     
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 class WeatherHistory(Base):
     """
@@ -200,8 +200,8 @@ class WeatherHistory(Base):
     # Impact assessment
     weather_severity_score = Column(Float)  # 1-10 scale
     expected_fantasy_impact = Column(Float)  # -1 to 1 multiplier
-    
-    created_at = Column(DateTime(timezone=True), server_default="now()")
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class SituationalTrend(Base):
     """
@@ -238,10 +238,10 @@ class SituationalTrend(Base):
     
     # Statistical confidence
     sample_size_confidence = Column(Float, default=0.0)  # 0-1 scale
-    last_updated = Column(DateTime(timezone=True), server_default="now()")
+    last_updated = Column(DateTime(timezone=True), server_default=func.now())
     
-    created_at = Column(DateTime(timezone=True), server_default="now()")
-    updated_at = Column(DateTime(timezone=True), server_default="now()", onupdate="now()")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     # Relationships
     player = relationship("Player")
