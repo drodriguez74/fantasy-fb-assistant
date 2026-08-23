@@ -183,38 +183,6 @@ async def get_players(
         raise HTTPException(status_code=500, detail=f"Failed to get players: {str(e)}")
 
 
-@router.get("/trending")
-async def get_trending_players(
-    trend_type: str = Query("add", description="Trend type: 'add' or 'drop'"),
-    hours: int = Query(24, description="Lookback hours for trending data"),
-    limit: int = Query(25, description="Number of trending players to return")
-):
-    """Get trending players (adds/drops)"""
-    try:
-        trending = await sleeper_service.get_trending_players(trend_type, hours, limit)
-        
-        if isinstance(trending, list) and len(trending) > 0 and "error" in trending[0]:
-            raise HTTPException(status_code=500, detail=trending[0]["error"])
-        
-        return {"trending_players": trending, "trend_type": trend_type, "hours": hours}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get trending players: {str(e)}")
-
-
-@router.get("/projections/week/{week}")
-async def get_projections(week: int, season: str = "2024"):
-    """Get player projections for a specific week"""
-    try:
-        projections = await sleeper_service.get_player_projections(week, season)
-        
-        if "error" in projections:
-            raise HTTPException(status_code=500, detail=projections["error"])
-        
-        return {"projections": projections, "week": week, "season": season}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get projections: {str(e)}")
-
-
 @router.get("/database")
 async def get_players_from_database(
     db: Session = Depends(get_db),
@@ -339,20 +307,6 @@ async def get_player(player_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get player details: {str(e)}")
-
-
-@router.get("/{player_id}/stats/{season}")
-async def get_player_stats(player_id: str, season: str = "2024"):
-    """Get player stats for a specific season"""
-    try:
-        stats = await sleeper_service.get_player_stats(player_id, season)
-        
-        if "error" in stats:
-            raise HTTPException(status_code=500, detail=stats["error"])
-        
-        return {"player_id": player_id, "season": season, "stats": stats}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get player stats: {str(e)}")
 
 
 @router.get("/search/{player_name}")
@@ -530,10 +484,19 @@ async def generate_player_analysis(
         
         player_data = all_players[player_id]
         player_name = player_data.get("full_name", "Unknown Player")
-        
-        # Get additional context data
-        stats = await sleeper_service.get_player_stats(player_id)
-        
+
+        # Get additional context data for the real current NFL season (from
+        # Sleeper's own /state/nfl), not a hardcoded literal that would
+        # silently go stale every year. Falls back to the current calendar
+        # year if that call fails, matching SleeperService.get_player_stats'
+        # own "str" season type.
+        nfl_state = await sleeper_service.get_nfl_state()
+        if isinstance(nfl_state, dict) and "error" not in nfl_state and nfl_state.get("season"):
+            current_season = str(nfl_state["season"])
+        else:
+            current_season = str(datetime.utcnow().year)
+        stats = await sleeper_service.get_player_stats(player_id, current_season)
+
         # Prepare comprehensive data for AI analysis
         analysis_data = {
             "player_info": player_data,
@@ -544,7 +507,7 @@ async def generate_player_analysis(
             "depth_chart_order": player_data.get("depth_chart_order"),
             "fantasy_positions": player_data.get("fantasy_positions", [])
         }
-        
+
         # Generate AI analysis
         ai_analysis = await ai_service.generate_player_analysis(
             player_name=player_name,
@@ -563,97 +526,7 @@ async def generate_player_analysis(
         raise HTTPException(status_code=500, detail=f"Failed to generate analysis: {str(e)}")
 
 
-@router.get("/{player_id}/quick-analysis")
-async def get_quick_player_analysis(
-    player_id: str,
-    include_ai: bool = Query(False, description="Include AI-generated analysis")
-):
-    """Get quick player analysis with optional AI insights"""
-    try:
-        # Get player data from Sleeper
-        all_players = await sleeper_service.get_all_players()
-        
-        if player_id not in all_players:
-            raise HTTPException(status_code=404, detail="Player not found")
-        
-        player_data = all_players[player_id]
-        player_name = player_data.get("full_name", "Unknown Player")
-        
-        # Transform to our format. Same transient-snapshot reasoning as the list
-        # endpoint above: no persisted row, so created_at/updated_at report when
-        # this snapshot was generated, not a stored record time.
-        snapshot_time = datetime.utcnow().isoformat()
-        transformed_player = {
-            "id": int(player_id) if player_id.isdigit() else hash(player_id) % 100000,
-            "name": player_name,
-            "team": player_data.get("team_abbr") or player_data.get("team") or "FA",
-            "position": player_data.get("position", "UNKNOWN"),
-            "espn_id": str(player_data.get("espn_id")) if player_data.get("espn_id") else None,
-            "yahoo_id": str(player_data.get("yahoo_id")) if player_data.get("yahoo_id") else None,
-            "sleeper_id": player_id,
-            "projected_points": None,
-            "adp": None,
-            "bye_week": player_data.get("bye_week"),
-            "injury_status": player_data.get("injury_status") or "Healthy",
-            "depth_chart_order": player_data.get("depth_chart_order"),
-            "ai_analysis": None,
-            "risk_level": None,
-            "created_at": snapshot_time,
-            "updated_at": snapshot_time
-        }
-        
-        # Add AI analysis if requested
-        if include_ai:
-            try:
-                stats = await sleeper_service.get_player_stats(player_id)
-                analysis_data = {
-                    "player_info": player_data,
-                    "recent_stats": stats,
-                    "position": player_data.get("position"),
-                    "team": player_data.get("team"),
-                    "injury_status": player_data.get("injury_status"),
-                }
-                
-                ai_analysis = await ai_service.generate_player_analysis(
-                    player_name=player_name,
-                    player_data=analysis_data
-                )
-                transformed_player["ai_analysis"] = ai_analysis
-                
-                # Generate risk level based on analysis
-                if "high risk" in ai_analysis.lower() or "injury" in ai_analysis.lower():
-                    transformed_player["risk_level"] = "HIGH"
-                elif "medium risk" in ai_analysis.lower() or "questionable" in ai_analysis.lower():
-                    transformed_player["risk_level"] = "MEDIUM"
-                else:
-                    transformed_player["risk_level"] = "LOW"
-                    
-            except Exception as ai_error:
-                # Don't fail the whole request if AI analysis fails
-                transformed_player["ai_analysis"] = "AI analysis temporarily unavailable"
-                transformed_player["risk_level"] = "UNKNOWN"
-        
-        return transformed_player
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to get player analysis: {str(e)}")
-
-
 # Enhanced Player Data Endpoints
-
-@router.post("/sync")
-async def sync_player_data(
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Sync player data from external sources with enhanced analytics"""
-    try:
-        player_service = PlayerDataService(db)
-        result = await player_service.sync_player_data()
-        return result
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to sync player data: {str(e)}")
-
 
 @router.get("/enhanced/")
 async def get_enhanced_players(

@@ -235,7 +235,10 @@ class DraftAssistantService:
             session["user_roster"].append({
                 "player": player_picked,
                 "pick_number": session["current_state"].get("current_pick", 0),
-                "round": self._calculate_round(session["current_state"].get("current_pick", 0)),
+                "round": self._calculate_round(
+                    session["current_state"].get("current_pick", 0),
+                    session["draft_settings"].get("league_size", 12)
+                ),
                 "timestamp": datetime.now()
             })
             
@@ -685,7 +688,7 @@ class DraftAssistantService:
         
         # Calculate draft progress
         draft_progress = (current_pick / total_picks) * 100
-        current_round = self._calculate_round(current_pick)
+        current_round = self._calculate_round(current_pick, session["draft_settings"].get("league_size", 12))
         
         # Analyze positional needs
         position_counts = {}
@@ -1067,7 +1070,9 @@ class DraftAssistantService:
             "top_needs": needs,
             "position_counts": position_counts,
             "recommended_targets": self._get_position_needs(
-                position_counts, self._calculate_round(total_picks + 1), league_settings
+                position_counts,
+                self._calculate_round(total_picks + 1, draft_settings.get("league_size", 12)),
+                league_settings
             )
         }
 

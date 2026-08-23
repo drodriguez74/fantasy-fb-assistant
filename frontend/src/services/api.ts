@@ -150,9 +150,6 @@ export const players = {
   addFromSleeper: (sleeperId: string) => api.post('/players/add-from-sleeper', { sleeper_id: sleeperId }),
   
   generateAnalysis: (playerId: string) => api.post(`/players/${playerId}/analysis`),
-  
-  getQuickAnalysis: (playerId: string, includeAI: boolean = false) => 
-    api.get(`/players/${playerId}/quick-analysis?include_ai=${includeAI}`),
 }
 
 // Draft endpoints

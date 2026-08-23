@@ -62,11 +62,13 @@ On a documented error (e.g. 400 invalid position) the spec's error schema is
 """
 
 import asyncio
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
 
 from app.core.config import settings
+from app.services.sleeper_service import sleeper_service
 
 FANTASYPROS_BASE_URL = "https://api.fantasypros.com/public/v2/json"
 
@@ -105,19 +107,35 @@ class FantasyProsService:
         """
         return bool(settings.FANTASYPROS_API_KEY)
 
+    async def _current_season(self) -> int:
+        """Real current NFL season, sourced from Sleeper's public /state/nfl
+        endpoint (no credentials needed, already used the same way elsewhere
+        in this codebase -- e.g. players.py's player-analysis endpoint).
+        Falls back to today's calendar year if that call fails for any
+        reason, rather than a hardcoded literal that goes stale every season.
+        """
+        nfl_state = await sleeper_service.get_nfl_state()
+        if isinstance(nfl_state, dict) and "error" not in nfl_state:
+            raw_season = nfl_state.get("season")
+            if raw_season is not None:
+                try:
+                    return int(raw_season)
+                except (TypeError, ValueError):
+                    pass
+        return datetime.now(timezone.utc).year
+
     async def get_consensus_rankings(
         self,
         position: str = "ALL",
-        season: int = 2024,
+        season: Optional[int] = None,
         scoring: str = "PPR",
         ranking_type: str = "ADP",
     ) -> Dict[str, Any]:
         """Fetch NFL consensus rankings/ADP from FantasyPros' real API.
 
-        `season` defaults to 2024 to match the same hardcoded default season
-        used elsewhere in this codebase's Sleeper calls (e.g.
-        SleeperService.get_player_stats, players.py's /projections/week/{week})
-        rather than inventing a different convention for one more source.
+        `season` defaults to the real current NFL season (via
+        `_current_season`, above) when not given explicitly, rather than a
+        hardcoded year that would silently go stale.
 
         Never raises: returns {"error": "..."} on a missing API key, a
         network failure, or a non-2xx response (e.g. the free tier's daily
@@ -128,6 +146,9 @@ class FantasyProsService:
         """
         if not self.is_configured:
             return {"error": "FANTASYPROS_API_KEY not configured"}
+
+        if season is None:
+            season = await self._current_season()
 
         fp_position = _POSITION_TO_FANTASYPROS.get(position.upper(), position.upper())
 
@@ -147,7 +168,7 @@ class FantasyProsService:
     async def get_consensus_rankings_players(
         self,
         position: str = "ALL",
-        season: int = 2024,
+        season: Optional[int] = None,
         scoring: str = "PPR",
         ranking_type: str = "ADP",
     ) -> List[Dict[str, Any]]:
