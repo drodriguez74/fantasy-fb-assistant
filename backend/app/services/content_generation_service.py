@@ -373,6 +373,7 @@ Remember to consider your league's waiver wire priority and budget constraints w
             return {"error": f"Failed to generate injury report: {str(e)}"}
 
     async def _get_ai_model_name(self) -> Optional[str]:
+        """Best-effort label for whichever model an AI-backed content path
         actually attempts. Every content path that reaches this helper goes
         through generate_multi_perspective_content /
         generate_consensus_recommendation, both DEEP-tier calls in

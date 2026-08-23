@@ -493,13 +493,7 @@ class AIService:
                 {"role": "user", "content": prompt}
             ]
         )
-        # response.content is a list of content blocks (TextBlock,
-        # ThinkingBlock, ...) -- guard on .type before reading .text rather
-        # than indexing content[0] unconditionally.
-        for block in response.content:
-            if block.type == "text":
-                return block.text
-        raise RuntimeError("Anthropic response contained no text content")
+        return response.content[0].text
 
     async def _generate_openai(self, prompt: str, model: str = DEEP_OPENAI_MODEL) -> str:
         """Direct, non-raising OpenAI call kept for existing callers that

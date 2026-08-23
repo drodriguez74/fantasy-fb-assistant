@@ -229,7 +229,11 @@ class TestCalculatePlayerValuesRecalculation:
     projected_points is never double counted."""
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        # asyncio.run() creates and tears down its own fresh event loop per
+        # call, so this isn't affected by ambient loop state left behind by
+        # other test files (e.g. pytest-asyncio-managed tests running
+        # earlier in the same session) -- get_event_loop() was.
+        return asyncio.run(coro)
 
     def test_recalculates_for_non_espn_record_with_raw_stats(self):
         service = DraftAssistantService()
