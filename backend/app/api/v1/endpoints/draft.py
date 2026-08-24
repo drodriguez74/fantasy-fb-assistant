@@ -13,6 +13,7 @@ from app.services.user_service import UserService
 from app.services.consensus_ranking_service import consensus_ranking_service
 from app.services.fantasypros_service import fantasypros_service
 from app.services.mock_draft_service import grade_mock_draft
+from app.services.draft_recommendation_fallback import generate_algorithmic_draft_recommendations
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 
@@ -86,12 +87,20 @@ async def get_draft_recommendations(request: DraftRecommendationRequest):
         if "error" in recommendations:
             # generate_draft_recommendation() already degraded honestly
             # (empty recommendations + a real reason, never a fabricated
-            # pick) when every configured AI provider failed -- that's not
-            # a server bug, it's an external dependency being unavailable
-            # (rate-limited, out of credits, etc.), so 503 is the accurate
-            # status rather than 500.
-            raise HTTPException(status_code=503, detail=recommendations["error"])
+            # pick) when every configured AI provider failed. Rather than
+            # just failing (503), fall back to a real, deterministic
+            # ranking -- explicitly flagged "algorithmic", never presented
+            # as if it were genuine AI reasoning (see
+            # draft_recommendation_fallback.py's module docstring).
+            logger.warning(f"AI draft recommendations unavailable, using algorithmic fallback: {recommendations['error']}")
+            fallback = generate_algorithmic_draft_recommendations(
+                available_players=request.available_players,
+                team_needs=request.team_needs,
+            )
+            fallback["ai_error"] = recommendations["error"]
+            return fallback
 
+        recommendations["source"] = "ai"
         return recommendations
     except HTTPException:
         raise

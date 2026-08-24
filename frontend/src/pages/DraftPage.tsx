@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { PlusIcon, StarIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroicons/react/24/outline'
 import { draft, getErrorMessage, type MockDraftResult } from '../services/api'
 import { DraftPickLog, type PickLogEntry } from '../components/draft'
+import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 
 interface DraftSettings {
   scoringFormat: 'PPR' | 'Half PPR' | 'Standard'
@@ -187,6 +188,11 @@ export function DraftPage() {
   })
 
   const [recommendations, setRecommendations] = useState<Recommendation[]>([])
+  // Backend falls back to a real, deterministic ranking (source:
+  // "algorithmic") when the AI provider(s) are unavailable -- never
+  // fabricates AI-style reasoning, so the UI must say honestly which one
+  // actually produced the current recommendations.
+  const [recommendationsSource, setRecommendationsSource] = useState<'ai' | 'algorithmic' | null>(null)
   const [availablePlayers, setAvailablePlayers] = useState<Player[]>([])
   const [trendingPlayers, setTrendingPlayers] = useState<Player[]>([])
   const [loading, setLoading] = useState(false)
@@ -389,12 +395,14 @@ export function DraftPage() {
       })
 
       setRecommendations(result.data.recommendations || [])
+      setRecommendationsSource(result.data.source === 'algorithmic' ? 'algorithmic' : 'ai')
     } catch (error) {
       // Don't fabricate recommendations when the real call fails -- a made-up
       // confidence score and templated reasoning would look identical to a
       // genuine AI recommendation. Surface the failure instead.
       console.error('Error generating recommendations:', error)
       setRecommendations([])
+      setRecommendationsSource(null)
       setRecommendationsError("Couldn't load recommendations. Try refreshing.")
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -409,6 +417,7 @@ export function DraftPage() {
       generateRecommendations()
     } else if (!showRecommendationsPanel) {
       setRecommendations([])
+      setRecommendationsSource(null)
     }
   }, [availablePlayers, showRecommendationsPanel, generateRecommendations])
 
@@ -756,7 +765,14 @@ export function DraftPage() {
           {/* AI Recommendations */}
           <div className="bg-white rounded-lg border border-ink-200 shadow-sm p-6">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold text-ink-900">AI Recommendations</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold text-ink-900">
+                  {recommendationsSource === 'algorithmic' ? 'Draft Recommendations' : 'AI Recommendations'}
+                </h2>
+                {recommendationsSource === 'algorithmic' && (
+                  <DataConfidenceBadge level="heuristic" label="Algorithmic (AI unavailable)" />
+                )}
+              </div>
               <span className="text-sm text-ink-500">
                 {draftStatus === 'setup' ? 'Preview' : `Round ${currentRound}`}, Pick {currentPick} overall
                 {draftStatus === 'drafting' && isUsersTurnNow && (
