@@ -109,6 +109,7 @@ npm run dev
 **Demo Accounts:**
 - **Admin:** `admin@fantasyfootball.com` / `admin123`
 - **User:** `test@example.com` / `password123`
+- **Demo:** `demo@test.com` / `DemoPass123!`
 
 ## 🔧 Development Commands
 

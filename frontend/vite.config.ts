@@ -8,7 +8,10 @@ export default defineConfig({
     port: 3001,
     host: '127.0.0.1',
     strictPort: true,
-    allowedHosts: ['localhost', '5c3df140dd60.ngrok-free.app']
+    // Free ngrok plans assign a new random *.ngrok-free.app hostname every
+    // tunnel restart (no reserved subdomain) -- a leading-dot entry allows
+    // any subdomain instead of needing to edit this file each time.
+    allowedHosts: ['localhost', '.ngrok-free.app']
   },
   build: {
     outDir: 'dist'
