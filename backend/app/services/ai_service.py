@@ -1,5 +1,6 @@
 from typing import List, Dict, Optional, Any
 from enum import Enum
+from datetime import datetime, timedelta
 import openai
 import anthropic
 from app.core.config import settings
@@ -80,6 +81,18 @@ class AIService:
 
     DEFAULT_SYSTEM_PROMPT = "You are an expert fantasy football analyst."
 
+    # How long to skip a provider entirely after it fails, instead of
+    # re-attempting (and re-paying for/re-rate-limiting against) a call
+    # that's overwhelmingly likely to fail again immediately. Rate limits
+    # are usually short-lived, so a shorter cooldown is enough to stop
+    # hammering without needlessly avoiding the provider once it's likely
+    # recovered. Other failures (auth, billing, malformed config -- e.g. a
+    # real "credit balance too low" account issue) don't resolve on their
+    # own within seconds, so they get a longer cooldown; retrying every
+    # single request in the meantime is pure waste, not resilience.
+    RATE_LIMIT_COOLDOWN = timedelta(seconds=60)
+    OTHER_FAILURE_COOLDOWN = timedelta(minutes=5)
+
     def __init__(self):
         self.openai_client = None
         self.anthropic_client = None
@@ -89,6 +102,16 @@ class AIService:
 
         if settings.ANTHROPIC_API_KEY:
             self.anthropic_client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+        # Process-lifetime circuit breaker: provider -> cooldown expiry /
+        # reason last recorded. Shared across every caller of
+        # _generate_with_fallback, not per-request, since the whole point
+        # is to stop the *next* unrelated request from re-hitting a
+        # provider that just failed. Lazily (re-)initialized inside
+        # _generate_with_fallback too, since this module's own test suite
+        # constructs AIService via __new__ and skips __init__ entirely.
+        self._provider_cooldown_until: Dict[AIProvider, datetime] = {}
+        self._provider_cooldown_reason: Dict[AIProvider, str] = {}
 
     # -------------------------------------------------------------------
     # Consolidated fallback primitive
@@ -140,11 +163,35 @@ class AIService:
         """
         other = AIProvider.ANTHROPIC if primary == AIProvider.OPENAI else AIProvider.OPENAI
         errors: List[str] = []
+        now = datetime.utcnow()
+
+        # Lazy-init rather than relying on __init__ -- this module's own
+        # test suite constructs AIService via AIService.__new__(AIService)
+        # to avoid needing real API keys, which skips __init__ entirely.
+        # Each such instance gets its own independent dicts here (not a
+        # shared class-level default), so tests can't leak a cooldown into
+        # each other.
+        if not hasattr(self, "_provider_cooldown_until"):
+            self._provider_cooldown_until: Dict[AIProvider, datetime] = {}
+            self._provider_cooldown_reason: Dict[AIProvider, str] = {}
 
         for provider in (primary, other):
             client = self.openai_client if provider == AIProvider.OPENAI else self.anthropic_client
             if not client:
                 errors.append(f"{provider.value}: not configured")
+                continue
+
+            cooldown_until = self._provider_cooldown_until.get(provider)
+            if cooldown_until and now < cooldown_until:
+                # Skip the real network call entirely -- this provider
+                # already failed recently and is overwhelmingly likely to
+                # fail again immediately. This is the actual fix for
+                # "why do we keep calling a provider that's already down":
+                # every caller shares this cooldown, so one failure
+                # protects every subsequent request for its duration
+                # instead of each one re-discovering the same failure.
+                reason = self._provider_cooldown_reason.get(provider, "recent failure")
+                errors.append(f"{provider.value}: skipped, in cooldown ({reason})")
                 continue
 
             model = self._model_for(provider, prefer_fast_model)
@@ -156,9 +203,13 @@ class AIService:
             except (openai.RateLimitError, anthropic.RateLimitError) as e:
                 print(f"AI provider '{provider.value}' rate-limited ({model}); falling back")
                 errors.append(f"{provider.value} rate-limited: {str(e)}")
+                self._provider_cooldown_until[provider] = now + self.RATE_LIMIT_COOLDOWN
+                self._provider_cooldown_reason[provider] = "rate-limited"
             except Exception as e:
                 print(f"AI provider '{provider.value}' failed ({type(e).__name__}: {str(e)}); falling back")
                 errors.append(f"{provider.value} error ({type(e).__name__}): {str(e)}")
+                self._provider_cooldown_until[provider] = now + self.OTHER_FAILURE_COOLDOWN
+                self._provider_cooldown_reason[provider] = f"{type(e).__name__}"
 
         return self.FAILURE_PREFIX + "; ".join(errors)
 

@@ -84,9 +84,17 @@ async def get_draft_recommendations(request: DraftRecommendationRequest):
         )
         
         if "error" in recommendations:
-            raise HTTPException(status_code=500, detail=recommendations["error"])
-        
+            # generate_draft_recommendation() already degraded honestly
+            # (empty recommendations + a real reason, never a fabricated
+            # pick) when every configured AI provider failed -- that's not
+            # a server bug, it's an external dependency being unavailable
+            # (rate-limited, out of credits, etc.), so 503 is the accurate
+            # status rather than 500.
+            raise HTTPException(status_code=503, detail=recommendations["error"])
+
         return recommendations
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get draft recommendations: {str(e)}")
 
