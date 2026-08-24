@@ -337,7 +337,7 @@ export function LeagueDetailPage() {
               <ArrowLeftIcon className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="text-3xl font-bold text-ink-900">{leagueInfo?.name}</h1>
+              <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">{leagueInfo?.name}</h1>
               <p className="text-ink-600">
                 {leagueInfo?.platform} • {leagueInfo?.season} • {leagueInfo?.league_size} Teams • {leagueInfo?.scoring_format}
               </p>
@@ -396,7 +396,7 @@ export function LeagueDetailPage() {
                 <TrophyIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Team Rank</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {standingsData?.user_team_rank || 'N/A'}
                   </p>
                 </div>
@@ -408,7 +408,7 @@ export function LeagueDetailPage() {
                 <UserGroupIcon className="h-8 w-8 text-accent-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Roster Grade</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {rosterAnalysis?.overall_grade?.grade || 'N/A'}
                   </p>
                 </div>
@@ -420,7 +420,7 @@ export function LeagueDetailPage() {
                 <ExclamationTriangleIcon className="h-8 w-8 text-danger-600" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Injuries</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {rosterAnalysis?.injury_concerns?.length || 0}
                   </p>
                 </div>
@@ -432,7 +432,7 @@ export function LeagueDetailPage() {
                 <FireIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Waiver Targets</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {waiverRecs?.recommendations?.length || 0}
                   </p>
                 </div>

@@ -60,16 +60,12 @@ export function BlogPostPage() {
   }
 
   const getCategoryColor = (category: string) => {
-    const colors: Record<string, string> = {
-      waiver_wire: 'bg-green-100 text-green-800',
-      weekly_rankings: 'bg-blue-100 text-blue-800',
-      player_analysis: 'bg-purple-100 text-purple-800',
-      injury_report: 'bg-red-100 text-red-800',
-      start_sit: 'bg-yellow-100 text-yellow-800',
-      breakout_candidates: 'bg-orange-100 text-orange-800',
-      draft_strategy: 'bg-indigo-100 text-indigo-800'
-    }
-    return colors[category] || 'bg-gray-100 text-gray-800'
+    // Matches BlogPage.tsx's getCategoryColor: content categories are a
+    // decorative label, not a status signal, so this deliberately doesn't
+    // borrow the success/warning/danger ramp (reserved for real status
+    // meaning per STYLE_GUIDE.md §1) except for the one genuine exception.
+    if (category === 'injury_report') return 'bg-danger-100 text-danger-800'
+    return 'bg-ink-100 text-ink-700'
   }
 
   const getCategoryName = (category: string) => {
@@ -89,8 +85,8 @@ export function BlogPostPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-        <span className="ml-2 text-gray-600">Loading article...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-500"></div>
+        <span className="ml-2 text-ink-600">Loading article...</span>
       </div>
     )
   }
@@ -98,12 +94,12 @@ export function BlogPostPage() {
   if (error || !blogPost) {
     return (
       <div className="max-w-4xl mx-auto">
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="bg-danger-50 border border-danger-100 rounded-md p-4">
           <div className="flex">
-            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            <ExclamationTriangleIcon className="h-5 w-5 text-danger-500" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">
+              <h3 className="text-sm font-medium text-danger-800">Error</h3>
+              <div className="mt-2 text-sm text-danger-700">
                 {error || 'Blog post not found'}
               </div>
             </div>
@@ -111,7 +107,7 @@ export function BlogPostPage() {
         </div>
         <button
           onClick={() => navigate('/blog')}
-          className="mt-4 flex items-center text-blue-600 hover:text-blue-700"
+          className="mt-4 flex items-center text-accent-600 hover:text-accent-700"
         >
           <ArrowLeftIcon className="h-4 w-4 mr-1" />
           Back to Blog
@@ -125,14 +121,14 @@ export function BlogPostPage() {
       {/* Back Button */}
       <button
         onClick={() => navigate('/blog')}
-        className="mb-6 flex items-center text-blue-600 hover:text-blue-700 transition-colors"
+        className="mb-6 flex items-center text-accent-600 hover:text-accent-700 transition-colors"
       >
         <ArrowLeftIcon className="h-4 w-4 mr-1" />
         Back to Blog
       </button>
 
       {/* Article Header */}
-      <article className="bg-white rounded-lg shadow-lg border border-gray-200 overflow-hidden">
+      <article className="bg-white rounded-lg shadow-md border border-ink-200 overflow-hidden">
         <div className="p-8">
           {/* Category and Status */}
           <div className="flex items-center justify-between mb-4">
@@ -143,12 +139,12 @@ export function BlogPostPage() {
             
             <div className="flex items-center space-x-4">
               {blogPost.featured && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
                   ⭐ Featured
                 </span>
               )}
               {!blogPost.is_published && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-700">
                   Draft
                 </span>
               )}
@@ -156,12 +152,12 @@ export function BlogPostPage() {
           </div>
 
           {/* Title */}
-          <h1 className="text-4xl font-bold text-gray-900 mb-6 leading-tight">
+          <h1 className="font-display font-black uppercase tracking-tight text-4xl text-ink-900 mb-6 leading-tight">
             {blogPost.title}
           </h1>
 
           {/* Meta Information */}
-          <div className="flex items-center space-x-6 text-sm text-gray-500 mb-8 border-b border-gray-200 pb-6">
+          <div className="flex items-center space-x-6 text-sm text-ink-500 mb-8 border-b border-ink-200 pb-6">
             <div className="flex items-center">
               <UserIcon className="h-4 w-4 mr-1" />
               <span>{blogPost.author}</span>
@@ -180,8 +176,8 @@ export function BlogPostPage() {
 
           {/* Content */}
           <div className="prose prose-lg max-w-none">
-            <div 
-              className="text-gray-700 leading-relaxed whitespace-pre-wrap"
+            <div
+              className="text-ink-700 leading-relaxed whitespace-pre-wrap"
               style={{ lineHeight: '1.8' }}
             >
               {blogPost.content}
@@ -190,13 +186,13 @@ export function BlogPostPage() {
 
           {/* Tags */}
           {blogPost.tags && typeof blogPost.tags === 'object' && Object.keys(blogPost.tags).length > 0 && (
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-3">Tags & Metadata</h3>
+            <div className="mt-8 pt-6 border-t border-ink-200">
+              <h3 className="text-sm font-medium text-ink-900 mb-3">Tags & Metadata</h3>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(blogPost.tags).map(([key, value]) => (
                   <span
                     key={key}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-700"
                   >
                     {key}: {String(value)}
                   </span>
@@ -211,7 +207,7 @@ export function BlogPostPage() {
       <div className="mt-8 text-center">
         <button
           onClick={() => navigate('/blog')}
-          className="bg-blue-600 text-white px-6 py-2 rounded-md hover:bg-blue-700 transition-colors"
+          className="bg-accent-500 text-white px-6 py-2 rounded-md hover:bg-accent-600 transition-colors"
         >
           Back to All Articles
         </button>

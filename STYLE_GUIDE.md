@@ -50,17 +50,30 @@ The app now computes genuinely real numbers (Sleeper add-count-derived waiver co
 
 ## 3. Typography
 
-No type scale currently exists — `index.css` sets only a body font stack (`Inter, system-ui`). Sizing today is ad-hoc utility scatter across the codebase. Formalizing observed usage rather than inventing new ground:
+**Update (frontend-design pass):** `index.css` previously *referenced* `Inter` in the body font stack but never actually loaded it via `index.html` — the whole app had been silently rendering in the OS default sans this entire time, which was a real contributor to the "looks plain" complaint that triggered this pass. Fixed: `index.html` now loads three faces via Google Fonts, each with a single, restrained job — mixing families beyond these three per-role, or using the display face for body copy, breaks the system:
+
+| Token | Family | Role |
+|---|---|---|
+| `--font-sans` (`font-sans`) | Inter | Body copy, UI chrome — unchanged from before, just actually loaded now |
+| `--font-display` (`font-display`) | Big Shoulders Display (700/800/900) | Headlines, wordmark, section headings, eyebrow/score-bug tags — **restraint required**: uppercase, headline-scale text only, never body copy or buttons. Deliberately not Bebas/Anton, which read as the generic "sporty AI template" choice. |
+| `--font-stat` (`font-stat`) | IBM Plex Mono | Scoreboard-style numbers — stat-tile values, records — paired with `tabular-nums` |
+
+Sizing is otherwise still ad-hoc utility scatter across the codebase — formalizing observed usage rather than inventing new ground:
 
 | Role | Class | Weight |
 |---|---|---|
+| Hero headline | `font-display uppercase tracking-tight text-5xl sm:text-7xl leading-[0.95]` | `font-black` |
 | Page title | `text-2xl md:text-3xl` | `font-bold` |
-| Section heading | `text-lg` / `text-xl` | `font-semibold` |
+| Section heading | `text-lg` / `text-xl` | `font-semibold`, or `font-display uppercase` for a page's single top-level heading (see HomePage's "Welcome back") — don't apply display casing to every subheading, it stops reading as a signal once it's everywhere |
 | Card title | `text-lg` | `font-semibold` |
 | Body | `text-sm` | `font-normal` / `font-medium` |
 | Caption/meta | `text-xs` | `font-medium` |
 
-`text-4xl` (currently only the HomePage hero) stays a deliberate one-off, not part of the scale.
+`text-4xl`/`text-5xl`+ stays reserved for hero-scale headlines (currently HomePage only), not part of the general scale.
+
+**Signature element — the yard-marker divider:** `.yard-divider` (defined in `index.css`) is a hairline with small perpendicular ticks at regular intervals, standing in for a football field's yard lines. Use it in place of a plain `border-t`/`border-b` wherever a page marks a real section boundary (page chrome/body, hero/body) — it's a structural device borrowed from the subject's own vernacular, not decoration, so don't sprinkle it between every card. Currently applied: `Navbar.tsx` (site chrome, so it's on every page already) and the HomePage hero/body boundary.
+
+**Motion — the one deliberate sequence:** `.animate-rise-in` + `.animate-rise-in-{1..4}` (in `index.css`) stagger a fade-up entrance, used for the HomePage hero (eyebrow → headline → subhead → CTAs). This is the app's one orchestrated motion moment — per frontend-design guidance, one deliberate sequence beats scattered hover/scroll effects everywhere, so don't add entrance animation to every card grid or list. Respects `prefers-reduced-motion`. Regular hover states (card elevation, link color) stay instant/CSS-transition as before — this utility is for page-load entrances only.
 
 ---
 

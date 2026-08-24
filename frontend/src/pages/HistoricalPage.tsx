@@ -431,7 +431,7 @@ export function HistoricalPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-ink-900">Historical Performance</h1>
+            <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Historical Performance</h1>
             <p className="text-ink-600 mt-2">
               Analyze player performance trends, consistency patterns, and historical data
             </p>
@@ -500,7 +500,7 @@ export function HistoricalPage() {
                 <ChartBarIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Performance Records</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {dataOverview.data_coverage.total_performance_records.toLocaleString()}
                   </p>
                 </div>
@@ -512,7 +512,7 @@ export function HistoricalPage() {
                 <UserIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Players Tracked</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {dataOverview.data_coverage.players_with_data}
                   </p>
                 </div>
@@ -524,7 +524,7 @@ export function HistoricalPage() {
                 <CalendarIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Seasons Covered</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {dataOverview.data_coverage.seasons_covered.length}
                   </p>
                 </div>
@@ -536,7 +536,7 @@ export function HistoricalPage() {
                 <ArrowTrendingUpIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
                   <p className="text-sm font-medium text-ink-500">Trend Analyses</p>
-                  <p className="text-2xl font-bold text-ink-900">
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
                     {dataOverview.data_coverage.trend_analyses}
                   </p>
                 </div>
@@ -689,7 +689,7 @@ export function HistoricalPage() {
                     <p className="text-ink-600">{playerSummary.position} • {playerSummary.seasons_analyzed} seasons analyzed</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-accent-600">
+                    <div className="text-2xl font-stat tabular-nums font-semibold text-accent-600">
                       {playerSummary.historical_average.toFixed(1)}
                     </div>
                     <div className="text-sm text-ink-500">Avg PPR Points</div>

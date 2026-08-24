@@ -347,7 +347,7 @@ export function LeaguesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink-900">My Fantasy Leagues</h1>
+          <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">My Fantasy Leagues</h1>
           <p className="text-ink-600 mt-2">
             Connect your fantasy leagues to get personalized insights
           </p>

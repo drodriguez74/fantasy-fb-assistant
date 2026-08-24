@@ -12,8 +12,9 @@ import {
   ChevronUpIcon,
   TrophyIcon,
 } from '@heroicons/react/24/outline'
+import { positionColors } from '../components/players/playerDisplay'
 
-// Small color helpers kept local to this page rather than shared -- this
+// Small color helper kept local to this page rather than shared -- this
 // codebase's other grade-displaying pages (PostDraftAnalysisPage,
 // LeagueDetailPage, DraftPage) each define their own copy too, so this
 // follows the existing convention rather than introducing a new shared util.
@@ -29,15 +30,6 @@ function getGradeBadgeColor(grade: string | null | undefined): string {
   if (!grade) return 'bg-ink-100 text-ink-500'
   const base = grade.trim().charAt(0).toUpperCase()
   return GRADE_BADGE_COLORS[base] || 'bg-ink-100 text-ink-700'
-}
-
-const POSITION_BADGE_COLORS: Record<string, string> = {
-  QB: 'bg-red-100 text-red-800',
-  RB: 'bg-green-100 text-green-800',
-  WR: 'bg-blue-100 text-blue-800',
-  TE: 'bg-purple-100 text-purple-800',
-  K: 'bg-yellow-100 text-yellow-800',
-  DEF: 'bg-gray-100 text-gray-800',
 }
 
 // draft_settings comes back as a loosely-typed object (it's whatever the
@@ -140,7 +132,7 @@ export function DraftHistoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-ink-900">Draft History</h1>
+        <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Draft History</h1>
         <p className="text-ink-600 mt-2">Past mock drafts and how they graded out</p>
       </div>
 
@@ -190,7 +182,7 @@ export function DraftHistoryPage() {
                 >
                   <div className="flex items-center gap-4 min-w-0">
                     <div
-                      className={`flex items-center justify-center w-12 h-12 rounded-full text-lg font-bold shrink-0 ${getGradeBadgeColor(session.draft_grade)}`}
+                      className={`flex items-center justify-center w-12 h-12 rounded-full font-stat text-lg font-bold shrink-0 ${getGradeBadgeColor(session.draft_grade)}`}
                     >
                       {session.draft_grade || '?'}
                     </div>
@@ -244,7 +236,7 @@ export function DraftHistoryPage() {
                         {typeof detail.composition_score === 'number' && (
                           <div className="flex items-center gap-2 text-sm text-ink-600">
                             <TrophyIcon className="h-4 w-4 text-accent-500" />
-                            Composition score: <span className="font-medium text-ink-900">{detail.composition_score}/100</span>
+                            Composition score: <span className="font-stat tabular-nums font-medium text-ink-900">{detail.composition_score}/100</span>
                           </div>
                         )}
 
@@ -270,7 +262,7 @@ export function DraftHistoryPage() {
                                       <span className="font-medium text-ink-900 truncate">{player.full_name}</span>
                                       <span
                                         className={`px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
-                                          POSITION_BADGE_COLORS[player.position] || 'bg-ink-100 text-ink-800'
+                                          positionColors[player.position as keyof typeof positionColors] || 'bg-ink-100 text-ink-800'
                                         }`}
                                       >
                                         {player.position}

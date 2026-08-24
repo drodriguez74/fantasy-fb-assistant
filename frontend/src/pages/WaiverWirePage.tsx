@@ -414,7 +414,7 @@ export function WaiverWirePage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-ink-900">Waiver Wire</h1>
+            <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Waiver Wire</h1>
             <p className="text-ink-600 mt-2">
               Who's available, who's trending, and who you should drop to make room.
             </p>
@@ -443,6 +443,8 @@ export function WaiverWirePage() {
           </div>
         </div>
       </div>
+
+      <div className="yard-divider mb-6" aria-hidden="true" />
 
       {/* Error Display */}
       {error && (
@@ -557,11 +559,11 @@ export function WaiverWirePage() {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
                           <div>
                             <span className="font-medium text-ink-700">Projected Points:</span>
-                            <span className="ml-2">{rec.projected_points?.toFixed(1) || 'N/A'}</span>
+                            <span className="ml-2 font-stat tabular-nums">{rec.projected_points?.toFixed(1) || 'N/A'}</span>
                           </div>
                           <div>
                             <span className="font-medium text-ink-700">Ownership:</span>
-                            <span className="ml-2">
+                            <span className="ml-2 font-stat tabular-nums">
                               {rec.ownership_percentage != null ? `${rec.ownership_percentage.toFixed(1)}%` : 'N/A'}
                             </span>
                           </div>
@@ -583,12 +585,12 @@ export function WaiverWirePage() {
                             <div className="flex-1">
                               <ConfidenceBar value={rec.confidence_score} />
                             </div>
-                            <span className="text-sm text-ink-700 font-medium w-10 text-right">
+                            <span className="text-sm font-stat tabular-nums text-ink-700 font-medium w-10 text-right">
                               {(rec.confidence_score * 100).toFixed(0)}%
                             </span>
                           </div>
                           {addCount != null && (
-                            <p className="mt-1 text-xs text-ink-500">
+                            <p className="mt-1 text-xs font-stat tabular-nums text-ink-500">
                               {addCount.toLocaleString()} adds &middot; 24h
                             </p>
                           )}
@@ -706,7 +708,7 @@ export function WaiverWirePage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums font-medium text-ink-900">
                         {player.count_24h.toLocaleString()}
                       </td>
                       <td className="px-6 py-4 text-sm text-ink-500">
@@ -872,7 +874,7 @@ export function WaiverWirePage() {
                               <div className="flex-1">
                                 <MatchupRatingBar rating={target.matchup_rating} />
                               </div>
-                              <span className="text-sm text-ink-700 font-medium w-12 text-right">
+                              <span className="text-sm font-stat tabular-nums text-ink-700 font-medium w-12 text-right">
                                 {target.matchup_rating.toFixed(1)}/10
                               </span>
                             </div>
@@ -912,7 +914,7 @@ export function WaiverWirePage() {
                               {(target.is_home_game ?? target.is_home) ? 'vs' : '@'} {target.opponent || 'TBD'}
                             </span>
                           </span>
-                          <span className="text-xs text-danger-700 font-medium">
+                          <span className="text-xs font-stat tabular-nums text-danger-700 font-medium">
                             {target.matchup_rating.toFixed(1)}/10
                           </span>
                         </div>
@@ -946,7 +948,7 @@ export function WaiverWirePage() {
                           {outlook.best_matchups.map((m) => (
                             <li key={m.team} className="flex justify-between text-ink-700">
                               <span>{m.team}</span>
-                              <span className="text-success-700">{m.rating.toFixed(1)}/10</span>
+                              <span className="font-stat tabular-nums text-success-700">{m.rating.toFixed(1)}/10</span>
                             </li>
                           ))}
                         </ul>
@@ -957,7 +959,7 @@ export function WaiverWirePage() {
                           {outlook.worst_matchups.map((m) => (
                             <li key={m.team} className="flex justify-between text-ink-700">
                               <span>{m.team}</span>
-                              <span className="text-danger-700">{m.rating.toFixed(1)}/10</span>
+                              <span className="font-stat tabular-nums text-danger-700">{m.rating.toFixed(1)}/10</span>
                             </li>
                           ))}
                         </ul>
@@ -1023,8 +1025,8 @@ export function WaiverWirePage() {
                         </div>
                         <p className="text-sm text-ink-600">{player.reason}</p>
                         <div className="mt-2 text-xs text-ink-500">
-                          Confidence: {((player.confidence ?? 0) * 100).toFixed(0)}% •
-                          Projected: {player.projected_points?.toFixed(1) || 'N/A'} pts
+                          Confidence: <span className="font-stat tabular-nums">{((player.confidence ?? 0) * 100).toFixed(0)}%</span> •
+                          Projected: <span className="font-stat tabular-nums">{player.projected_points?.toFixed(1) || 'N/A'}</span> pts
                         </div>
                       </div>
                     ))}
@@ -1040,7 +1042,7 @@ export function WaiverWirePage() {
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium">{player.player_name}</span>
                           <span className="text-xs text-danger-600">
-                            Drop Score: {((player.drop_score ?? 0) * 100).toFixed(0)}%
+                            Drop Score: <span className="font-stat tabular-nums">{((player.drop_score ?? 0) * 100).toFixed(0)}%</span>
                           </span>
                         </div>
                         <p className="text-sm text-ink-600">{player.reason}</p>

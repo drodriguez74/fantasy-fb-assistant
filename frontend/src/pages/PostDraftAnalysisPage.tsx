@@ -215,7 +215,7 @@ export function PostDraftAnalysisPage() {
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold text-ink-900">Post-Draft Analysis</h1>
+        <h1 className="font-display font-black uppercase tracking-tight text-2xl md:text-3xl text-ink-900">Post-Draft Analysis</h1>
         <p className="text-ink-500 mt-2">
           Grade your roster against real league requirements and find the right waiver targets for the holes it actually has
         </p>
@@ -395,7 +395,7 @@ export function PostDraftAnalysisPage() {
               </div>
 
               <div className="text-center mb-4">
-                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full text-2xl font-bold ${getGradeColor(analysis.overall_grade.grade)}`}>
+                <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full font-stat text-2xl font-bold ${getGradeColor(analysis.overall_grade.grade)}`}>
                   {analysis.overall_grade.grade}
                 </div>
                 <p className="text-lg font-medium text-ink-900 mt-2">

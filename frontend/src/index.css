@@ -71,10 +71,31 @@
   --color-danger-600: #dc2626;
   --color-danger-700: #b91c1c;
   --color-danger-800: #991b1b;
+
+  /*
+   * Type system.
+   *
+   * The app previously only *referenced* "Inter" in CSS without ever loading
+   * it -- everything has silently been rendering in the OS default sans this
+   * whole time, which is a big part of why the app reads as visually flat.
+   *
+   *   - `--font-sans`: Inter, now actually loaded, for body copy and UI chrome.
+   *   - `--font-display`: Big Shoulders Display -- a real condensed athletic
+   *     face (built for varsity/stadium signage) for headlines, the wordmark,
+   *     and section labels. Deliberately NOT Bebas/Anton, which read as the
+   *     generic "sporty AI template" choice at this point. Used with
+   *     restraint -- headlines and labels only, never body copy.
+   *   - `--font-stat`: IBM Plex Mono for scoreboard-style numbers (records,
+   *     stat-tile values) -- tabular digits read as "real data," matching
+   *     the box-score/scoreboard vernacular of the subject.
+   */
+  --font-sans: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
+  --font-stat: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
 }
 
 body {
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light;
@@ -84,4 +105,66 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Signature element: a "yard-marker" divider -- a hairline with small
+ * perpendicular ticks at regular intervals, standing in for the chalked
+ * yard lines on a football field. Used in place of a plain border wherever
+ * a page needs to mark a real section break (nav/page boundary, hero/body
+ * boundary) -- not decoration, a structural device borrowed from the
+ * subject's own vernacular.
+ */
+.yard-divider {
+  height: 7px;
+  background:
+    repeating-linear-gradient(
+        to right,
+        var(--color-ink-300) 0,
+        var(--color-ink-300) 2px,
+        transparent 2px,
+        transparent 44px
+      )
+      top / 100% 6px no-repeat,
+    linear-gradient(var(--color-ink-200), var(--color-ink-200)) bottom / 100% 1px no-repeat;
+}
+
+/*
+ * Hero entrance -- the one orchestrated motion moment on the page (per
+ * frontend-design guidance: one deliberate sequence beats scattered
+ * hover/scroll effects everywhere). Lines rise and settle in sequence,
+ * like a broadcast lower-third building itself in.
+ */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-rise-in {
+  animation: rise-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+.animate-rise-in-1 {
+  animation-delay: 0.04s;
+}
+.animate-rise-in-2 {
+  animation-delay: 0.12s;
+}
+.animate-rise-in-3 {
+  animation-delay: 0.22s;
+}
+.animate-rise-in-4 {
+  animation-delay: 0.32s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-rise-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
 }

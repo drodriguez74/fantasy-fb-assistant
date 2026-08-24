@@ -42,13 +42,16 @@ export function Navbar() {
   const isMoreActive = moreNavigation.some((item) => item.href === location.pathname)
 
   return (
-    <nav className="bg-white shadow-sm border-b border-ink-200">
+    <nav className="bg-white shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex min-w-0">
             <div className="flex-shrink-0 flex items-center">
-              <Link to="/" className="text-xl font-bold text-accent-600">
-                FF Assistant
+              <Link
+                to="/"
+                className="font-display font-black uppercase tracking-wide text-2xl leading-none text-ink-900"
+              >
+                FF <span className="text-accent-500">Assistant</span>
               </Link>
             </div>
             <div className="hidden md:ml-6 md:flex md:items-center md:space-x-6">
@@ -167,6 +170,8 @@ export function Navbar() {
           </div>
         </div>
       </div>
+
+      <div className="yard-divider" aria-hidden="true" />
 
       {mobileMenuOpen && (
         <div id="mobile-nav-panel" className="md:hidden border-t border-ink-200">

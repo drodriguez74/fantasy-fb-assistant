@@ -4,6 +4,7 @@ import { PlusIcon, StarIcon, XMarkIcon, ExclamationTriangleIcon } from '@heroico
 import { draft, getErrorMessage, type MockDraftResult } from '../services/api'
 import { DraftPickLog, type PickLogEntry } from '../components/draft'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
+import { positionColors } from '../components/players/playerDisplay'
 
 interface DraftSettings {
   scoringFormat: 'PPR' | 'Half PPR' | 'Standard'
@@ -54,18 +55,6 @@ function getPositionNeeds(roster: { position: string }[]): string[] {
     .map(([pos]) => pos)
 
   return needs.length > 0 ? needs : ['RB', 'WR']
-}
-
-// Local position-badge colors for the post-draft value table below, matching
-// the palette DraftPickLog.tsx already uses for the same badges elsewhere on
-// this page.
-const POSITION_BADGE_COLORS: Record<string, string> = {
-  QB: 'bg-red-100 text-red-800',
-  RB: 'bg-green-100 text-green-800',
-  WR: 'bg-blue-100 text-blue-800',
-  TE: 'bg-purple-100 text-purple-800',
-  K: 'bg-yellow-100 text-yellow-800',
-  DEF: 'bg-gray-100 text-gray-800',
 }
 
 const GRADE_BADGE_COLORS: Record<string, string> = {
@@ -568,7 +557,7 @@ export function DraftPage() {
       )}
 
       <div>
-        <h1 className="text-3xl font-bold text-ink-900">Draft Assistant</h1>
+        <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Draft Assistant</h1>
         <p className="text-ink-600 mt-2">
           AI-powered draft recommendations optimized for {settings.scoringFormat} scoring
         </p>
@@ -592,7 +581,7 @@ export function DraftPage() {
       )}
 
       {botSimError && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+        <div className="bg-danger-50 border border-danger-200 rounded-lg p-4 text-sm text-danger-800">
           {botSimError}
         </div>
       )}
@@ -730,7 +719,7 @@ export function DraftPage() {
                           <span className="font-medium text-ink-900 truncate">{entry.player_name}</span>
                           <span
                             className={`px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
-                              POSITION_BADGE_COLORS[entry.position] || 'bg-ink-100 text-ink-800'
+                              positionColors[entry.position as keyof typeof positionColors] || 'bg-ink-100 text-ink-800'
                             }`}
                           >
                             {entry.position}
@@ -738,7 +727,7 @@ export function DraftPage() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="text-xs text-ink-500">{entry.value_category}</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-bold ${getGradeBadgeColor(entry.value_grade)}`}>
+                          <span className={`px-2 py-0.5 rounded font-stat text-xs font-bold ${getGradeBadgeColor(entry.value_grade)}`}>
                             {entry.value_grade}
                           </span>
                         </div>

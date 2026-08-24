@@ -297,7 +297,7 @@ export function LiveDraftPage() {
   if (!user) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-500">Please log in to use the Live Draft Assistant.</p>
+        <p className="text-ink-500">Please log in to use the Live Draft Assistant.</p>
       </div>
     )
   }
@@ -306,40 +306,40 @@ export function LiveDraftPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Live Draft Assistant</h1>
-          <p className="text-gray-600 mt-2">
+          <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Live Draft Assistant</h1>
+          <p className="text-ink-600 mt-2">
             Real-time AI-powered draft recommendations with live updates
           </p>
         </div>
-        
+
         {wsConnected && (
-          <div className="flex items-center space-x-2 text-green-600">
-            <div className="w-2 h-2 bg-green-600 rounded-full animate-pulse"></div>
+          <div className="flex items-center space-x-2 text-success-600">
+            <div className="w-2 h-2 bg-success-600 rounded-full animate-pulse"></div>
             <span className="text-sm font-medium">Live</span>
           </div>
         )}
       </div>
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
+        <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded">
           {error}
         </div>
       )}
 
       {!isConnected ? (
-        <div className="bg-white rounded-lg shadow-sm border p-6">
-          <h2 className="text-xl font-semibold mb-4">Start Draft Session</h2>
-          
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+          <h2 className="text-xl font-semibold text-ink-900 mb-4">Start Draft Session</h2>
+
           {availableLeagues.length === 0 ? (
             <div className="text-center py-8">
-              <div className="text-gray-400 text-4xl mb-4">🏈</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Leagues Connected</h3>
-              <p className="text-gray-500 mb-4">
+              <div className="text-ink-400 text-4xl mb-4">🏈</div>
+              <h3 className="text-lg font-semibold text-ink-900 mb-2">No Leagues Connected</h3>
+              <p className="text-ink-500 mb-4">
                 Connect your ESPN or Yahoo league first to use the Live Draft Assistant
               </p>
               <button
                 onClick={() => window.location.href = '/leagues'}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600"
               >
                 Connect League
               </button>
@@ -347,7 +347,7 @@ export function LiveDraftPage() {
           ) : (
             <>
               <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-ink-700 mb-2">
                   Select League
                 </label>
                 <select
@@ -356,7 +356,7 @@ export function LiveDraftPage() {
                     const league = availableLeagues.find(l => l.id === parseInt(e.target.value))
                     setSelectedLeague(league || null)
                   }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 >
                   <option value="">Choose a league...</option>
                   {availableLeagues.map((league) => (
@@ -368,24 +368,24 @@ export function LiveDraftPage() {
               </div>
 
               {selectedLeague && (
-                <div className="bg-gray-50 rounded-lg p-4 mb-6">
-                  <h3 className="font-medium text-gray-900 mb-2">League Details</h3>
+                <div className="bg-ink-50 rounded-lg p-4 mb-6">
+                  <h3 className="font-medium text-ink-900 mb-2">League Details</h3>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
-                      <span className="text-gray-500">Platform:</span>
+                      <span className="text-ink-500">Platform:</span>
                       <span className="ml-2 font-medium">{selectedLeague.platform}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Size:</span>
-                      <span className="ml-2 font-medium">{selectedLeague.league_size} teams</span>
+                      <span className="text-ink-500">Size:</span>
+                      <span className="ml-2 font-stat tabular-nums font-medium">{selectedLeague.league_size} teams</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Scoring:</span>
+                      <span className="text-ink-500">Scoring:</span>
                       <span className="ml-2 font-medium">{selectedLeague.scoring_format}</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Season:</span>
-                      <span className="ml-2 font-medium">{selectedLeague.season}</span>
+                      <span className="text-ink-500">Season:</span>
+                      <span className="ml-2 font-stat tabular-nums font-medium">{selectedLeague.season}</span>
                     </div>
                   </div>
                 </div>
@@ -396,7 +396,7 @@ export function LiveDraftPage() {
           <button
             onClick={startDraftSession}
             disabled={loading}
-            className="w-full bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+            className="w-full bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
             {loading ? (
               <>
@@ -413,46 +413,46 @@ export function LiveDraftPage() {
           {/* Main Draft Board */}
           <div className="xl:col-span-2 space-y-6">
             {/* Top Recommendations */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold">AI Recommendations</h2>
+                <h2 className="text-xl font-semibold text-ink-900">AI Recommendations</h2>
                 {wsConnected && (
-                  <span className="text-sm text-green-600">Live Updates</span>
+                  <span className="text-sm text-success-600">Live Updates</span>
                 )}
               </div>
-              
+
               {recommendations.length > 0 ? (
                 <div className="space-y-3">
                   {recommendations.slice(0, 5).map((rec, index) => (
                     <div
                       key={rec.player.player_id}
-                      className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border hover:shadow-md transition-shadow cursor-pointer"
+                      className="flex items-center justify-between p-4 bg-accent-50 rounded-lg border border-ink-200 hover:shadow-md hover:border-accent-300 transition-all cursor-pointer"
                       onClick={() => makePick(rec.player)}
                     >
                       <div className="flex-1">
                         <div className="flex items-center space-x-3">
-                          <div className="w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                          <div className="w-8 h-8 bg-accent-500 text-white rounded-full flex items-center justify-center font-stat font-bold text-sm">
                             {index + 1}
                           </div>
                           <div>
-                            <h3 className="font-semibold text-gray-900">{rec.player.full_name}</h3>
-                            <p className="text-sm text-gray-600">
+                            <h3 className="font-semibold text-ink-900">{rec.player.full_name}</h3>
+                            <p className="text-sm text-ink-600">
                               {rec.player.position} - {rec.player.team}
                             </p>
                           </div>
                         </div>
-                        <p className="text-sm text-gray-700 mt-2">{rec.reason}</p>
+                        <p className="text-sm text-ink-700 mt-2">{rec.reason}</p>
                       </div>
-                      
+
                       <div className="text-right ml-4">
-                        <div className="text-sm font-medium text-gray-900">
+                        <div className="text-sm font-medium text-ink-900">
                           Tier {rec.tier}
                         </div>
-                        <div className="text-xs text-gray-500">
+                        <div className="text-xs font-stat tabular-nums text-ink-500">
                           {rec.confidence}% confidence
                         </div>
                         {rec.player.projected_points && (
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs font-stat tabular-nums text-ink-500">
                             Proj: {rec.player.projected_points.toFixed(1)} pts
                           </div>
                         )}
@@ -461,39 +461,39 @@ export function LiveDraftPage() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-300 mx-auto mb-4"></div>
+                <div className="text-center py-8 text-ink-500">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-ink-300 mx-auto mb-4"></div>
                   Loading recommendations...
                 </div>
               )}
             </div>
 
             {/* Draft Board */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h2 className="text-xl font-semibold mb-4">Available Players</h2>
-              
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+              <h2 className="text-xl font-semibold text-ink-900 mb-4">Available Players</h2>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-96 overflow-y-auto">
                 {draftBoard.slice(0, 20).map((player) => (
                   <div
                     key={player.player_id}
-                    className="flex items-center justify-between p-3 bg-gray-50 rounded-lg hover:bg-gray-100 cursor-pointer transition-colors"
+                    className="flex items-center justify-between p-3 bg-ink-50 rounded-lg hover:bg-ink-100 cursor-pointer transition-colors"
                     onClick={() => makePick(player)}
                   >
                     <div>
-                      <div className="font-medium text-gray-900">{player.full_name}</div>
-                      <div className="text-sm text-gray-600">
+                      <div className="font-medium text-ink-900">{player.full_name}</div>
+                      <div className="text-sm text-ink-600">
                         {player.position} - {player.team}
                       </div>
                     </div>
                     <div className="text-right flex items-center gap-3">
                       <div>
                         {player.projected_points && (
-                          <div className="text-sm font-medium text-gray-700">
+                          <div className="text-sm font-stat tabular-nums font-medium text-ink-700">
                             {player.projected_points.toFixed(1)} pts
                           </div>
                         )}
                         {player.adp && (
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs font-stat tabular-nums text-ink-500">
                             ADP: {player.adp.toFixed(1)}
                           </div>
                         )}
@@ -509,7 +509,7 @@ export function LiveDraftPage() {
                           e.stopPropagation()
                           markPlayerDrafted(player)
                         }}
-                        className="text-xs text-gray-400 hover:text-red-600 border border-gray-300 hover:border-red-300 rounded px-2 py-1 transition-colors"
+                        className="text-xs text-ink-400 hover:text-danger-600 border border-ink-300 hover:border-danger-300 rounded px-2 py-1 transition-colors"
                       >
                         Mark gone
                       </button>
@@ -523,29 +523,29 @@ export function LiveDraftPage() {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Session Info */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold">Draft Session</h2>
+                <h2 className="text-lg font-semibold text-ink-900">Draft Session</h2>
                 <button
                   onClick={endSession}
-                  className="text-sm text-red-600 hover:text-red-700"
+                  className="text-sm text-danger-600 hover:text-danger-700"
                 >
                   End Session
                 </button>
               </div>
-              
+
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Platform:</span>
+                  <span className="text-ink-600">Platform:</span>
                   <span className="font-medium capitalize">{currentSession?.platform}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">League:</span>
+                  <span className="text-ink-600">League:</span>
                   <span className="font-medium">{currentSession?.league_id}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">Status:</span>
-                  <span className="font-medium text-green-600 capitalize">
+                  <span className="text-ink-600">Status:</span>
+                  <span className="font-medium text-success-600 capitalize">
                     {currentSession?.status}
                   </span>
                 </div>
@@ -553,19 +553,19 @@ export function LiveDraftPage() {
             </div>
 
             {/* Your Roster */}
-            <div className="bg-white rounded-lg shadow-sm border p-6">
-              <h2 className="text-lg font-semibold mb-4">Your Roster</h2>
-              
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+              <h2 className="text-lg font-semibold text-ink-900 mb-4">Your Roster</h2>
+
               {userRoster.length > 0 ? (
                 <div className="space-y-3">
                   {userRoster.map((player, index) => (
                     <div key={player.player_id} className="flex items-center space-x-3">
-                      <div className="w-6 h-6 bg-green-100 text-green-800 rounded-full flex items-center justify-center text-xs font-bold">
+                      <div className="w-6 h-6 bg-ink-100 text-ink-700 rounded-full flex items-center justify-center font-stat text-xs font-bold">
                         {index + 1}
                       </div>
                       <div>
-                        <div className="font-medium text-gray-900">{player.full_name}</div>
-                        <div className="text-sm text-gray-600">
+                        <div className="font-medium text-ink-900">{player.full_name}</div>
+                        <div className="text-sm text-ink-600">
                           {player.position} - {player.team}
                         </div>
                       </div>
@@ -573,7 +573,7 @@ export function LiveDraftPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-gray-500 text-sm">
+                <p className="text-ink-500 text-sm">
                   Your draft picks will appear here
                 </p>
               )}
@@ -581,18 +581,18 @@ export function LiveDraftPage() {
 
             {/* Team Analysis */}
             {teamAnalysis && (
-              <div className="bg-white rounded-lg shadow-sm border p-6">
-                <h2 className="text-lg font-semibold mb-4">Team Analysis</h2>
-                
+              <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+                <h2 className="text-lg font-semibold text-ink-900 mb-4">Team Analysis</h2>
+
                 <div className="space-y-4">
                   {teamAnalysis.roster_needs && teamAnalysis.roster_needs.length > 0 && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Roster Needs</h3>
+                      <h3 className="text-sm font-medium text-ink-700 mb-2">Roster Needs</h3>
                       <div className="flex flex-wrap gap-1">
                         {teamAnalysis.roster_needs.map((need, index) => (
                           <span
                             key={`need-${need}-${index}`}
-                            className="px-2 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium"
+                            className="px-2 py-1 bg-warning-100 text-warning-800 rounded-full text-xs font-medium"
                           >
                             {need}
                           </span>
@@ -600,11 +600,11 @@ export function LiveDraftPage() {
                       </div>
                     </div>
                   )}
-                  
+
                   {teamAnalysis.next_best_pick && (
                     <div>
-                      <h3 className="text-sm font-medium text-gray-700 mb-2">Next Best Pick</h3>
-                      <p className="text-sm text-gray-900 font-medium">
+                      <h3 className="text-sm font-medium text-ink-700 mb-2">Next Best Pick</h3>
+                      <p className="text-sm text-ink-900 font-medium">
                         {teamAnalysis.next_best_pick}
                       </p>
                     </div>

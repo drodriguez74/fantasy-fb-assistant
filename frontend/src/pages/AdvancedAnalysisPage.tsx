@@ -1155,7 +1155,7 @@ export function AdvancedAnalysisPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-ink-900">Advanced Analysis</h1>
+          <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Advanced Analysis</h1>
           <p className="text-ink-600 mt-2">
             Compare players head-to-head, check strength of schedule, and spot breakouts before the waiver wire catches on
           </p>

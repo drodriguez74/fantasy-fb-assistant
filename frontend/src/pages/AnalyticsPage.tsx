@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { api, players as playersApi, getErrorMessage } from '../services/api'
+import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import {
   ChartBarIcon,
   BeakerIcon,
@@ -154,7 +155,7 @@ export function AnalyticsPage() {
     try {
       setLoading(true)
       setError('')
-      
+
       // Use the shared axios instance (services/api.ts) rather than a raw
       // relative fetch(): the old '/api/v1/...' path resolved against the
       // frontend's own dev-server origin, not the backend (see the same fix
@@ -209,7 +210,7 @@ export function AnalyticsPage() {
     try {
       setLoading(true)
       setError('')
-      
+
       // Use the shared axios instance (services/api.ts) rather than a raw
       // relative fetch() -- see the comment on runPlayerPrediction above for
       // why the old relative '/api/v1/...' path never reached the backend.
@@ -232,9 +233,9 @@ export function AnalyticsPage() {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="text-center">
-          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Authentication Required</h3>
-          <p className="mt-1 text-sm text-gray-500">Please sign in to access advanced analytics.</p>
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-ink-400" />
+          <h3 className="mt-2 text-sm font-medium text-ink-900">Authentication Required</h3>
+          <p className="mt-1 text-sm text-ink-500">Please sign in to access advanced analytics.</p>
         </div>
       </div>
     )
@@ -254,14 +255,14 @@ export function AnalyticsPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Advanced Analytics</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Advanced Analytics</h1>
+            <p className="text-ink-600 mt-2">
               Machine learning predictions, optimization algorithms, and statistical analysis
             </p>
           </div>
           <div className="flex items-center space-x-3">
-            <BeakerIcon className="h-8 w-8 text-blue-600" />
-            <span className="text-sm text-blue-600 bg-blue-50 px-3 py-1 rounded-full">
+            <BeakerIcon className="h-8 w-8 text-accent-500" />
+            <span className="text-xs font-semibold text-accent-800 bg-accent-100 px-3 py-1 rounded-full">
               Beta
             </span>
           </div>
@@ -270,19 +271,19 @@ export function AnalyticsPage() {
 
       {/* Error Display */}
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="mb-6 bg-danger-50 border border-danger-200 rounded-md p-4">
           <div className="flex">
-            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            <ExclamationTriangleIcon className="h-5 w-5 text-danger-500" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">{error}</div>
+              <h3 className="text-sm font-medium text-danger-800">Error</h3>
+              <div className="mt-2 text-sm text-danger-700">{error}</div>
             </div>
           </div>
         </div>
       )}
 
       {/* Navigation Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-ink-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => {
             const Icon = tab.icon
@@ -290,10 +291,10 @@ export function AnalyticsPage() {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'predictions' | 'optimization' | 'correlations' | 'clustering' | 'visualization')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-accent-500 text-accent-600'
+                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -307,19 +308,19 @@ export function AnalyticsPage() {
       {/* Tab Content */}
       {activeTab === 'predictions' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <h3 className="text-lg font-semibold text-ink-900 mb-4 flex items-center">
               <CpuChipIcon className="h-5 w-5 mr-2" />
               Machine Learning Player Predictions
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Player</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Player</label>
                 <select
                   value={selectedPlayerId}
                   onChange={(e) => setSelectedPlayerId(Number(e.target.value))}
-                  className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 w-full"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 >
                   {samplePlayers.map(player => (
                     <option key={player.id} value={player.id}>
@@ -328,25 +329,25 @@ export function AnalyticsPage() {
                   ))}
                 </select>
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Weeks Ahead</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Weeks Ahead</label>
                 <input
                   type="number"
                   value={weeksAhead}
                   onChange={(e) => setWeeksAhead(Number(e.target.value))}
                   min="1"
                   max="17"
-                  className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 w-full"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Model Type</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Model Type</label>
                 <select
                   value={modelType}
                   onChange={(e) => setModelType(e.target.value)}
-                  className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 w-full"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 >
                   <option value="ensemble">Ensemble (Recommended)</option>
                   <option value="linear">Linear Regression</option>
@@ -354,12 +355,12 @@ export function AnalyticsPage() {
                   <option value="gb">Gradient Boosting</option>
                 </select>
               </div>
-              
+
               <div className="flex items-end">
                 <button
                   onClick={runPlayerPrediction}
                   disabled={loading}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2 w-full justify-center"
+                  className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 w-full justify-center focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 transition-colors"
                 >
                   {loading ? <ClockIcon className="h-4 w-4 animate-spin" /> : <RocketLaunchIcon className="h-4 w-4" />}
                   <span>{loading ? 'Predicting...' : 'Predict'}</span>
@@ -368,14 +369,14 @@ export function AnalyticsPage() {
             </div>
 
             {predictionResult && (
-              <div className="border-t pt-6">
-                <h4 className="font-medium text-gray-900 mb-4">Prediction Results</h4>
+              <div className="border-t border-ink-200 pt-6">
+                <h4 className="font-semibold text-ink-900 mb-4">Prediction Results</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <h5 className="font-medium text-gray-700 mb-2">Model Predictions</h5>
+                    <h5 className="font-semibold text-ink-700 mb-2">Model Predictions</h5>
                     <div className="space-y-2">
                       {Object.entries(predictionResult.predictions).map(([model, prediction]) => (
-                        <div key={model} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <div key={model} className="flex justify-between items-center p-2 bg-ink-50 rounded">
                           <span className="capitalize">{model.replace('_', ' ')}</span>
                           <span className="font-semibold">{prediction.toFixed(1)} pts</span>
                         </div>
@@ -383,15 +384,15 @@ export function AnalyticsPage() {
                     </div>
                   </div>
                   <div>
-                    <h5 className="font-medium text-gray-700 mb-2">Confidence Scores</h5>
+                    <h5 className="font-semibold text-ink-700 mb-2">Confidence Scores</h5>
                     <div className="space-y-2">
                       {Object.entries(predictionResult.confidence_scores).map(([model, confidence]) => (
-                        <div key={model} className="flex justify-between items-center p-2 bg-gray-50 rounded">
+                        <div key={model} className="flex justify-between items-center p-2 bg-ink-50 rounded">
                           <span className="capitalize">{model.replace('_', ' ')}</span>
                           <div className="flex items-center space-x-2">
-                            <div className="w-16 bg-gray-200 rounded-full h-2">
-                              <div 
-                                className="bg-green-600 h-2 rounded-full" 
+                            <div className="w-16 bg-ink-100 rounded-full h-2">
+                              <div
+                                className="bg-accent-500 h-2 rounded-full"
                                 style={{ width: `${confidence * 100}%` }}
                               ></div>
                             </div>
@@ -402,8 +403,8 @@ export function AnalyticsPage() {
                     </div>
                   </div>
                 </div>
-                <div className="mt-4 p-3 bg-blue-50 rounded">
-                  <p className="text-sm text-blue-700">
+                <div className="mt-4 p-3 bg-accent-50 rounded">
+                  <p className="text-sm text-accent-800">
                     <strong>Data Points Used:</strong> {predictionResult.data_points_used} games |
                     <strong> Forecast Period:</strong> {predictionResult.weeks_ahead} weeks
                   </p>
@@ -416,12 +417,12 @@ export function AnalyticsPage() {
 
       {activeTab === 'optimization' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-1 flex items-center">
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <h3 className="text-lg font-semibold text-ink-900 mb-1 flex items-center">
               <CalculatorIcon className="h-5 w-5 mr-2" />
               Lineup Optimization Engine
             </h3>
-            <p className="text-sm text-gray-500 mb-4">
+            <p className="text-sm text-ink-500 mb-4">
               Optimizes from the top available players (live Sleeper data), ranked per position.
               Projected points and salary are estimated from that ranking, not a real DFS salary
               feed or verified weekly projections -- this is not your own roster.
@@ -429,33 +430,33 @@ export function AnalyticsPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Salary Cap</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Salary Cap</label>
                 <input
                   type="number"
                   value={salaryCap}
                   onChange={(e) => setSalaryCap(Number(e.target.value))}
-                  className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 w-full"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 />
               </div>
-              
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Optimization Type</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Optimization Type</label>
                 <select
                   value={optimizationType}
                   onChange={(e) => setOptimizationType(e.target.value)}
-                  className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 w-full"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 >
                   <option value="maximize_points">Maximize Points</option>
                   <option value="risk_adjusted">Risk Adjusted</option>
                   <option value="ceiling_optimizer">Ceiling Optimizer</option>
                 </select>
               </div>
-              
+
               <div className="flex items-end">
                 <button
                   onClick={runLineupOptimization}
                   disabled={loading}
-                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center space-x-2 w-full justify-center"
+                  className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 w-full justify-center focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 transition-colors"
                 >
                   {loading ? <ClockIcon className="h-4 w-4 animate-spin" /> : <AdjustmentsHorizontalIcon className="h-4 w-4" />}
                   <span>{loading ? 'Optimizing...' : 'Optimize'}</span>
@@ -464,49 +465,62 @@ export function AnalyticsPage() {
             </div>
 
             {optimizationResult && (
-              <div className="border-t pt-6">
-                <h4 className="font-medium text-gray-900 mb-1">Optimal Lineup</h4>
+              <div className="border-t border-ink-200 pt-6">
+                <h4 className="font-semibold text-ink-900 mb-1">Optimal Lineup</h4>
                 {optimizerPoolSize !== null && (
-                  <p className="text-sm text-gray-500 mb-4">
+                  <p className="text-sm text-ink-500 mb-4">
                     Selected from {optimizerPoolSize} live Sleeper players.
                   </p>
                 )}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   <div>
-                    <h5 className="font-medium text-gray-700 mb-2">Selected Players</h5>
+                    <h5 className="font-semibold text-ink-700 mb-2">Selected Players</h5>
                     <div className="space-y-2">
                       {optimizationResult.selected_players.map(player => (
-                        <div key={player.player_id} className="flex justify-between items-center p-3 border border-gray-200 rounded">
+                        <div key={player.player_id} className="flex justify-between items-center p-3 border border-ink-200 rounded">
                           <div>
                             <span className="font-medium">{player.name}</span>
-                            <span className="text-sm text-gray-500 ml-2">({player.position})</span>
+                            <span className="text-sm text-ink-500 ml-2">({player.position})</span>
                           </div>
                           <div className="text-right">
                             <div className="font-semibold">{player.projected_points.toFixed(1)} pts</div>
-                            <div className="text-sm text-gray-500">${player.salary.toLocaleString()}</div>
+                            <div className="text-sm text-ink-500">${player.salary.toLocaleString()}</div>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <h5 className="font-medium text-gray-700 mb-2">Optimization Summary</h5>
-                    <div className="space-y-3">
-                      <div className="flex justify-between p-2 bg-gray-50 rounded">
-                        <span>Total Projected Points</span>
-                        <span className="font-semibold text-green-600">{optimizationResult.projected_points.toFixed(1)}</span>
+                    <div className="flex items-center justify-between mb-2">
+                      <h5 className="font-semibold text-ink-700">Optimization Summary</h5>
+                      <DataConfidenceBadge level="heuristic" />
+                    </div>
+                    {/* Stat-tile pattern per STYLE_GUIDE.md #2: a solved LP has one
+                        answer, not a trend -- flat tiles, no gauge/sparkline. */}
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-white border border-ink-200 rounded-lg p-4">
+                        <p className="text-ink-500 text-xs uppercase font-semibold tracking-wide">Total Salary</p>
+                        <p className="font-stat text-2xl font-semibold text-ink-900 tabular-nums mt-1">
+                          ${optimizationResult.total_salary.toLocaleString()}
+                        </p>
                       </div>
-                      <div className="flex justify-between p-2 bg-gray-50 rounded">
-                        <span>Total Salary Used</span>
-                        <span className="font-semibold">${optimizationResult.total_salary.toLocaleString()}</span>
+                      <div className="bg-white border border-ink-200 rounded-lg p-4">
+                        <p className="text-ink-500 text-xs uppercase font-semibold tracking-wide">Salary Remaining</p>
+                        <p className="font-stat text-2xl font-semibold text-ink-900 tabular-nums mt-1">
+                          ${(optimizationResult.salary_cap - optimizationResult.total_salary).toLocaleString()}
+                        </p>
                       </div>
-                      <div className="flex justify-between p-2 bg-gray-50 rounded">
-                        <span>Salary Remaining</span>
-                        <span className="font-semibold">${(optimizationResult.salary_cap - optimizationResult.total_salary).toLocaleString()}</span>
+                      <div className="bg-white border border-ink-200 rounded-lg p-4">
+                        <p className="text-ink-500 text-xs uppercase font-semibold tracking-wide">Projected Points</p>
+                        <p className="font-stat text-2xl font-semibold text-ink-900 tabular-nums mt-1">
+                          {optimizationResult.projected_points.toFixed(1)}
+                        </p>
                       </div>
-                      <div className="flex justify-between p-2 bg-blue-50 rounded">
-                        <span>Objective Value</span>
-                        <span className="font-semibold text-blue-600">{optimizationResult.objective_value.toFixed(2)}</span>
+                      <div className="bg-white border border-ink-200 rounded-lg p-4">
+                        <p className="text-ink-500 text-xs uppercase font-semibold tracking-wide">Objective Value</p>
+                        <p className="font-stat text-2xl font-semibold text-ink-900 tabular-nums mt-1">
+                          {optimizationResult.objective_value.toFixed(2)}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -519,19 +533,19 @@ export function AnalyticsPage() {
 
       {activeTab === 'correlations' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <h3 className="text-lg font-semibold text-ink-900 mb-4 flex items-center">
               <ArrowTrendingUpIcon className="h-5 w-5 mr-2" />
               Player Correlation Analysis
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Position Filter</label>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Position Filter</label>
                 <select
                   value={correlationPosition}
                   onChange={(e) => setCorrelationPosition(e.target.value)}
-                  className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 w-full"
+                  className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                 >
                   <option value="">All Positions</option>
                   <option value="QB">Quarterback</option>
@@ -540,12 +554,12 @@ export function AnalyticsPage() {
                   <option value="TE">Tight End</option>
                 </select>
               </div>
-              
+
               <div className="flex items-end">
                 <button
                   onClick={runCorrelationAnalysis}
                   disabled={loading}
-                  className="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 disabled:opacity-50 flex items-center space-x-2 w-full justify-center"
+                  className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 w-full justify-center focus:outline-none focus:ring-2 focus:ring-accent-500 focus:ring-offset-2 transition-colors"
                 >
                   {loading ? <ClockIcon className="h-4 w-4 animate-spin" /> : <LightBulbIcon className="h-4 w-4" />}
                   <span>{loading ? 'Analyzing...' : 'Analyze'}</span>
@@ -554,21 +568,21 @@ export function AnalyticsPage() {
             </div>
 
             {correlationResult && (
-              <div className="border-t pt-6">
-                <h4 className="font-medium text-gray-900 mb-4">
+              <div className="border-t border-ink-200 pt-6">
+                <h4 className="font-semibold text-ink-900 mb-4">
                   Strong Correlations Found ({correlationResult.strong_correlations.length})
                 </h4>
                 <div className="space-y-3">
                   {correlationResult.strong_correlations.slice(0, 10).map((correlation, index) => (
-                    <div key={`correlation-${correlation.player1_name}-${correlation.player2_name}-${index}`} className="flex justify-between items-center p-3 border border-gray-200 rounded">
+                    <div key={`correlation-${correlation.player1_name}-${correlation.player2_name}-${index}`} className="flex justify-between items-center p-3 border border-ink-200 rounded">
                       <div>
                         <span className="font-medium">{correlation.player1_name}</span>
-                        <span className="text-gray-500 mx-2">↔</span>
+                        <span className="text-ink-500 mx-2">↔</span>
                         <span className="font-medium">{correlation.player2_name}</span>
                       </div>
                       <div className="flex items-center space-x-2">
                         <span className={`px-2 py-1 rounded text-xs ${
-                          correlation.correlation_type === 'positive' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                          correlation.correlation_type === 'positive' ? 'bg-success-100 text-success-800' : 'bg-danger-100 text-danger-800'
                         }`}>
                           {correlation.correlation_type}
                         </span>
@@ -577,9 +591,9 @@ export function AnalyticsPage() {
                     </div>
                   ))}
                 </div>
-                <div className="mt-4 p-3 bg-gray-50 rounded">
-                  <p className="text-sm text-gray-700">
-                    Analyzed {correlationResult.players_analyzed} players. 
+                <div className="mt-4 p-3 bg-ink-50 rounded">
+                  <p className="text-sm text-ink-700">
+                    Analyzed {correlationResult.players_analyzed} players.
                     Positive correlations indicate players whose performances tend to move together.
                   </p>
                 </div>
@@ -590,15 +604,15 @@ export function AnalyticsPage() {
       )}
 
       {activeTab === 'clustering' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+          <h3 className="text-lg font-semibold text-ink-900 mb-4 flex items-center">
             <UserGroupIcon className="h-5 w-5 mr-2" />
             Player Performance Clustering
           </h3>
           <div className="text-center py-12">
-            <BeakerIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Feature Coming Soon</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <BeakerIcon className="mx-auto h-12 w-12 text-ink-300" />
+            <h3 className="mt-2 text-sm font-medium text-ink-900">Feature Coming Soon</h3>
+            <p className="mt-1 text-sm text-ink-500">
               K-means clustering to group players by performance characteristics
             </p>
           </div>
@@ -606,15 +620,15 @@ export function AnalyticsPage() {
       )}
 
       {activeTab === 'visualization' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center">
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+          <h3 className="text-lg font-semibold text-ink-900 mb-4 flex items-center">
             <PresentationChartLineIcon className="h-5 w-5 mr-2" />
             Advanced Data Visualizations
           </h3>
           <div className="text-center py-12">
-            <ChartBarIcon className="mx-auto h-12 w-12 text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Interactive Charts Coming Soon</h3>
-            <p className="mt-1 text-sm text-gray-500">
+            <ChartBarIcon className="mx-auto h-12 w-12 text-ink-300" />
+            <h3 className="mt-2 text-sm font-medium text-ink-900">Interactive Charts Coming Soon</h3>
+            <p className="mt-1 text-sm text-ink-500">
               Advanced visualizations with correlation heatmaps, performance clusters, and trend analysis
             </p>
           </div>

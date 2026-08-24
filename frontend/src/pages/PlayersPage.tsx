@@ -82,7 +82,7 @@ export function PlayersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold text-ink-900">Player Rankings</h1>
+        <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Player Rankings</h1>
         <p className="text-ink-600 mt-2">
           Comprehensive player analysis and PPR rankings
         </p>
@@ -221,17 +221,17 @@ export function PlayersPage() {
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                       {player.team}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-ink-900">
                       {player.projected_points ? player.projected_points.toFixed(1) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-ink-500">
                       {player.adp ? player.adp.toFixed(1) : '-'}
                     </td>
                     {sort === 'consensus' && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
                         {player.consensus ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-ink-900 font-medium">#{player.consensus.consensus_rank}</span>
+                            <span className="text-ink-900 font-stat tabular-nums font-medium">#{player.consensus.consensus_rank}</span>
                             <DataConfidenceBadge
                               level="computed"
                               label={`${player.consensus.source_count} source${player.consensus.source_count === 1 ? '' : 's'}`}

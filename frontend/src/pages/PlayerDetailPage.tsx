@@ -55,7 +55,7 @@ export function PlayerDetailPage() {
 
       <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
         <div className="flex items-center space-x-3 mb-2">
-          <h1 className="text-2xl font-bold text-ink-900">{player.name}</h1>
+          <h1 className="font-display font-black uppercase tracking-tight text-2xl text-ink-900">{player.name}</h1>
           <span className={clsx('px-2 py-1 text-xs font-medium rounded-full', positionColors[player.position])}>
             {player.position}
           </span>
@@ -75,13 +75,13 @@ export function PlayerDetailPage() {
           {player.projected_points != null && (
             <div>
               <span className="text-ink-500 block">Projected</span>
-              <span className="font-medium">{player.projected_points.toFixed(1)} pts</span>
+              <span className="font-stat tabular-nums font-medium">{player.projected_points.toFixed(1)} pts</span>
             </div>
           )}
           {player.adp != null && (
             <div>
               <span className="text-ink-500 block">ADP</span>
-              <span className="font-medium">{player.adp.toFixed(1)}</span>
+              <span className="font-stat tabular-nums font-medium">{player.adp.toFixed(1)}</span>
             </div>
           )}
           {player.risk_level && (
