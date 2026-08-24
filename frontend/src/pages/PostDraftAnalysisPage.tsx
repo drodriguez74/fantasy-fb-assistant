@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { api, getErrorMessage } from '../services/api'
+import { riskColors } from '../components/players/playerDisplay'
+import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import {
   TrophyIcon,
   ExclamationTriangleIcon,
@@ -109,7 +111,7 @@ export function PostDraftAnalysisPage() {
     try {
       setLoading(true)
       setError('')
-      
+
       const response = await api.get(`/post-draft/import-roster/${leagueId}`)
       setRoster(response.data.roster)
       setShowImportOptions(false)
@@ -123,11 +125,11 @@ export function PostDraftAnalysisPage() {
 
   const analyzeRoster = async () => {
     if (!roster.length) return
-    
+
     try {
       setLoading(true)
       setError('')
-      
+
       const response = await api.post('/post-draft/analyze-roster', {
         roster: roster,
         league_settings: {
@@ -135,7 +137,7 @@ export function PostDraftAnalysisPage() {
           league_size: 12
         }
       })
-      
+
       setAnalysis(response.data.analysis.roster_analysis)
 
     } catch (err) {
@@ -147,10 +149,10 @@ export function PostDraftAnalysisPage() {
 
   const getPersonalizedWaivers = async () => {
     if (!roster.length) return
-    
+
     try {
       setLoading(true)
-      
+
       const response = await api.post(`/post-draft/personalized-waivers?week=${currentWeek}`, {
         roster: roster,
         league_settings: {
@@ -158,7 +160,7 @@ export function PostDraftAnalysisPage() {
           league_size: 12
         }
       })
-      
+
       setWaiverTargets(response.data.personalized_recommendations.personalized_targets || [])
 
     } catch (err) {
@@ -187,41 +189,46 @@ export function PostDraftAnalysisPage() {
     setRoster(roster.filter((_, i) => i !== index))
   }
 
+  // A-F letter grade collapsed onto the app's 3-tier semantic scale (no
+  // "blue"/"orange" hues exist in the real token system -- see
+  // STYLE_GUIDE.md section 1): A/B read as success, C/D as warning, F as
+  // danger, since a grade is a real categorical outcome, not a continuous
+  // score.
   const getGradeColor = (grade: string): string => {
     const colors: Record<string, string> = {
-      'A': 'bg-green-100 text-green-800',
-      'B': 'bg-blue-100 text-blue-800',
-      'C': 'bg-yellow-100 text-yellow-800',
-      'D': 'bg-orange-100 text-orange-800',
-      'F': 'bg-red-100 text-red-800'
+      'A': 'bg-success-100 text-success-800',
+      'B': 'bg-success-100 text-success-800',
+      'C': 'bg-warning-100 text-warning-800',
+      'D': 'bg-warning-100 text-warning-800',
+      'F': 'bg-danger-100 text-danger-800'
     }
-    return colors[grade] || 'bg-gray-100 text-gray-800'
+    return colors[grade] || 'bg-ink-100 text-ink-600'
   }
 
   const getPriorityColor = (priority: number): string => {
-    if (priority >= 80) return 'bg-red-100 text-red-800'
-    if (priority >= 60) return 'bg-yellow-100 text-yellow-800'
-    return 'bg-green-100 text-green-800'
+    if (priority >= 80) return 'bg-danger-100 text-danger-800'
+    if (priority >= 60) return 'bg-warning-100 text-warning-800'
+    return 'bg-success-100 text-success-800'
   }
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Post-Draft Analysis</h1>
-        <p className="text-gray-600 mt-2">
-          Evaluate your roster and get personalized waiver wire recommendations
+        <h1 className="text-2xl md:text-3xl font-bold text-ink-900">Post-Draft Analysis</h1>
+        <p className="text-ink-500 mt-2">
+          Grade your roster against real league requirements and find the right waiver targets for the holes it actually has
         </p>
       </div>
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="bg-danger-50 border border-danger-200 rounded-md p-4">
           <div className="flex">
-            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            <ExclamationTriangleIcon className="h-5 w-5 text-danger-600" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">{error}</div>
+              <h3 className="text-sm font-medium text-danger-800">Error</h3>
+              <div className="mt-2 text-sm text-danger-700">{error}</div>
             </div>
           </div>
         </div>
@@ -230,23 +237,23 @@ export function PostDraftAnalysisPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Roster Input */}
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold flex items-center">
-                <UserGroupIcon className="h-6 w-6 mr-2 text-blue-600" />
+                <UserGroupIcon className="h-6 w-6 mr-2 text-accent-500" />
                 Your Roster
               </h2>
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowImportOptions(!showImportOptions)}
-                  className="flex items-center text-green-600 hover:text-green-700 text-sm"
+                  className="flex items-center text-success-700 hover:text-success-800 text-sm"
                 >
                   <ArrowTrendingDownIcon className="h-4 w-4 mr-1" />
                   Import from League
                 </button>
                 <button
                   onClick={addPlayerToRoster}
-                  className="flex items-center text-blue-600 hover:text-blue-700 text-sm"
+                  className="flex items-center text-accent-600 hover:text-accent-700 text-sm"
                 >
                   <PlusIcon className="h-4 w-4 mr-1" />
                   Add Player
@@ -256,8 +263,8 @@ export function PostDraftAnalysisPage() {
 
             {/* League Import Options */}
             {showImportOptions && (
-              <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                <h3 className="text-sm font-medium text-blue-900 mb-3">Import Roster from Connected League</h3>
+              <div className="mb-4 p-4 bg-accent-50 border border-accent-200 rounded-lg">
+                <h3 className="text-sm font-medium text-ink-900 mb-3">Import Roster from Connected League</h3>
                 {userLeagues.length > 0 ? (
                   <div className="space-y-2">
                     {userLeagues.map((league) => (
@@ -265,22 +272,22 @@ export function PostDraftAnalysisPage() {
                         key={league.id}
                         onClick={() => importRosterFromLeague(league.id)}
                         disabled={loading}
-                        className="w-full text-left p-3 bg-white border border-blue-200 rounded-md hover:bg-blue-50 disabled:opacity-50"
+                        className="w-full text-left p-3 bg-white border border-accent-200 rounded-md hover:bg-accent-50 disabled:opacity-50"
                       >
                         <div className="flex justify-between items-center">
                           <div>
-                            <div className="font-medium text-gray-900">{league.name}</div>
-                            <div className="text-sm text-gray-500">
+                            <div className="font-medium text-ink-900">{league.name}</div>
+                            <div className="text-sm text-ink-500">
                               {league.platform.toUpperCase()} • {league.scoring_format} • {league.season}
                             </div>
                           </div>
-                          <div className="text-xs text-blue-600">Import</div>
+                          <div className="text-xs text-accent-600">Import</div>
                         </div>
                       </button>
                     ))}
                   </div>
                 ) : (
-                  <div className="text-sm text-gray-600">
+                  <div className="text-sm text-ink-500">
                     No connected leagues found. Connect a league first to import your roster.
                   </div>
                 )}
@@ -289,18 +296,18 @@ export function PostDraftAnalysisPage() {
 
             <div className="space-y-3 max-h-96 overflow-y-auto">
               {roster.map((player, index) => (
-                <div key={index} className="flex items-center gap-2 p-3 bg-gray-50 rounded-md">
+                <div key={index} className="flex items-center gap-2 p-3 bg-ink-50 rounded-md">
                   <input
                     type="text"
                     placeholder="Player name"
                     value={player.player_name}
                     onChange={(e) => updateRosterPlayer(index, 'player_name', e.target.value)}
-                    className="flex-1 text-sm border-gray-300 rounded-md"
+                    className="flex-1 text-sm border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                   />
                   <select
                     value={player.position}
                     onChange={(e) => updateRosterPlayer(index, 'position', e.target.value)}
-                    className="text-sm border-gray-300 rounded-md"
+                    className="text-sm border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                   >
                     <option value="QB">QB</option>
                     <option value="RB">RB</option>
@@ -314,18 +321,18 @@ export function PostDraftAnalysisPage() {
                     placeholder="Team"
                     value={player.team}
                     onChange={(e) => updateRosterPlayer(index, 'team', e.target.value)}
-                    className="w-16 text-sm border-gray-300 rounded-md"
+                    className="w-16 text-sm border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                   />
                   <input
                     type="number"
                     placeholder="Rd"
                     value={player.round || ''}
                     onChange={(e) => updateRosterPlayer(index, 'round', parseInt(e.target.value))}
-                    className="w-16 text-sm border-gray-300 rounded-md"
+                    className="w-16 text-sm border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
                   />
                   <button
                     onClick={() => removePlayerFromRoster(index)}
-                    className="text-red-600 hover:text-red-800 text-sm"
+                    className="text-danger-600 hover:text-danger-800 text-sm"
                   >
                     ×
                   </button>
@@ -337,14 +344,14 @@ export function PostDraftAnalysisPage() {
               <button
                 onClick={analyzeRoster}
                 disabled={loading || roster.length === 0}
-                className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 bg-accent-500 text-white py-2 px-4 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed"
               >
                 {loading ? 'Analyzing...' : 'Analyze Roster'}
               </button>
               <button
                 onClick={getPersonalizedWaivers}
                 disabled={loading || roster.length === 0}
-                className="flex-1 bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 disabled:opacity-50"
+                className="flex-1 bg-success-600 text-white py-2 px-4 rounded-md hover:bg-success-700 transition-colors focus:outline-none focus:ring-2 focus:ring-success-600 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed"
               >
                 Get Waiver Targets
               </button>
@@ -352,14 +359,14 @@ export function PostDraftAnalysisPage() {
           </div>
 
           {/* Week Selector */}
-          <div className="bg-white rounded-lg shadow border border-gray-200 p-4">
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-4">
+            <label className="block text-sm font-medium text-ink-700 mb-2">
               Current Week
             </label>
             <select
               value={currentWeek}
               onChange={(e) => setCurrentWeek(parseInt(e.target.value))}
-              className="w-full rounded-md border-gray-300"
+              className="w-full rounded-md border-ink-300 focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
               {Array.from({length: 18}, (_, i) => (
                 <option key={i + 1} value={i + 1}>Week {i + 1}</option>
@@ -372,31 +379,34 @@ export function PostDraftAnalysisPage() {
         <div className="space-y-6">
           {/* Roster Grade */}
           {analysis?.overall_grade && (
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
-              <div className="flex items-center mb-4">
-                <AcademicCapIcon className="h-6 w-6 mr-2 text-purple-600" />
-                <h2 className="text-xl font-semibold">Roster Grade</h2>
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center">
+                  <AcademicCapIcon className="h-6 w-6 mr-2 text-accent-500" />
+                  <h2 className="text-xl font-semibold">Roster Grade</h2>
+                </div>
+                <DataConfidenceBadge level="computed" />
               </div>
-              
+
               <div className="text-center mb-4">
                 <div className={`inline-flex items-center justify-center w-16 h-16 rounded-full text-2xl font-bold ${getGradeColor(analysis.overall_grade.grade)}`}>
                   {analysis.overall_grade.grade}
                 </div>
-                <p className="text-lg font-medium text-gray-900 mt-2">
+                <p className="text-lg font-medium text-ink-900 mt-2">
                   {analysis.overall_grade.description}
                 </p>
-                <p className="text-sm text-gray-600">
+                <p className="text-sm text-ink-500">
                   Score: {analysis.overall_grade.score}/100
                 </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4 text-sm">
-                <div className="bg-gray-50 rounded p-3">
-                  <div className="text-gray-600">Players</div>
+                <div className="bg-ink-50 rounded p-3">
+                  <div className="text-ink-500">Players</div>
                   <div className="font-medium">{analysis.overall_grade.player_count}</div>
                 </div>
-                <div className="bg-gray-50 rounded p-3">
-                  <div className="text-gray-600">Avg Value</div>
+                <div className="bg-ink-50 rounded p-3">
+                  <div className="text-ink-500">Avg Value</div>
                   <div className="font-medium">{analysis.overall_grade.avg_player_value}</div>
                 </div>
               </div>
@@ -405,47 +415,47 @@ export function PostDraftAnalysisPage() {
 
           {/* Strengths & Weaknesses */}
           {analysis?.strengths_weaknesses && (
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
               <div className="flex items-center mb-4">
-                <ChartBarIcon className="h-6 w-6 mr-2 text-indigo-600" />
+                <ChartBarIcon className="h-6 w-6 mr-2 text-accent-500" />
                 <h2 className="text-xl font-semibold">Roster Analysis</h2>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {/* Strengths */}
                 <div>
-                  <h3 className="font-medium text-green-800 mb-3 flex items-center">
+                  <h3 className="font-medium text-success-800 mb-3 flex items-center">
                     <ShieldCheckIcon className="h-5 w-5 mr-1" />
                     Strengths
                   </h3>
                   <div className="space-y-2">
                     {analysis.strengths_weaknesses.strengths?.map((strength: string, index: number) => (
                       <div key={index} className="flex items-start">
-                        <ArrowTrendingUpIcon className="h-4 w-4 text-green-600 mt-0.5 mr-2 flex-shrink-0" />
-                        <span className="text-sm text-gray-700">{strength}</span>
+                        <ArrowTrendingUpIcon className="h-4 w-4 text-success-600 mt-0.5 mr-2 flex-shrink-0" />
+                        <span className="text-sm text-ink-700">{strength}</span>
                       </div>
                     ))}
                     {(!analysis.strengths_weaknesses.strengths || analysis.strengths_weaknesses.strengths.length === 0) && (
-                      <p className="text-sm text-gray-500 italic">No major strengths identified</p>
+                      <p className="text-sm text-ink-500 italic">No major strengths identified</p>
                     )}
                   </div>
                 </div>
 
                 {/* Weaknesses */}
                 <div>
-                  <h3 className="font-medium text-red-800 mb-3 flex items-center">
+                  <h3 className="font-medium text-danger-800 mb-3 flex items-center">
                     <ExclamationTriangleIcon className="h-5 w-5 mr-1" />
                     Areas for Improvement
                   </h3>
                   <div className="space-y-2">
                     {analysis.strengths_weaknesses.weaknesses?.map((weakness: string, index: number) => (
                       <div key={index} className="flex items-start">
-                        <ArrowTrendingDownIcon className="h-4 w-4 text-red-600 mt-0.5 mr-2 flex-shrink-0" />
-                        <span className="text-sm text-gray-700">{weakness}</span>
+                        <ArrowTrendingDownIcon className="h-4 w-4 text-danger-600 mt-0.5 mr-2 flex-shrink-0" />
+                        <span className="text-sm text-ink-700">{weakness}</span>
                       </div>
                     ))}
                     {(!analysis.strengths_weaknesses.weaknesses || analysis.strengths_weaknesses.weaknesses.length === 0) && (
-                      <p className="text-sm text-green-600 italic">No major weaknesses identified</p>
+                      <p className="text-sm text-success-600 italic">No major weaknesses identified</p>
                     )}
                   </div>
                 </div>
@@ -455,21 +465,24 @@ export function PostDraftAnalysisPage() {
 
           {/* Personalized Waiver Targets */}
           {waiverTargets.length > 0 && (
-            <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-semibold flex items-center">
-                  <FireIcon className="h-6 w-6 mr-2 text-orange-600" />
-                  Personalized Waiver Targets
-                </h2>
-                <span className="text-sm text-gray-500">Week {currentWeek}</span>
+                <div className="flex items-center gap-2">
+                  <h2 className="text-xl font-semibold flex items-center">
+                    <FireIcon className="h-6 w-6 mr-2 text-accent-500" />
+                    Waiver Targets For Your Roster
+                  </h2>
+                  <DataConfidenceBadge level="heuristic" label="Priority" />
+                </div>
+                <span className="text-sm text-ink-500">Week {currentWeek}</span>
               </div>
 
               <div className="space-y-3">
                 {waiverTargets.slice(0, 8).map((target, index) => (
-                  <div key={index} className="p-4 border border-gray-200 rounded-lg hover:border-blue-300 transition-colors">
+                  <div key={index} className="p-4 border border-ink-200 rounded-lg hover:border-accent-300 transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <span className="font-medium text-gray-900">{target.player_name}</span>
+                        <span className="font-medium text-ink-900">{target.player_name}</span>
                         <span className={`px-2 py-1 rounded-full text-xs font-medium ${getPriorityColor(target.adjusted_priority)}`}>
                           {target.position} - {target.team}
                         </span>
@@ -477,16 +490,16 @@ export function PostDraftAnalysisPage() {
                           {target.adjusted_priority}% Priority
                         </span>
                       </div>
-                      <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                      <span className="text-xs bg-accent-50 text-accent-700 px-2 py-1 rounded">
                         {target.roster_fit}
                       </span>
                     </div>
-                    
-                    <p className="text-sm text-gray-700 mb-2">
+
+                    <p className="text-sm text-ink-700 mb-2">
                       <strong>Why for your roster:</strong> {target.personalized_reasoning}
                     </p>
-                    
-                    <p className="text-xs text-gray-600">
+
+                    <p className="text-xs text-ink-500">
                       <strong>Analysis:</strong> {target.reason}
                     </p>
                   </div>
@@ -495,7 +508,7 @@ export function PostDraftAnalysisPage() {
 
               <button
                 onClick={getPersonalizedWaivers}
-                className="w-full mt-4 bg-orange-600 text-white py-2 px-4 rounded-md hover:bg-orange-700"
+                className="w-full mt-4 bg-accent-500 text-white py-2 px-4 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500"
               >
                 Refresh Waiver Targets
               </button>
@@ -506,34 +519,39 @@ export function PostDraftAnalysisPage() {
 
       {/* Player Evaluations */}
       {analysis?.player_evaluations && (
-        <div className="bg-white rounded-lg shadow border border-gray-200 p-6">
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
           <div className="flex items-center mb-6">
-            <TrophyIcon className="h-6 w-6 mr-2 text-yellow-600" />
+            <TrophyIcon className="h-6 w-6 mr-2 text-accent-500" />
             <h2 className="text-xl font-semibold">Individual Player Analysis</h2>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {analysis.player_evaluations.map((evaluation, index: number) => (
-              <div key={index} className="border border-gray-200 rounded-lg p-4">
+              <div key={index} className="border border-ink-200 rounded-lg p-4">
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-gray-900">{evaluation.player_info.name}</h3>
+                  <h3 className="font-medium text-ink-900">{evaluation.player_info.name}</h3>
                   <span className={`px-2 py-1 rounded text-xs font-medium ${getGradeColor(evaluation.value_analysis.value_grade)}`}>
                     {evaluation.value_analysis.value_grade}
                   </span>
                 </div>
-                
-                <div className="text-sm text-gray-600 space-y-1">
+
+                <div className="text-sm text-ink-600 space-y-1">
                   <p><strong>Position:</strong> {evaluation.player_info.position} - {evaluation.player_info.team}</p>
                   <p><strong>Draft:</strong> Round {evaluation.player_info.draft_round}</p>
                   <p><strong>Value:</strong> {evaluation.value_analysis.value_category}</p>
                   <p><strong>Outlook:</strong> {evaluation.season_outlook.outlook}</p>
-                  <p><strong>Risk:</strong> {evaluation.risk_assessment.risk_level}</p>
+                  <p>
+                    <strong>Risk:</strong>{' '}
+                    <span className={riskColors[evaluation.risk_assessment.risk_level as keyof typeof riskColors] || 'text-ink-600'}>
+                      {evaluation.risk_assessment.risk_level}
+                    </span>
+                  </p>
                 </div>
 
                 {(evaluation.risk_assessment.risk_factors?.length ?? 0) > 0 && (
-                  <div className="mt-3 pt-3 border-t border-gray-200">
-                    <p className="text-xs text-gray-500 font-medium mb-1">Risk Factors:</p>
-                    <ul className="text-xs text-gray-600 space-y-1">
+                  <div className="mt-3 pt-3 border-t border-ink-200">
+                    <p className="text-xs text-ink-500 font-medium mb-1">Risk Factors:</p>
+                    <ul className="text-xs text-ink-600 space-y-1">
                       {evaluation.risk_assessment.risk_factors?.slice(0, 2).map((factor: string, i: number) => (
                         <li key={i}>• {factor}</li>
                       ))}
@@ -554,9 +572,9 @@ export function PostDraftAnalysisPage() {
             getPersonalizedWaivers()
           }}
           disabled={loading || roster.length === 0}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 font-medium"
+          className="bg-accent-500 text-white px-8 py-3 rounded-lg hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed font-medium"
         >
-          {loading ? 'Analyzing...' : 'Complete Analysis'}
+          {loading ? 'Analyzing...' : 'Grade Roster & Find Waiver Targets'}
         </button>
       </div>
     </div>
