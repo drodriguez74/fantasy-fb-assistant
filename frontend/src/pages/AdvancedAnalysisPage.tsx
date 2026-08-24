@@ -15,6 +15,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { useAuth } from '../hooks/useAuth'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
+import { getPositionColor } from '../components/players/playerDisplay'
 import {
   PlayerComparisonChart,
   PlayerComparisonBarChart,
@@ -426,11 +427,11 @@ export function AdvancedAnalysisPage() {
     return (
       <div className="space-y-6">
         {/* Chart Controls */}
-        <div className="flex items-center justify-between bg-gray-50 p-4 rounded-lg">
+        <div className="flex items-center justify-between bg-ink-50 p-4 rounded-lg">
           <div className="flex items-center space-x-4">
             <button
               onClick={() => setShowCharts(!showCharts)}
-              className="flex items-center space-x-2 text-sm text-gray-700 hover:text-gray-900"
+              className="flex items-center space-x-2 text-sm text-ink-700 hover:text-ink-900"
             >
               {showCharts ? <EyeSlashIcon className="h-4 w-4" /> : <EyeIcon className="h-4 w-4" />}
               <span>{showCharts ? 'Hide Charts' : 'Show Charts'}</span>
@@ -438,11 +439,11 @@ export function AdvancedAnalysisPage() {
             
             {showCharts && (
               <div className="flex items-center space-x-2">
-                <label className="text-sm text-gray-700">Chart Type:</label>
+                <label className="text-sm text-ink-700">Chart Type:</label>
                 <select
                   value={chartType}
                   onChange={(e) => setChartType(e.target.value as 'radar' | 'bar' | 'both')}
-                  className="text-sm border border-gray-300 rounded px-2 py-1"
+                  className="text-sm border border-ink-300 rounded px-2 py-1"
                 >
                   <option value="radar">Radar Chart</option>
                   <option value="bar">Bar Chart</option>
@@ -451,7 +452,7 @@ export function AdvancedAnalysisPage() {
               </div>
             )}
           </div>
-          <div className="text-xs text-gray-500">
+          <div className="text-xs text-ink-500">
             Comparing {comparisonResult.players.length} players
           </div>
         </div>
@@ -460,15 +461,15 @@ export function AdvancedAnalysisPage() {
         {showCharts && chartData.length > 0 && (
           <div className="space-y-6">
             {(chartType === 'radar' || chartType === 'both') && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Player Comparison Radar Chart</h3>
+              <div className="bg-white rounded-lg border border-ink-200 p-6">
+                <h3 className="text-lg font-semibold text-ink-900 mb-4">Player Comparison Radar Chart</h3>
                 <PlayerComparisonChart data={chartData} height={450} />
               </div>
             )}
             
             {(chartType === 'bar' || chartType === 'both') && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Detailed Metrics Comparison</h3>
+              <div className="bg-white rounded-lg border border-ink-200 p-6">
+                <h3 className="text-lg font-semibold text-ink-900 mb-4">Detailed Metrics Comparison</h3>
                 <PlayerComparisonBarChart data={chartData} height={400} />
               </div>
             )}
@@ -476,30 +477,30 @@ export function AdvancedAnalysisPage() {
         )}
 
         {/* Key Insights */}
-        <div className="bg-blue-50 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-blue-900 mb-3">Key Insights</h3>
+        <div className="bg-accent-50 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-accent-900 mb-3">Key Insights</h3>
           <ul className="space-y-2">
             {comparisonResult.insights.map((insight, index) => (
-              <li key={`comparison-insight-${index}-${insight.slice(0, 20)}`} className="text-blue-800">• {insight}</li>
+              <li key={`comparison-insight-${index}-${insight.slice(0, 20)}`} className="text-accent-800">• {insight}</li>
             ))}
           </ul>
         </div>
 
         {/* Head-to-Head (for 2 players) */}
         {comparisonResult.head_to_head && Object.keys(comparisonResult.head_to_head).length > 0 && (
-          <div className="bg-white rounded-lg border border-gray-200 p-6">
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Head-to-Head Comparison</h3>
+          <div className="bg-white rounded-lg border border-ink-200 p-6">
+            <h3 className="text-lg font-semibold text-ink-900 mb-4">Head-to-Head Comparison</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(comparisonResult.head_to_head.categories || {}).map(([category, data]) => (
-                <div key={category} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                <div key={category} className="flex items-center justify-between p-3 bg-ink-50 rounded-lg">
                   <span className="font-medium">{category}</span>
-                  <span className="text-green-600 font-semibold">{data.winner}</span>
+                  <span className="text-success-600 font-semibold">{data.winner}</span>
                 </div>
               ))}
             </div>
             {comparisonResult.head_to_head.overall_winner && (
-              <div className="mt-4 p-3 bg-green-50 rounded-lg text-center">
-                <span className="text-green-800 font-semibold">
+              <div className="mt-4 p-3 bg-success-50 rounded-lg text-center">
+                <span className="text-success-800 font-semibold">
                   Overall Winner: {comparisonResult.head_to_head.overall_winner} 
                   ({comparisonResult.head_to_head.score})
                 </span>
@@ -511,10 +512,10 @@ export function AdvancedAnalysisPage() {
         {/* Player Details */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {comparisonResult.players.map((player) => (
-            <div key={player.id} className="bg-white rounded-lg border border-gray-200 p-6">
+            <div key={player.id} className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">{player.name}</h3>
-                <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                <h3 className="text-lg font-semibold text-ink-900">{player.name}</h3>
+                <span className={`px-2 py-1 text-sm rounded-full ${getPositionColor(player.position)}`}>
                   {player.position} - {player.team}
                 </span>
               </div>
@@ -522,32 +523,32 @@ export function AdvancedAnalysisPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-600">Projected Points:</span>
+                    <span className="text-ink-600">Projected Points:</span>
                     <span className="ml-2 font-semibold">{player.current_metrics.projected_points || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="text-gray-600">Consistency:</span>
+                    <span className="text-ink-600">Consistency:</span>
                     <span className="ml-2 font-semibold">{player.current_metrics.consistency_rating || 'N/A'}/10</span>
                   </div>
                   <div>
-                    <span className="text-gray-600">Risk Level:</span>
+                    <span className="text-ink-600">Risk Level:</span>
                     <span className={`ml-2 font-semibold ${
-                      player.risk_assessment.risk_level === 'LOW' ? 'text-green-600' :
-                      player.risk_assessment.risk_level === 'MEDIUM' ? 'text-yellow-600' : 'text-red-600'
+                      player.risk_assessment.risk_level === 'LOW' ? 'text-success-600' :
+                      player.risk_assessment.risk_level === 'MEDIUM' ? 'text-warning-600' : 'text-danger-600'
                     }`}>
                       {player.risk_assessment.risk_level}
                     </span>
                   </div>
                   <div>
-                    <span className="text-gray-600">Value Score:</span>
+                    <span className="text-ink-600">Value Score:</span>
                     <span className="ml-2 font-semibold">{player.advanced_metrics.value_score}/100</span>
                   </div>
                 </div>
 
                 {player.risk_assessment.risk_factors.length > 0 && (
                   <div className="mt-3">
-                    <span className="text-sm font-medium text-gray-700">Risk Factors:</span>
-                    <ul className="mt-1 text-sm text-gray-600">
+                    <span className="text-sm font-medium text-ink-700">Risk Factors:</span>
+                    <ul className="mt-1 text-sm text-ink-600">
                       {player.risk_assessment.risk_factors.map((factor, idx: number) => (
                         <li key={idx}>• {factor}</li>
                       ))}
@@ -560,9 +561,9 @@ export function AdvancedAnalysisPage() {
         </div>
 
         {/* Recommendation */}
-        <div className="bg-green-50 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-green-900 mb-2">Recommendation</h3>
-          <p className="text-green-800">{comparisonResult.recommendation}</p>
+        <div className="bg-accent-50 rounded-lg p-4">
+          <h3 className="text-lg font-semibold text-accent-900 mb-2">Recommendation</h3>
+          <p className="text-accent-800">{comparisonResult.recommendation}</p>
         </div>
       </div>
     )
@@ -597,20 +598,20 @@ export function AdvancedAnalysisPage() {
     return (
       <div className="space-y-6">
         {/* Summary */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Schedule Summary (Next {weeksAhead} Weeks)</h3>
+        <div className="bg-white rounded-lg border border-ink-200 p-6">
+          <h3 className="text-lg font-semibold text-ink-900 mb-4">Schedule Summary (Next {weeksAhead} Weeks)</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{scheduleResult.summary.easiest_schedule ?? '—'}</div>
-              <div className="text-sm text-gray-600">Easiest Schedule</div>
+              <div className="text-2xl font-semibold text-ink-900">{scheduleResult.summary.easiest_schedule ?? '—'}</div>
+              <div className="text-xs uppercase text-ink-500">Easiest Schedule</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">{scheduleResult.summary.hardest_schedule ?? '—'}</div>
-              <div className="text-sm text-gray-600">Hardest Schedule</div>
+              <div className="text-2xl font-semibold text-ink-900">{scheduleResult.summary.hardest_schedule ?? '—'}</div>
+              <div className="text-xs uppercase text-ink-500">Hardest Schedule</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{scheduleResult.summary.average_difficulty ?? '—'}</div>
-              <div className="text-sm text-gray-600">Average Difficulty</div>
+              <div className="text-2xl font-semibold text-ink-900">{scheduleResult.summary.average_difficulty ?? '—'}</div>
+              <div className="text-xs uppercase text-ink-500">Average Difficulty</div>
             </div>
           </div>
           {scheduleResult.summary.average_difficulty === null && (
@@ -623,13 +624,13 @@ export function AdvancedAnalysisPage() {
         {/* Schedule Difficulty Charts */}
         {showCharts && chartData.length > 0 && (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Schedule Difficulty Chart</h3>
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-4">Schedule Difficulty Chart</h3>
               <ScheduleDifficultyChart data={chartData} height={350} />
             </div>
             
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Schedule Difficulty Heatmap</h3>
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-4">Schedule Difficulty Heatmap</h3>
               <ScheduleDifficultyHeatmap data={chartData} height={250} />
             </div>
           </div>
@@ -638,12 +639,12 @@ export function AdvancedAnalysisPage() {
         {/* Player Schedule Analysis */}
         <div className="space-y-4">
           {scheduleResult.schedule_analysis.map((analysis) => (
-            <div key={analysis.player.id} className="bg-white rounded-lg border border-gray-200 p-6">
+            <div key={analysis.player.id} className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">{analysis.player.name}</h3>
+                <h3 className="text-lg font-semibold text-ink-900">{analysis.player.name}</h3>
                 <div className="flex items-center space-x-4">
                   {analysis.schedule_difficulty.rank !== null && (
-                    <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                    <span className="px-2 py-1 bg-ink-100 text-ink-600 text-sm rounded-full">
                       Rank #{analysis.schedule_difficulty.rank}
                     </span>
                   )}
@@ -651,9 +652,9 @@ export function AdvancedAnalysisPage() {
                     <DataConfidenceBadge level="insufficient" />
                   ) : (
                     <span className={`px-2 py-1 text-sm rounded-full ${
-                      analysis.schedule_difficulty.rating === 'EASY' ? 'bg-green-100 text-green-800' :
-                      analysis.schedule_difficulty.rating === 'MODERATE' ? 'bg-yellow-100 text-yellow-800' :
-                      'bg-red-100 text-red-800'
+                      analysis.schedule_difficulty.rating === 'EASY' ? 'bg-success-100 text-success-800' :
+                      analysis.schedule_difficulty.rating === 'MODERATE' ? 'bg-warning-100 text-warning-800' :
+                      'bg-danger-100 text-danger-800'
                     }`}>
                       {analysis.schedule_difficulty.rating}
                     </span>
@@ -663,16 +664,16 @@ export function AdvancedAnalysisPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
                 {analysis.upcoming_matchups.map((matchup, idx: number) => (
-                  <div key={idx} className="text-center p-3 bg-gray-50 rounded-lg">
+                  <div key={idx} className="text-center p-3 bg-ink-50 rounded-lg">
                     <div className="font-semibold">Week {matchup.week}</div>
-                    <div className="text-sm text-gray-600">{matchup.opponent}</div>
+                    <div className="text-sm text-ink-600">{matchup.opponent}</div>
                     {matchup.difficulty_score === null ? (
                       <DataConfidenceBadge level="insufficient" className="mt-1" />
                     ) : (
                       <div className={`text-sm font-medium ${
-                        matchup.difficulty_rating === 'EASY' ? 'text-green-600' :
-                        matchup.difficulty_rating === 'MODERATE' ? 'text-yellow-600' :
-                        'text-red-600'
+                        matchup.difficulty_rating === 'EASY' ? 'text-success-600' :
+                        matchup.difficulty_rating === 'MODERATE' ? 'text-warning-600' :
+                        'text-danger-600'
                       }`}>
                         {matchup.difficulty_score}/10
                       </div>
@@ -681,9 +682,9 @@ export function AdvancedAnalysisPage() {
                 ))}
               </div>
 
-              <div className="bg-blue-50 p-3 rounded-lg">
-                <span className="text-sm font-medium text-blue-900">Recommendation: </span>
-                <span className="text-sm text-blue-800">{analysis.recommendation}</span>
+              <div className="bg-accent-50 p-3 rounded-lg">
+                <span className="text-sm font-medium text-accent-900">Recommendation: </span>
+                <span className="text-sm text-accent-800">{analysis.recommendation}</span>
               </div>
             </div>
           ))}
@@ -713,24 +714,24 @@ export function AdvancedAnalysisPage() {
     return (
       <div className="space-y-6">
         {/* Summary */}
-        <div className="bg-white rounded-lg border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Breakout Analysis Summary</h3>
+        <div className="bg-white rounded-lg border border-ink-200 p-6">
+          <h3 className="text-lg font-semibold text-ink-900 mb-4">Breakout Analysis Summary</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
-              <div className="text-2xl font-bold text-blue-600">{breakoutResult.summary.total_candidates}</div>
-              <div className="text-sm text-gray-600">Total Candidates</div>
+              <div className="text-2xl font-semibold text-ink-900">{breakoutResult.summary.total_candidates}</div>
+              <div className="text-xs uppercase text-ink-500">Total Candidates</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">{breakoutResult.summary.high_probability}</div>
-              <div className="text-sm text-gray-600">High Probability</div>
+              <div className="text-2xl font-semibold text-ink-900">{breakoutResult.summary.high_probability}</div>
+              <div className="text-xs uppercase text-ink-500">High Probability</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">{breakoutResult.summary.medium_probability}</div>
-              <div className="text-sm text-gray-600">Medium Probability</div>
+              <div className="text-2xl font-semibold text-ink-900">{breakoutResult.summary.medium_probability}</div>
+              <div className="text-xs uppercase text-ink-500">Medium Probability</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">{(breakoutResult.summary.average_probability * 100).toFixed(1)}%</div>
-              <div className="text-sm text-gray-600">Avg Probability</div>
+              <div className="text-2xl font-semibold text-ink-900">{(breakoutResult.summary.average_probability * 100).toFixed(1)}%</div>
+              <div className="text-xs uppercase text-ink-500">Avg Probability</div>
             </div>
           </div>
         </div>
@@ -738,13 +739,13 @@ export function AdvancedAnalysisPage() {
         {/* Breakout Candidate Charts */}
         {showCharts && chartData.length > 0 && (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Breakout Probability Analysis</h3>
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-4">Breakout Probability Analysis</h3>
               <BreakoutCandidateBubbleChart data={chartData} height={400} />
             </div>
             
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Age vs Probability Scatter Plot</h3>
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-4">Age vs Probability Scatter Plot</h3>
               <BreakoutCandidateChart 
                 data={chartData} 
                 height={350} 
@@ -758,17 +759,17 @@ export function AdvancedAnalysisPage() {
         {/* Breakout Candidates */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {breakoutResult.breakout_candidates.slice(0, 10).map((candidate) => (
-            <div key={candidate.player.id} className="bg-white rounded-lg border border-gray-200 p-6">
+            <div key={candidate.player.id} className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-900">{candidate.player.name}</h3>
+                <h3 className="text-lg font-semibold text-ink-900">{candidate.player.name}</h3>
                 <div className="flex items-center space-x-2">
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                  <span className={`px-2 py-1 text-sm rounded-full ${getPositionColor(candidate.player.position)}`}>
                     {candidate.player.position} - {candidate.player.team}
                   </span>
                   <span className={`px-2 py-1 text-sm font-semibold rounded-full ${
-                    candidate.breakout_analysis.probability > 0.7 ? 'bg-green-100 text-green-800' :
-                    candidate.breakout_analysis.probability > 0.5 ? 'bg-yellow-100 text-yellow-800' :
-                    'bg-red-100 text-red-800'
+                    candidate.breakout_analysis.probability > 0.7 ? 'bg-success-100 text-success-800' :
+                    candidate.breakout_analysis.probability > 0.5 ? 'bg-warning-100 text-warning-800' :
+                    'bg-danger-100 text-danger-800'
                   }`}>
                     {(candidate.breakout_analysis.probability * 100).toFixed(1)}%
                   </span>
@@ -778,19 +779,19 @@ export function AdvancedAnalysisPage() {
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-gray-600">Age:</span>
+                    <span className="text-ink-600">Age:</span>
                     <span className="ml-2 font-semibold">{candidate.player.age || 'N/A'}</span>
                   </div>
                   <div>
-                    <span className="text-gray-600">Ownership:</span>
+                    <span className="text-ink-600">Ownership:</span>
                     <span className="ml-2 font-semibold">{candidate.player.ownership_percentage?.toFixed(1) || '0'}%</span>
                   </div>
                 </div>
 
                 {candidate.supporting_factors.length > 0 && (
                   <div>
-                    <span className="text-sm font-medium text-green-700">Supporting Factors:</span>
-                    <ul className="mt-1 text-sm text-green-600">
+                    <span className="text-sm font-medium text-success-700">Supporting Factors:</span>
+                    <ul className="mt-1 text-sm text-success-600">
                       {candidate.supporting_factors.map((factor: string, idx: number) => (
                         <li key={idx}>• {factor}</li>
                       ))}
@@ -800,8 +801,8 @@ export function AdvancedAnalysisPage() {
 
                 {candidate.risk_factors.length > 0 && (
                   <div>
-                    <span className="text-sm font-medium text-red-700">Risk Factors:</span>
-                    <ul className="mt-1 text-sm text-red-600">
+                    <span className="text-sm font-medium text-danger-700">Risk Factors:</span>
+                    <ul className="mt-1 text-sm text-danger-600">
                       {candidate.risk_factors.map((factor: string, idx: number) => (
                         <li key={idx}>• {factor}</li>
                       ))}
@@ -809,9 +810,9 @@ export function AdvancedAnalysisPage() {
                   </div>
                 )}
 
-                <div className="bg-gray-50 p-3 rounded-lg">
-                  <span className="text-sm font-medium text-gray-900">Recommendation: </span>
-                  <span className="text-sm text-gray-800">{candidate.recommendation}</span>
+                <div className="bg-accent-50 p-3 rounded-lg">
+                  <span className="text-sm font-medium text-accent-900">Recommendation: </span>
+                  <span className="text-sm text-accent-800">{candidate.recommendation}</span>
                 </div>
               </div>
             </div>
@@ -883,11 +884,11 @@ export function AdvancedAnalysisPage() {
       <div className="space-y-6">
         {/* Cross-Player Insights */}
         {situationResult.comparison_insights.length > 0 && (
-          <div className="bg-blue-50 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-blue-900 mb-3">Key Insights</h3>
+          <div className="bg-accent-50 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-accent-900 mb-3">Key Insights</h3>
             <ul className="space-y-2">
               {situationResult.comparison_insights.map((insight, index) => (
-                <li key={`situation-insight-${index}-${insight.slice(0, 20)}`} className="text-blue-800">• {insight}</li>
+                <li key={`situation-insight-${index}-${insight.slice(0, 20)}`} className="text-accent-800">• {insight}</li>
               ))}
             </ul>
           </div>
@@ -896,8 +897,8 @@ export function AdvancedAnalysisPage() {
         {/* Situational Analysis Charts */}
         {showCharts && homeAwayData.length > 0 && (
           <div className="space-y-6">
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Home vs Away Performance</h3>
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
+              <h3 className="text-lg font-semibold text-ink-900 mb-4">Home vs Away Performance</h3>
               <SituationalAnalysisChart
                 data={homeAwayData}
                 height={300}
@@ -906,15 +907,15 @@ export function AdvancedAnalysisPage() {
             </div>
 
             {weatherData.length > 0 && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Weather Impact Analysis</h3>
+              <div className="bg-white rounded-lg border border-ink-200 p-6">
+                <h3 className="text-lg font-semibold text-ink-900 mb-4">Weather Impact Analysis</h3>
                 <WeatherImpactChart data={weatherData} height={250} />
               </div>
             )}
 
             {gameScriptData.length > 0 && gameScriptData[0] && (
-              <div className="bg-white rounded-lg border border-gray-200 p-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Game Script Performance</h3>
+              <div className="bg-white rounded-lg border border-ink-200 p-6">
+                <h3 className="text-lg font-semibold text-ink-900 mb-4">Game Script Performance</h3>
                 <GameScriptChart data={gameScriptData} height={250} />
               </div>
             )}
@@ -934,53 +935,53 @@ export function AdvancedAnalysisPage() {
             const domeVsOutdoor = wa?.dome_vs_outdoor && 'dome_performance' in wa.dome_vs_outdoor ? wa.dome_vs_outdoor : null
 
             return (
-              <div key={analysis.player.id} className="bg-white rounded-lg border border-gray-200 p-6">
+              <div key={analysis.player.id} className="bg-white rounded-lg border border-ink-200 p-6">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-gray-900">{analysis.player.name}</h3>
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-sm rounded-full">
+                  <h3 className="text-lg font-semibold text-ink-900">{analysis.player.name}</h3>
+                  <span className={`px-2 py-1 text-sm rounded-full ${getPositionColor(analysis.player.position)}`}>
                     {analysis.player.position} - {analysis.player.team}
                   </span>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {/* Home vs Away */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Home vs Away</h4>
+                      <h4 className="font-semibold text-ink-900">Home vs Away</h4>
                       <DataConfidenceBadge level={ha && ha.home_performance.games > 0 && ha.away_performance.games > 0 ? 'computed' : 'insufficient'} />
                     </div>
                     {ha && ha.home_performance.games > 0 && ha.away_performance.games > 0 ? (
                       <div className="space-y-1 text-sm">
                         <div>Home: {ha.home_performance.avg_points} pts ({ha.home_performance.games} games)</div>
                         <div>Away: {ha.away_performance.avg_points} pts ({ha.away_performance.games} games)</div>
-                        <div className="font-medium text-blue-600">Prefers: {ha.advantage}</div>
+                        <div className="font-medium text-accent-600">Prefers: {ha.advantage}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">Not enough logged home/away games for this player yet.</div>
+                      <div className="text-sm text-ink-500">Not enough logged home/away games for this player yet.</div>
                     )}
                   </div>
 
                   {/* Weather Impact */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Weather Impact</h4>
+                      <h4 className="font-semibold text-ink-900">Weather Impact</h4>
                       <DataConfidenceBadge level={domeVsOutdoor && domeVsOutdoor.dome_performance.games > 0 && domeVsOutdoor.outdoor_performance.games > 0 ? 'computed' : 'insufficient'} />
                     </div>
                     {domeVsOutdoor && domeVsOutdoor.dome_performance.games > 0 && domeVsOutdoor.outdoor_performance.games > 0 ? (
                       <div className="space-y-1 text-sm">
                         <div>Outdoor: {domeVsOutdoor.outdoor_performance.avg_points} pts</div>
                         <div>Dome: {domeVsOutdoor.dome_performance.avg_points} pts</div>
-                        <div className="font-medium text-blue-600">Sensitivity: {wa?.weather_sensitivity}</div>
+                        <div className="font-medium text-accent-600">Sensitivity: {wa?.weather_sensitivity}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">No logged weather/venue data for this player yet.</div>
+                      <div className="text-sm text-ink-500">No logged weather/venue data for this player yet.</div>
                     )}
                   </div>
 
                   {/* Opponent Strength */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Opponent Strength</h4>
+                      <h4 className="font-semibold text-ink-900">Opponent Strength</h4>
                       <DataConfidenceBadge level={oa && Object.keys(oa.defense_strength_performance).length > 0 ? 'computed' : 'insufficient'} />
                     </div>
                     {oa && Object.keys(oa.defense_strength_performance).length > 0 ? (
@@ -988,17 +989,17 @@ export function AdvancedAnalysisPage() {
                         {Object.entries(oa.defense_strength_performance).map(([tier, stats]) => (
                           <div key={tier}>{tier.replace('_', ' ')}: {stats.avg_points} pts ({stats.games}g)</div>
                         ))}
-                        <div className="font-medium text-blue-600">Dependency: {oa.matchup_dependency}</div>
+                        <div className="font-medium text-accent-600">Dependency: {oa.matchup_dependency}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">Not enough logged opponent-strength data yet.</div>
+                      <div className="text-sm text-ink-500">Not enough logged opponent-strength data yet.</div>
                     )}
                   </div>
 
                   {/* Game Script */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Game Script</h4>
+                      <h4 className="font-semibold text-ink-900">Game Script</h4>
                       <DataConfidenceBadge level={ga && Object.keys(ga.game_script_performance).length > 0 ? 'computed' : 'insufficient'} />
                     </div>
                     {ga && Object.keys(ga.game_script_performance).length > 0 ? (
@@ -1006,34 +1007,34 @@ export function AdvancedAnalysisPage() {
                         {Object.entries(ga.game_script_performance).map(([script, stats]) => (
                           <div key={script}>{script}: {stats.avg_points} pts ({stats.games}g)</div>
                         ))}
-                        <div className="font-medium text-blue-600">Dependency: {ga.script_dependency}</div>
+                        <div className="font-medium text-accent-600">Dependency: {ga.script_dependency}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">No logged game-script data for this player yet.</div>
+                      <div className="text-sm text-ink-500">No logged game-script data for this player yet.</div>
                     )}
                   </div>
 
                   {/* Red Zone Usage */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Red Zone Usage</h4>
+                      <h4 className="font-semibold text-ink-900">Red Zone Usage</h4>
                       <DataConfidenceBadge level={ga?.red_zone_analysis.data_confidence ?? 'insufficient'} />
                     </div>
                     {ga && ga.red_zone_analysis.data_confidence === 'computed' ? (
                       <div className="space-y-1 text-sm">
                         <div>RZ targets/gm: {ga.red_zone_analysis.red_zone_targets_per_game}</div>
                         <div>Goal-line carries/gm: {ga.red_zone_analysis.goal_line_carries_per_game}</div>
-                        <div className="font-medium text-blue-600">TD dependency: {ga.red_zone_analysis.touchdown_dependency}</div>
+                        <div className="font-medium text-accent-600">TD dependency: {ga.red_zone_analysis.touchdown_dependency}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">{ga?.red_zone_analysis.note ?? 'No logged red-zone usage data yet.'}</div>
+                      <div className="text-sm text-ink-500">{ga?.red_zone_analysis.note ?? 'No logged red-zone usage data yet.'}</div>
                     )}
                   </div>
 
                   {/* Prime Time */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Prime Time</h4>
+                      <h4 className="font-semibold text-ink-900">Prime Time</h4>
                       <DataConfidenceBadge level={pt && pt.sample_sizes.prime_time > 0 && pt.sample_sizes.regular > 0 ? 'computed' : 'insufficient'} />
                     </div>
                     {pt && pt.sample_sizes.prime_time > 0 && pt.sample_sizes.regular > 0 ? (
@@ -1042,31 +1043,31 @@ export function AdvancedAnalysisPage() {
                         <div>Regular: {pt.regular_time_performance.avg_points} pts ({pt.sample_sizes.regular}g)</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">Not enough logged prime-time games yet.</div>
+                      <div className="text-sm text-ink-500">Not enough logged prime-time games yet.</div>
                     )}
                   </div>
 
                   {/* Rivalry */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Division Rivalry</h4>
+                      <h4 className="font-semibold text-ink-900">Division Rivalry</h4>
                       <DataConfidenceBadge level={rv && rv.rivalry_performance.games > 0 && rv.non_rivalry_performance.games > 0 ? 'computed' : 'insufficient'} />
                     </div>
                     {rv && rv.rivalry_performance.games > 0 && rv.non_rivalry_performance.games > 0 ? (
                       <div className="space-y-1 text-sm">
                         <div>Rivalry: {rv.rivalry_performance.avg_points} pts</div>
                         <div>Non-rivalry: {rv.non_rivalry_performance.avg_points} pts</div>
-                        <div className="font-medium text-blue-600">Factor: {rv.emotional_factor}</div>
+                        <div className="font-medium text-accent-600">Factor: {rv.emotional_factor}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">Not enough logged rivalry-game data yet.</div>
+                      <div className="text-sm text-ink-500">Not enough logged rivalry-game data yet.</div>
                     )}
                   </div>
 
                   {/* Venue Altitude */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Altitude Impact</h4>
+                      <h4 className="font-semibold text-ink-900">Altitude Impact</h4>
                       <DataConfidenceBadge level={va?.altitude_impact.data_confidence ?? 'insufficient'} />
                     </div>
                     {va && va.altitude_impact.altitude_impact !== null ? (
@@ -1075,14 +1076,14 @@ export function AdvancedAnalysisPage() {
                         <div>High altitude: {va.altitude_impact.high_altitude_avg} pts</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">{va?.altitude_impact.note ?? 'No logged high-altitude venue data yet.'}</div>
+                      <div className="text-sm text-ink-500">{va?.altitude_impact.note ?? 'No logged high-altitude venue data yet.'}</div>
                     )}
                   </div>
 
                   {/* Upcoming Forecast */}
-                  <div className="bg-gray-50 p-4 rounded-lg">
+                  <div className="bg-ink-50 p-4 rounded-lg">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-semibold text-gray-900">Upcoming Weeks</h4>
+                      <h4 className="font-semibold text-ink-900">Upcoming Weeks</h4>
                       <DataConfidenceBadge level={analysis.upcoming_situation_forecast.data_confidence} />
                     </div>
                     {analysis.upcoming_situation_forecast.next_4_weeks.length > 0 ? (
@@ -1090,19 +1091,19 @@ export function AdvancedAnalysisPage() {
                         {analysis.upcoming_situation_forecast.next_4_weeks.map((wk) => (
                           <div key={wk.week}>Wk {wk.week} vs {wk.opponent} ({wk.location}){wk.matchup_rating !== null ? ` — rating ${wk.matchup_rating}` : ''}</div>
                         ))}
-                        <div className="font-medium text-blue-600">Outlook: {analysis.upcoming_situation_forecast.overall_outlook}</div>
+                        <div className="font-medium text-accent-600">Outlook: {analysis.upcoming_situation_forecast.overall_outlook}</div>
                       </div>
                     ) : (
-                      <div className="text-sm text-gray-500">{analysis.upcoming_situation_forecast.note ?? 'No synced schedule data yet.'}</div>
+                      <div className="text-sm text-ink-500">{analysis.upcoming_situation_forecast.note ?? 'No synced schedule data yet.'}</div>
                     )}
                   </div>
                 </div>
 
                 {/* Upcoming Opponents */}
                 {oa && oa.upcoming_opponents.length > 0 && (
-                  <div className="mt-4 bg-gray-50 p-3 rounded-lg">
-                    <span className="text-sm font-medium text-gray-900">Upcoming Opponents: </span>
-                    <span className="text-sm text-gray-700">
+                  <div className="mt-4 bg-ink-50 p-3 rounded-lg">
+                    <span className="text-sm font-medium text-ink-900">Upcoming Opponents: </span>
+                    <span className="text-sm text-ink-700">
                       {oa.upcoming_opponents.map(o => `Wk ${o.week} ${o.opponent} (${o.difficulty})`).join(', ')}
                     </span>
                   </div>
@@ -1110,9 +1111,9 @@ export function AdvancedAnalysisPage() {
 
                 {/* Situational Insights */}
                 {analysis.situational_insights.length > 0 && (
-                  <div className="mt-4 bg-green-50 p-3 rounded-lg">
-                    <span className="text-sm font-medium text-green-900">Situational Insights: </span>
-                    <ul className="mt-1 text-sm text-green-800">
+                  <div className="mt-4 bg-accent-50 p-3 rounded-lg">
+                    <span className="text-sm font-medium text-accent-900">Situational Insights: </span>
+                    <ul className="mt-1 text-sm text-accent-800">
                       {analysis.situational_insights.map((insight: string, idx: number) => (
                         <li key={idx}>• {insight}</li>
                       ))}
@@ -1126,11 +1127,11 @@ export function AdvancedAnalysisPage() {
 
         {/* Overall Recommendations */}
         {situationResult.recommendations.length > 0 && (
-          <div className="bg-green-50 rounded-lg p-4">
-            <h3 className="text-lg font-semibold text-green-900 mb-2">Recommendations</h3>
+          <div className="bg-accent-50 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-accent-900 mb-2">Recommendations</h3>
             <ul className="space-y-1">
               {situationResult.recommendations.map((rec, index) => (
-                <li key={`situation-rec-${index}-${rec.slice(0, 20)}`} className="text-green-800">• {rec}</li>
+                <li key={`situation-rec-${index}-${rec.slice(0, 20)}`} className="text-accent-800">• {rec}</li>
               ))}
             </ul>
           </div>
@@ -1142,9 +1143,9 @@ export function AdvancedAnalysisPage() {
   if (!user) {
     return (
       <div className="text-center py-12">
-        <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-gray-400" />
-        <h3 className="mt-2 text-sm font-medium text-gray-900">Authentication Required</h3>
-        <p className="mt-1 text-sm text-gray-500">Please log in to access Advanced Analysis features.</p>
+        <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-ink-400" />
+        <h3 className="mt-2 text-sm font-medium text-ink-900">Authentication Required</h3>
+        <p className="mt-1 text-sm text-ink-500">Please log in to access Advanced Analysis features.</p>
       </div>
     )
   }
@@ -1154,56 +1155,56 @@ export function AdvancedAnalysisPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Advanced Analysis</h1>
-          <p className="text-gray-600 mt-2">
-            Deep player insights, comparisons, and predictive analytics
+          <h1 className="text-3xl font-bold text-ink-900">Advanced Analysis</h1>
+          <p className="text-ink-600 mt-2">
+            Compare players head-to-head, check strength of schedule, and spot breakouts before the waiver wire catches on
           </p>
         </div>
-        <ChartBarIcon className="h-8 w-8 text-blue-600" />
+        <ChartBarIcon className="h-8 w-8 text-accent-500" />
       </div>
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="bg-danger-50 border border-danger-200 rounded-md p-4">
           <div className="flex">
-            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            <ExclamationTriangleIcon className="h-5 w-5 text-danger-500" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">{error}</div>
+              <h3 className="text-sm font-medium text-danger-800">Error</h3>
+              <div className="mt-2 text-sm text-danger-700">{error}</div>
             </div>
           </div>
         </div>
       )}
 
       {/* Player Selection */}
-      <div className="bg-white rounded-lg border border-gray-200 p-6">
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Player Selection</h2>
+      <div className="bg-white rounded-lg border border-ink-200 p-6">
+        <h2 className="text-lg font-semibold text-ink-900 mb-4">Player Selection</h2>
         
         {/* Search */}
         <div className="relative mb-4">
-          <MagnifyingGlassIcon className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+          <MagnifyingGlassIcon className="absolute left-3 top-3 h-4 w-4 text-ink-400" />
           <input
             type="text"
             placeholder="Search players..."
             value={playerSearch}
             onChange={(e) => setPlayerSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-md shadow-sm focus:border-blue-500 focus:ring-blue-500"
+            className="w-full pl-10 pr-4 py-2 border border-ink-300 rounded-md shadow-sm focus:border-accent-500 focus:ring-accent-500"
           />
           
           {/* Suggestions Dropdown */}
           {playerSuggestions.length > 0 && (
-            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
+            <div className="absolute z-10 w-full mt-1 bg-white border border-ink-300 rounded-md shadow-lg max-h-60 overflow-y-auto">
               {playerSuggestions.map((player) => (
                 <button
                   key={player.id}
                   onClick={() => addPlayer(player)}
-                  className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center justify-between"
+                  className="w-full text-left px-4 py-2 hover:bg-ink-50 flex items-center justify-between"
                 >
                   <div>
                     <div className="font-medium">{player.name}</div>
-                    <div className="text-sm text-gray-600">{player.position} - {player.team}</div>
+                    <div className="text-sm text-ink-600">{player.position} - {player.team}</div>
                   </div>
-                  <PlusIcon className="h-4 w-4 text-blue-600" />
+                  <PlusIcon className="h-4 w-4 text-accent-500" />
                 </button>
               ))}
             </div>
@@ -1213,14 +1214,14 @@ export function AdvancedAnalysisPage() {
         {/* Selected Players */}
         {selectedPlayers.length > 0 && (
           <div className="mb-4">
-            <h3 className="text-sm font-medium text-gray-700 mb-2">Selected Players ({selectedPlayers.length}/5)</h3>
+            <h3 className="text-sm font-medium text-ink-700 mb-2">Selected Players ({selectedPlayers.length}/5)</h3>
             <div className="flex flex-wrap gap-2">
               {selectedPlayers.map((player) => (
-                <div key={player.id} className="flex items-center bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm">
+                <div key={player.id} className={`flex items-center px-3 py-1 rounded-full text-sm ${getPositionColor(player.position)}`}>
                   <span>{player.name} ({player.position})</span>
                   <button
                     onClick={() => removePlayer(player.id)}
-                    className="ml-2 text-blue-600 hover:text-blue-800"
+                    className="ml-2 hover:opacity-75"
                   >
                     <XMarkIcon className="h-4 w-4" />
                   </button>
@@ -1232,9 +1233,9 @@ export function AdvancedAnalysisPage() {
       </div>
 
       {/* Analysis Tabs */}
-      <div className="bg-white rounded-lg border border-gray-200">
+      <div className="bg-white rounded-lg border border-ink-200">
         {/* Tab Navigation */}
-        <div className="border-b border-gray-200">
+        <div className="border-b border-ink-200">
           <nav className="-mb-px flex space-x-8 px-6">
             {[
               { key: 'comparison', label: 'Player Comparison', icon: UserGroupIcon },
@@ -1247,8 +1248,8 @@ export function AdvancedAnalysisPage() {
                 onClick={() => setActiveTab(key as 'comparison' | 'schedule' | 'breakout' | 'situations')}
                 className={`flex items-center py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === key
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-accent-500 text-accent-600'
+                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
                 }`}
               >
                 <Icon className="h-4 w-4 mr-2" />
@@ -1264,13 +1265,13 @@ export function AdvancedAnalysisPage() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Player Comparison</h3>
-                  <p className="text-gray-600">Compare up to 5 players across multiple metrics</p>
+                  <h3 className="text-lg font-semibold text-ink-900">Player Comparison</h3>
+                  <p className="text-ink-600">Compare up to 5 players across multiple metrics</p>
                 </div>
                 <button
                   onClick={runPlayerComparison}
                   disabled={loading || selectedPlayers.length < 2}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed flex items-center"
                 >
                   {loading ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1288,16 +1289,16 @@ export function AdvancedAnalysisPage() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Strength of Schedule</h3>
-                  <p className="text-gray-600">Analyze upcoming matchup difficulty</p>
+                  <h3 className="text-lg font-semibold text-ink-900">Strength of Schedule</h3>
+                  <p className="text-ink-600">Analyze upcoming matchup difficulty</p>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
-                    <label className="text-sm font-medium text-gray-700">Weeks Ahead:</label>
+                    <label className="text-sm font-medium text-ink-700">Weeks Ahead:</label>
                     <select
                       value={weeksAhead}
                       onChange={(e) => setWeeksAhead(parseInt(e.target.value))}
-                      className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
                     >
                       {[1, 2, 3, 4, 5, 6, 7, 8].map(weeks => (
                         <option key={weeks} value={weeks}>{weeks}</option>
@@ -1307,7 +1308,7 @@ export function AdvancedAnalysisPage() {
                   <button
                     onClick={runScheduleAnalysis}
                     disabled={loading || selectedPlayers.length === 0}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed flex items-center"
                   >
                     {loading ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1326,16 +1327,16 @@ export function AdvancedAnalysisPage() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Breakout Candidates</h3>
-                  <p className="text-gray-600">ML-powered breakout player detection</p>
+                  <h3 className="text-lg font-semibold text-ink-900">Breakout Candidates</h3>
+                  <p className="text-ink-600">Low-owned players trending up based on age, usage, and recent performance</p>
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="flex items-center space-x-2">
-                    <label className="text-sm font-medium text-gray-700">Position:</label>
+                    <label className="text-sm font-medium text-ink-700">Position:</label>
                     <select
                       value={breakoutPosition}
                       onChange={(e) => setBreakoutPosition(e.target.value)}
-                      className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
                     >
                       <option value="ALL">All Positions</option>
                       <option value="QB">QB</option>
@@ -1345,11 +1346,11 @@ export function AdvancedAnalysisPage() {
                     </select>
                   </div>
                   <div className="flex items-center space-x-2">
-                    <label className="text-sm font-medium text-gray-700">Max Ownership:</label>
+                    <label className="text-sm font-medium text-ink-700">Max Ownership:</label>
                     <select
                       value={maxOwnership}
                       onChange={(e) => setMaxOwnership(parseInt(e.target.value))}
-                      className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                      className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
                     >
                       <option value={25}>25%</option>
                       <option value={50}>50%</option>
@@ -1360,7 +1361,7 @@ export function AdvancedAnalysisPage() {
                   <button
                     onClick={runBreakoutAnalysis}
                     disabled={loading}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                    className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed flex items-center"
                   >
                     {loading ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1379,13 +1380,13 @@ export function AdvancedAnalysisPage() {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Game Situation Analysis</h3>
-                  <p className="text-gray-600">Performance across different game contexts</p>
+                  <h3 className="text-lg font-semibold text-ink-900">Game Situation Analysis</h3>
+                  <p className="text-ink-600">Performance across different game contexts</p>
                 </div>
                 <button
                   onClick={runSituationAnalysis}
                   disabled={loading || selectedPlayers.length === 0}
-                  className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                  className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed flex items-center"
                 >
                   {loading ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
