@@ -348,10 +348,16 @@ export function PostDraftAnalysisPage() {
               >
                 {loading ? 'Analyzing...' : 'Analyze Roster'}
               </button>
+              {/* Secondary action, same accent family as "Analyze Roster" --
+                  success/warning/danger are reserved for categorical status
+                  meaning only (STYLE_GUIDE.md section 1), not a stand-in for
+                  "this button feels positive." An outlined accent variant
+                  gives real visual hierarchy against the solid-fill primary
+                  action without borrowing the status palette. */}
               <button
                 onClick={getPersonalizedWaivers}
                 disabled={loading || roster.length === 0}
-                className="flex-1 bg-success-600 text-white py-2 px-4 rounded-md hover:bg-success-700 transition-colors focus:outline-none focus:ring-2 focus:ring-success-600 disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed"
+                className="flex-1 bg-white text-accent-600 border border-accent-500 py-2 px-4 rounded-md hover:bg-accent-50 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:bg-ink-100 disabled:text-ink-400 disabled:border-ink-200 disabled:cursor-not-allowed"
               >
                 Get Waiver Targets
               </button>
