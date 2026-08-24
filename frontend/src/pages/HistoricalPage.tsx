@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { historical, players, getErrorMessage } from '../services/api'
 import { getPositionColor } from '../components/players/playerDisplay'
+import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import {
   ChartBarIcon,
   ArrowTrendingUpIcon,
@@ -128,11 +129,11 @@ function TrendsTab() {
   const getTrendIcon = (direction: string) => {
     switch (direction) {
       case 'up':
-        return <ArrowTrendingUpIcon className="h-5 w-5 text-green-500" />
+        return <ArrowTrendingUpIcon className="h-5 w-5 text-success-600" />
       case 'down':
-        return <ArrowTrendingDownIcon className="h-5 w-5 text-red-500" />
+        return <ArrowTrendingDownIcon className="h-5 w-5 text-danger-600" />
       default:
-        return <div className="h-5 w-5 bg-gray-300 rounded-full" />
+        return <div className="h-5 w-5 bg-ink-300 rounded-full" />
     }
   }
 
@@ -151,15 +152,15 @@ function TrendsTab() {
   return (
     <div className="space-y-6">
       {/* Controls */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Performance Trends Analysis</h3>
+      <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+        <h3 className="text-lg font-medium text-ink-900 mb-4">Performance Trends Analysis</h3>
         <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Trend Type</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Trend Type</label>
             <select
               value={trendType}
               onChange={(e) => setTrendType(e.target.value)}
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="rounded-md border-ink-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
               {trendTypes.map(type => (
                 <option key={type.value} value={type.value}>{type.label}</option>
@@ -168,11 +169,11 @@ function TrendsTab() {
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Position</label>
+            <label className="block text-sm font-medium text-ink-700 mb-1">Position</label>
             <select
               value={selectedPosition}
               onChange={(e) => setSelectedPosition(e.target.value)}
-              className="rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              className="rounded-md border-ink-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500"
             >
               {positions.map(position => (
                 <option key={position} value={position}>
@@ -186,12 +187,12 @@ function TrendsTab() {
 
       {/* Error Display */}
       {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="bg-danger-50 border border-danger-200 rounded-md p-4">
           <div className="flex">
-            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            <ExclamationTriangleIcon className="h-5 w-5 text-danger-400" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">{error}</div>
+              <h3 className="text-sm font-medium text-danger-800">Error</h3>
+              <div className="mt-2 text-sm text-danger-700">{error}</div>
             </div>
           </div>
         </div>
@@ -199,49 +200,52 @@ function TrendsTab() {
 
       {/* Trending Players */}
       {loading ? (
-        <div className="bg-white rounded-lg shadow p-6 text-center">
-          <ClockIcon className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-2" />
-          <p className="text-sm text-gray-500">Loading trending players...</p>
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 text-center">
+          <ClockIcon className="animate-spin h-8 w-8 text-accent-500 mx-auto mb-2" />
+          <p className="text-sm text-ink-500">Loading trending players...</p>
         </div>
       ) : trendingPlayers.length === 0 ? (
-        <div className="bg-white rounded-lg shadow p-6 text-center">
-          <ChartBarIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No trending players found</h3>
-          <p className="mt-1 text-sm text-gray-500">
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 text-center">
+          <ChartBarIcon className="mx-auto h-12 w-12 text-ink-400" />
+          <h3 className="mt-2 text-sm font-medium text-ink-900">No trending players found</h3>
+          <p className="mt-1 text-sm text-ink-500">
             Try adjusting your filters or check back after more data is synced.
           </p>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow">
-          <div className="px-6 py-4 border-b border-gray-200">
-            <h4 className="text-lg font-medium text-gray-900">
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200">
+          <div className="px-6 py-4 border-b border-ink-200">
+            <h4 className="text-lg font-medium text-ink-900">
               Trending Players ({trendingPlayers.length} found)
             </h4>
           </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+            <table className="min-w-full divide-y divide-ink-200">
+              <thead className="bg-ink-50">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Player
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Trend
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Performance Change
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Confidence
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <span className="flex items-center gap-1.5">
+                      Confidence
+                      <DataConfidenceBadge level="heuristic" />
+                    </span>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                     Sample Size
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className="bg-white divide-y divide-ink-200">
                 {trendingPlayers.map((player) => (
-                  <tr key={player.player_id} className="hover:bg-gray-50">
+                  <tr key={player.player_id} className="hover:bg-ink-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0">
@@ -250,8 +254,8 @@ function TrendsTab() {
                           </span>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">{player.player_name}</div>
-                          <div className="text-sm text-gray-500">{player.team || 'FA'}</div>
+                          <div className="text-sm font-medium text-ink-900">{player.player_name}</div>
+                          <div className="text-sm text-ink-500">{player.team || 'FA'}</div>
                         </div>
                       </div>
                     </td>
@@ -261,33 +265,33 @@ function TrendsTab() {
                         <span className="text-sm font-medium">
                           {player.trend_direction.charAt(0).toUpperCase() + player.trend_direction.slice(1)}
                         </span>
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-ink-500">
                           ({(player.trend_strength * 100).toFixed(0)}% strength)
                         </span>
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`text-sm font-medium ${
-                        player.performance_change > 0 ? 'text-green-600' : 
-                        player.performance_change < 0 ? 'text-red-600' : 'text-gray-600'
+                        player.performance_change > 0 ? 'text-success-600' : 
+                        player.performance_change < 0 ? 'text-danger-600' : 'text-ink-600'
                       }`}>
                         {formatPerformanceChange(player.performance_change)}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="w-16 bg-gray-200 rounded-full h-2">
-                          <div 
-                            className="bg-blue-600 h-2 rounded-full" 
+                        <div className="w-16 bg-ink-100 rounded-full h-2">
+                          <div
+                            className="bg-accent-500 h-2 rounded-full"
                             style={{ width: `${player.confidence_level * 100}%` }}
                           ></div>
                         </div>
-                        <span className="ml-2 text-xs text-gray-500">
+                        <span className="ml-2 text-xs text-ink-500">
                           {(player.confidence_level * 100).toFixed(0)}%
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
                       {player.sample_size} games
                     </td>
                   </tr>
@@ -383,29 +387,32 @@ export function HistoricalPage() {
   const getTrendIcon = (direction: string) => {
     switch (direction) {
       case 'up':
-        return <ArrowTrendingUpIcon className="h-5 w-5 text-green-500" />
+        return <ArrowTrendingUpIcon className="h-5 w-5 text-success-600" />
       case 'down':
-        return <ArrowTrendingDownIcon className="h-5 w-5 text-red-500" />
+        return <ArrowTrendingDownIcon className="h-5 w-5 text-danger-600" />
       default:
-        return <div className="h-5 w-5 bg-gray-300 rounded-full" />
+        return <div className="h-5 w-5 bg-ink-300 rounded-full" />
     }
   }
 
+  // Only 3 status colors exist in this app's real token system
+  // (success/warning/danger) -- collapsing 5 letter grades onto them
+  // rather than inventing a 5-step color ramp the design system doesn't
+  // have (see STYLE_GUIDE.md section 1: these tokens carry fixed
+  // categorical meaning, not an arbitrary decorative scale).
   const getConsistencyGrade = (score: number) => {
-    if (score >= 0.8) return { grade: 'A', color: 'text-green-600' }
-    if (score >= 0.6) return { grade: 'B', color: 'text-blue-600' }
-    if (score >= 0.4) return { grade: 'C', color: 'text-yellow-600' }
-    if (score >= 0.2) return { grade: 'D', color: 'text-orange-600' }
-    return { grade: 'F', color: 'text-red-600' }
+    if (score >= 0.6) return { grade: score >= 0.8 ? 'A' : 'B', color: 'text-success-600' }
+    if (score >= 0.4) return { grade: 'C', color: 'text-warning-600' }
+    return { grade: score >= 0.2 ? 'D' : 'F', color: 'text-danger-600' }
   }
 
   if (!user) {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="text-center">
-          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">Authentication Required</h3>
-          <p className="mt-1 text-sm text-gray-500">Please sign in to access historical performance data.</p>
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-ink-400" />
+          <h3 className="mt-2 text-sm font-medium text-ink-900">Authentication Required</h3>
+          <p className="mt-1 text-sm text-ink-500">Please sign in to access historical performance data.</p>
         </div>
       </div>
     )
@@ -424,21 +431,21 @@ export function HistoricalPage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Historical Performance</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="text-3xl font-bold text-ink-900">Historical Performance</h1>
+            <p className="text-ink-600 mt-2">
               Analyze player performance trends, consistency patterns, and historical data
             </p>
           </div>
           <div className="flex items-center space-x-3">
             {dataOverview?.recommendations.sync_needed && (
-              <div className="text-sm text-orange-600 bg-orange-50 px-3 py-1 rounded-full">
+              <div className="text-sm text-warning-800 bg-warning-100 px-3 py-1 rounded-full">
                 Sync Needed
               </div>
             )}
             <button
               onClick={syncHistoricalData}
               disabled={syncing}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center space-x-2"
+              className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition-colors disabled:bg-ink-200 disabled:text-ink-400 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-accent-500 flex items-center space-x-2"
             >
               <ArrowPathIcon className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
               <span>{syncing ? 'Syncing...' : 'Sync Data'}</span>
@@ -449,19 +456,19 @@ export function HistoricalPage() {
 
       {/* Error Display */}
       {error && (
-        <div className="mb-6 bg-red-50 border border-red-200 rounded-md p-4">
+        <div className="mb-6 bg-danger-50 border border-danger-200 rounded-md p-4">
           <div className="flex">
-            <ExclamationTriangleIcon className="h-5 w-5 text-red-400" />
+            <ExclamationTriangleIcon className="h-5 w-5 text-danger-400" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
-              <div className="mt-2 text-sm text-red-700">{error}</div>
+              <h3 className="text-sm font-medium text-danger-800">Error</h3>
+              <div className="mt-2 text-sm text-danger-700">{error}</div>
             </div>
           </div>
         </div>
       )}
 
       {/* Navigation Tabs */}
-      <div className="border-b border-gray-200 mb-6">
+      <div className="border-b border-ink-200 mb-6">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => {
             const Icon = tab.icon
@@ -471,8 +478,8 @@ export function HistoricalPage() {
                 onClick={() => setActiveTab(tab.id as 'overview' | 'players' | 'trends' | 'analysis')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    ? 'border-accent-500 text-accent-600'
+                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -488,48 +495,48 @@ export function HistoricalPage() {
         <div className="space-y-6">
           {/* Data Coverage Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center">
-                <ChartBarIcon className="h-8 w-8 text-blue-600" />
+                <ChartBarIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Performance Records</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                  <p className="text-sm font-medium text-ink-500">Performance Records</p>
+                  <p className="text-2xl font-bold text-ink-900">
                     {dataOverview.data_coverage.total_performance_records.toLocaleString()}
                   </p>
                 </div>
               </div>
             </div>
-            
-            <div className="bg-white rounded-lg shadow p-6">
+
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center">
-                <UserIcon className="h-8 w-8 text-green-600" />
+                <UserIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Players Tracked</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                  <p className="text-sm font-medium text-ink-500">Players Tracked</p>
+                  <p className="text-2xl font-bold text-ink-900">
                     {dataOverview.data_coverage.players_with_data}
                   </p>
                 </div>
               </div>
             </div>
-            
-            <div className="bg-white rounded-lg shadow p-6">
+
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center">
-                <CalendarIcon className="h-8 w-8 text-purple-600" />
+                <CalendarIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Seasons Covered</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                  <p className="text-sm font-medium text-ink-500">Seasons Covered</p>
+                  <p className="text-2xl font-bold text-ink-900">
                     {dataOverview.data_coverage.seasons_covered.length}
                   </p>
                 </div>
               </div>
             </div>
-            
-            <div className="bg-white rounded-lg shadow p-6">
+
+            <div className="bg-white rounded-lg border border-ink-200 p-6">
               <div className="flex items-center">
-                <ArrowTrendingUpIcon className="h-8 w-8 text-orange-600" />
+                <ArrowTrendingUpIcon className="h-8 w-8 text-accent-500" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-gray-500">Trend Analyses</p>
-                  <p className="text-2xl font-bold text-gray-900">
+                  <p className="text-sm font-medium text-ink-500">Trend Analyses</p>
+                  <p className="text-2xl font-bold text-ink-900">
                     {dataOverview.data_coverage.trend_analyses}
                   </p>
                 </div>
@@ -538,20 +545,20 @@ export function HistoricalPage() {
           </div>
 
           {/* Data Status */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Data Status</h3>
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <h3 className="text-lg font-medium text-ink-900 mb-4">Data Status</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h4 className="font-medium text-gray-700 mb-2">Coverage</h4>
+                <h4 className="font-medium text-ink-700 mb-2">Coverage</h4>
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Seasons</span>
+                    <span className="text-sm text-ink-600">Seasons</span>
                     <span className="text-sm font-medium">
                       {dataOverview.data_coverage.seasons_covered.join(', ')}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Last Update</span>
+                    <span className="text-sm text-ink-600">Last Update</span>
                     <span className="text-sm font-medium">
                       {dataOverview.data_coverage.latest_update 
                         ? new Date(dataOverview.data_coverage.latest_update).toLocaleDateString()
@@ -562,25 +569,25 @@ export function HistoricalPage() {
                 </div>
               </div>
               <div>
-                <h4 className="font-medium text-gray-700 mb-2">Data Quality</h4>
+                <h4 className="font-medium text-ink-700 mb-2">Data Quality</h4>
                 <div className="space-y-2">
                   <div className="flex items-center space-x-2">
                     {dataOverview.recommendations.data_freshness === 'current' ? (
-                      <CheckCircleIcon className="h-4 w-4 text-green-500" />
+                      <CheckCircleIcon className="h-4 w-4 text-success-600" />
                     ) : (
-                      <ExclamationTriangleIcon className="h-4 w-4 text-yellow-500" />
+                      <ExclamationTriangleIcon className="h-4 w-4 text-warning-600" />
                     )}
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-ink-600">
                       Data {dataOverview.recommendations.data_freshness}
                     </span>
                   </div>
                   <div className="flex items-center space-x-2">
                     {!dataOverview.recommendations.sync_needed ? (
-                      <CheckCircleIcon className="h-4 w-4 text-green-500" />
+                      <CheckCircleIcon className="h-4 w-4 text-success-600" />
                     ) : (
-                      <ClockIcon className="h-4 w-4 text-yellow-500" />
+                      <ClockIcon className="h-4 w-4 text-warning-600" />
                     )}
-                    <span className="text-sm text-gray-600">
+                    <span className="text-sm text-ink-600">
                       {dataOverview.recommendations.sync_needed ? 'Sync recommended' : 'Up to date'}
                     </span>
                   </div>
@@ -594,10 +601,10 @@ export function HistoricalPage() {
       {activeTab === 'players' && (
         <div className="space-y-6">
           {/* Player Search */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">Player Historical Analysis</h3>
+          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <h3 className="text-lg font-medium text-ink-900 mb-4">Player Historical Analysis</h3>
             <div className="mb-4">
-              <p className="text-sm text-gray-600 mb-2">
+              <p className="text-sm text-ink-600 mb-2">
                 Try searching for: Josh Allen, Christian McCaffrey, Tyreek Hill, or Travis Kelce
               </p>
             </div>
@@ -609,13 +616,13 @@ export function HistoricalPage() {
                   setSearchQuery(e.target.value)
                   searchPlayers(e.target.value)
                 }}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                className="block w-full rounded-md border-ink-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-accent-500 sm:text-sm"
                 placeholder="Search for a player..."
               />
               
               {/* Search Results */}
               {playerSearchResults.length > 0 && (
-                <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-200 max-h-60 overflow-auto">
+                <div className="absolute z-10 mt-1 w-full bg-white shadow-md rounded-md border border-ink-200 max-h-60 overflow-auto">
                   {playerSearchResults.map((player) => (
                     <button
                       key={player.id || player.sleeper_id}
@@ -645,13 +652,13 @@ export function HistoricalPage() {
                           }
                         }
                       }}
-                      className={`w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between ${
+                      className={`w-full px-4 py-2 text-left hover:bg-ink-50 flex items-center justify-between ${
                         !player.id ? 'opacity-60' : ''
                       }`}
                     >
                       <div>
                         <span className="font-medium">{player.full_name || player.name}</span>
-                        <span className="text-sm text-gray-500 ml-2">
+                        <span className="text-sm text-ink-500 ml-2">
                           {player.position} - {player.team || 'FA'}
                           {!player.id && player.sleeper_id && ' (Will add to database)'}
                           {!player.id && !player.sleeper_id && ' (No data available)'}
@@ -666,34 +673,34 @@ export function HistoricalPage() {
 
           {/* Player Summary */}
           {loading && (
-            <div className="bg-white rounded-lg shadow p-6 text-center">
-              <ClockIcon className="animate-spin h-8 w-8 text-blue-600 mx-auto mb-2" />
-              <p className="text-sm text-gray-500">Loading historical data...</p>
+            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 text-center">
+              <ClockIcon className="animate-spin h-8 w-8 text-accent-500 mx-auto mb-2" />
+              <p className="text-sm text-ink-500">Loading historical data...</p>
             </div>
           )}
 
           {playerSummary && (
             <div className="space-y-6">
               {/* Player Header */}
-              <div className="bg-white rounded-lg shadow p-6">
+              <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-xl font-bold text-gray-900">{playerSummary.player_name}</h3>
-                    <p className="text-gray-600">{playerSummary.position} • {playerSummary.seasons_analyzed} seasons analyzed</p>
+                    <h3 className="text-xl font-bold text-ink-900">{playerSummary.player_name}</h3>
+                    <p className="text-ink-600">{playerSummary.position} • {playerSummary.seasons_analyzed} seasons analyzed</p>
                   </div>
                   <div className="text-right">
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-2xl font-bold text-accent-600">
                       {playerSummary.historical_average.toFixed(1)}
                     </div>
-                    <div className="text-sm text-gray-500">Avg PPR Points</div>
+                    <div className="text-sm text-ink-500">Avg PPR Points</div>
                   </div>
                 </div>
               </div>
 
               {/* Career Trends */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h4 className="font-medium text-gray-900 mb-4">Career Trend</h4>
+                <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+                  <h4 className="font-medium text-ink-900 mb-4">Career Trend</h4>
                   {playerSummary.career_trend ? (
                     <div className="space-y-3">
                       <div className="flex items-center space-x-2">
@@ -703,19 +710,19 @@ export function HistoricalPage() {
                            playerSummary.career_trend.direction.slice(1)} Trend
                         </span>
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-ink-600">
                         <p>Strength: {(playerSummary.career_trend.strength * 100).toFixed(1)}%</p>
                         <p>Performance Change: {playerSummary.career_trend.performance_change > 0 ? '+' : ''}
                            {playerSummary.career_trend.performance_change.toFixed(1)}%</p>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No career trend data available</p>
+                    <p className="text-sm text-ink-500">No career trend data available</p>
                   )}
                 </div>
 
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h4 className="font-medium text-gray-900 mb-4">Recent Form</h4>
+                <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+                  <h4 className="font-medium text-ink-900 mb-4">Recent Form</h4>
                   {playerSummary.recent_trend ? (
                     <div className="space-y-3">
                       <div className="flex items-center space-x-2">
@@ -725,57 +732,57 @@ export function HistoricalPage() {
                            playerSummary.recent_trend.direction.slice(1)} (Recent)
                         </span>
                       </div>
-                      <div className="text-sm text-gray-600">
+                      <div className="text-sm text-ink-600">
                         <p>Strength: {(playerSummary.recent_trend.strength * 100).toFixed(1)}%</p>
                         <p>Performance Change: {playerSummary.recent_trend.performance_change > 0 ? '+' : ''}
                            {playerSummary.recent_trend.performance_change.toFixed(1)}%</p>
                       </div>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-500">No recent trend data available</p>
+                    <p className="text-sm text-ink-500">No recent trend data available</p>
                   )}
                 </div>
               </div>
 
               {/* Season Summaries */}
-              <div className="bg-white rounded-lg shadow p-6">
-                <h4 className="font-medium text-gray-900 mb-4">Season-by-Season Performance</h4>
+              <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+                <h4 className="font-medium text-ink-900 mb-4">Season-by-Season Performance</h4>
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full divide-y divide-ink-200">
+                    <thead className="bg-ink-50">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                           Season
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                           Games
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                           Avg Points
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                           Consistency
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                           Ceiling/Floor
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
                           Trend
                         </th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-white divide-y divide-ink-200">
                       {playerSummary.season_summaries.map((season) => {
                         const consistency = getConsistencyGrade(season.consistency_score)
                         return (
                           <tr key={season.season}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink-900">
                               {season.season}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
                               {season.games_played}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
                               {season.avg_points.toFixed(1)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -783,7 +790,7 @@ export function HistoricalPage() {
                                 {consistency.grade}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
                               {season.ceiling.toFixed(1)} / {season.floor.toFixed(1)}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm">
@@ -809,9 +816,9 @@ export function HistoricalPage() {
       )}
 
       {activeTab === 'analysis' && (
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Advanced Analysis</h3>
-          <p className="text-gray-600">Advanced statistical analysis and predictive modeling coming soon...</p>
+        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+          <h3 className="text-lg font-medium text-ink-900 mb-4">Advanced Analysis</h3>
+          <p className="text-ink-600">Advanced statistical analysis and predictive modeling coming soon...</p>
         </div>
       )}
     </div>
