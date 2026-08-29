@@ -21,9 +21,6 @@ class BreakoutCandidatesRequest(BaseModel):
     min_ownership: Optional[float] = 0.0
     max_ownership: Optional[float] = 50.0
 
-class GameSituationRequest(BaseModel):
-    player_ids: List[int]
-
 @router.post("/compare-players")
 async def compare_players(
     request: PlayerComparisonRequest,
@@ -123,36 +120,6 @@ async def detect_breakout_candidates(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Breakout candidate detection failed: {str(e)}")
-
-@router.post("/game-situations")
-async def analyze_game_situations(
-    request: GameSituationRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Analyze player performance in various game situations
-    """
-    try:
-        analysis_service = AdvancedAnalysisService(db)
-        
-        if not request.player_ids:
-            raise HTTPException(status_code=400, detail="At least 1 player required for situation analysis")
-        
-        if len(request.player_ids) > 8:
-            raise HTTPException(status_code=400, detail="Maximum 8 players allowed for situation analysis")
-        
-        result = await analysis_service.analyze_game_situations(
-            player_ids=request.player_ids
-        )
-        
-        if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-        
-        return result
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Game situation analysis failed: {str(e)}")
 
 @router.get("/player-suggestions")
 async def get_player_suggestions(
