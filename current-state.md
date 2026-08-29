@@ -13,6 +13,7 @@ FastAPI + React/TS fantasy football assistant. PPR-scoped (keeper/dynasty explic
 - [x] **Visual identity rollout** — type system + signature "yard-divider" motif rolled out app-wide (most recent commits through `e0337b1`).
 - [x] **Draft assistant hardening** — AI provider circuit breaker (`a7a5179`) + algorithmic fallback baseline (`c53df9e`) so draft recs degrade gracefully instead of 500ing when AI is down.
 - [x] **ESPN roster/live-draft fixes** — season defaulting, roster grading, bench-slot bug (`8360cba`, `cd3b6bd`, `33a337a`).
+- [x] **Mock draft (`DraftPage.tsx`) bug fix, 2026-08-29** — user-reported: recommendations kept pushing RB/WR causing an "overstocked" final grade, and K/DEF were never selectable. Root causes: (1) `getPositionNeeds`'s fallback `needs.length > 0 ? needs : ['RB', 'WR']` meant once RB/WR/QB/TE needs were satisfied, the code claimed RB/WR were *still* needed forever, driving the Team Needs panel, bot picks, and `generateRecommendations` requests to keep pushing RB/WR indefinitely; (2) the player pool fetch only requested RB/WR/QB/TE positional rankings — K/DEF were never in `availablePlayers` at all, despite the position filter dropdown offering them and the grading logic expecting 1 K + 1 DEF. Fixed both: `IDEAL_POSITION_COUNTS` now includes K:1/DEF:1 (matching `STANDARD_LINEUP` in `draft_recommendation_fallback.py`), the fallback now correctly returns an empty array ("no need, best player available") instead of re-injecting RB/WR, and the pool fetch now requests K/DEF rankings too. Verified live in-browser: K filter now returns real kickers; `pytest` unaffected (frontend-only change); `npm run build` green.
 - [~] **ESPN live draft feed** — confirmed architecturally broken (not just untested), no known REST/WS fix exists. Manual "mark gone" mitigation shipped. Real fix (browser extension reading ESPN's DOM) not built. See [[project_espn_live_draft_broken]].
 - [ ] **Decommission audit findings** (`DECOMMISSION_TASK_LIST.md`) — large backlog of real, evidence-based bugs/dead-code, not yet started as a dedicated pass. See open items below.
 - [ ] **Push alerts (in-app MVP)** — scoped, not built (`DEFERRED_FEATURES_CHECKLIST.md`).
@@ -43,12 +44,12 @@ FastAPI + React/TS fantasy football assistant. PPR-scoped (keeper/dynasty explic
 
 ## Remaining open backlog (not bugs — product/architecture decisions, not attempted)
 
-**Duplicate/orphaned implementations needing a canonical-path decision** (from `docs/audits/DECOMMISSION_TASK_LIST.md`, not re-verified — these are "which version wins" calls, not pass/fail bugs):
-- Advanced analysis: 2 stat engines (`advanced_analysis_service.py`, wired vs. `advanced_historical_service.py`, better stats but unwired).
-- Game situations: 3 implementations (`AdvancedAnalysisService`, wired; `enhanced_game_situation_service.py`, most rigorous, unwired; a third inline in `historical.py`, unwired).
-- Matchup analysis: `matchup_analysis_service.py` used internally but its own endpoint file has zero frontend callers.
-- Blog: `blog.py`+`content_service.py` fully dead vs. shipped `content.py`+`content_generation_service.py`.
-- Player AI analysis: 2 parallel paths (`POST /players/{id}/analysis`, frontend-used, vs. `POST /players/enhanced/{id}/analysis`, unused).
+**Duplicate/orphaned implementations needing a canonical-path decision** (from `docs/audits/DECOMMISSION_TASK_LIST.md`, "which version wins" calls, not pass/fail bugs):
+- [x] **Game situations — resolved 2026-08-29.** `enhanced_game_situation_service.py` (via `POST /game-situations/enhanced-analysis`) is now the sole implementation. Removed the dead duplicate `AdvancedAnalysisService.analyze_game_situations`/`POST /advanced-analysis/game-situations` (confirmed zero callers first) plus its 8 dedicated helper methods and now-dead imports. A third `historical.py` copy had already been removed in an earlier session. Verified: `pytest` 73/73, backend imports clean, `npm run build` green, no remaining references anywhere in the repo.
+- [ ] Advanced analysis: 2 stat engines (`advanced_analysis_service.py`, wired vs. `advanced_historical_service.py`, better stats but unwired). *Not yet re-verified.*
+- [ ] Matchup analysis: `matchup_analysis_service.py` used internally but its own endpoint file has zero frontend callers. *Not yet re-verified.*
+- [ ] Blog: `blog.py`+`content_service.py` fully dead vs. shipped `content.py`+`content_generation_service.py`. *Not yet re-verified.*
+- [ ] Player AI analysis: 2 parallel paths (`POST /players/{id}/analysis`, frontend-used, vs. `POST /players/enhanced/{id}/analysis`, unused). *Not yet re-verified.*
 
 ## Reference docs (all re-verified as of the last docs pass, per CLAUDE.md)
 

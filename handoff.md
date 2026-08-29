@@ -4,30 +4,34 @@ _Read this first after `/clear` to resume the immediate next micro-task. Update 
 
 ## Just completed
 
-Systematically re-verified all 11 specific bugs in `docs/audits/DECOMMISSION_TASK_LIST.md` against current code — **every one was already fixed**, none required new code changes this session. Last one checked was the alembic fresh-DB migration claim: spun up a throwaway local Postgres cluster (`initdb`/`pg_ctl` on port 5433, socket in `/tmp/pg_fresh_test_sock` — long scratchpad paths broke the Postgres 103-byte Unix-socket-path limit, that's why `/tmp` directly), ran `alembic upgrade head` with `DATABASE_URL` overridden via env var (pydantic-settings gives env vars precedence over `.env`, so the real dev DB config was never touched) against a blank database — all 20 migrations applied cleanly. Cluster was stopped and deleted afterward; nothing persisted outside the session. `current-state.md` now documents this as a fully re-verified, fully stale audit list — see it for the full per-item breakdown.
+1. Committed the docs reorganization from earlier this session (`b6f8a2b`: moved 13 docs into `docs/{guides,testing,audits}/`, fixed README.md/CLAUDE.md cross-references, added `current-state.md`/`handoff.md`/`memory.md`).
+2. Re-verified all 11 specific bugs in `docs/audits/DECOMMISSION_TASK_LIST.md` — all already fixed, no code changes needed (see `current-state.md` for the full list, including the alembic fresh-DB check done via a throwaway local Postgres cluster).
+3. **Consolidated the "game situations" duplicate-implementation item** (`5579788`): confirmed via grep across `backend/` and `frontend/src/` that `AdvancedAnalysisService.analyze_game_situations` / `POST /advanced-analysis/game-situations` had zero remaining callers (frontend already used the canonical `POST /game-situations/enhanced-analysis`), then removed the dead method, its 8 dedicated helper methods, the route, the request model, and now-unused imports (`InjuryStatus`, `GameLocation`, `defaultdict`). Left two pre-existing unrelated unused imports alone (`sqlalchemy.func` in the service file, `sqlalchemy.or_` in the endpoint file — both unused before this change too, out of scope). Verified: `pytest` 73/73 passed, backend imports cleanly, `npm run build` green. Updated `docs/guides/API_GUIDE.md` and checked off the item in `docs/audits/DECOMMISSION_TASK_LIST.md`.
+4. **Fixed a user-reported mock draft bug** (`frontend/src/pages/DraftPage.tsx`, not yet committed as of this write): recommendations kept pushing RB/WR to the point of "overstocked," and K/DEF were never selectable despite the filter offering them. Two real root causes found and fixed: `getPositionNeeds`'s fallback used to re-inject `['RB', 'WR']` as "needs" forever once real needs were satisfied (now returns empty = best player available); the player pool fetch only ever requested RB/WR/QB/TE positional rankings, never K/DEF (now fetches all six). Verified live in a real browser session (K filter now returns real kickers) plus `npm run build` green.
 
-Also earlier this session: moved 13 docs from repo root into `docs/{guides,testing,audits}/`, fixed cross-references in README.md/CLAUDE.md.
-
-No production code was changed this session — verification only.
+All three code-change commits are local only — not pushed to `origin/main`.
 
 ## Immediate next task
 
-The decommission list's specific-bug backlog is exhausted (all fixed). What's left is genuinely different in kind: **5 duplicate/orphaned-implementation "which version wins" decisions**, listed in `current-state.md` under "Remaining open backlog." These aren't bugs to fix — they're product/architecture calls (which of 2-3 real implementations becomes canonical, and whether to decommission the others). None have been re-verified this session; before proposing a consolidation, first re-check each one is still accurately described (given how stale the rest of this doc turned out to be).
+Four duplicate/orphaned-implementation decisions remain in `current-state.md`'s backlog, none re-verified yet:
 
-Suggested entry point if picking this up: **game situations** — the audit claims `enhanced_game_situation_service.py` is "the most rigorous, best-documented code in the entire audit" but has zero frontend callers, while a less-rigorous version is what's actually wired to `AdvancedAnalysisPage.tsx`. High value if true (better logic sitting unused), but confirm the "zero callers" and "more rigorous" claims first — grep for `enhanced_game_situation_service` imports and diff the two implementations' actual statistical methods before deciding anything.
+1. **Advanced analysis stat engines** — `advanced_analysis_service.py` (wired) vs. `advanced_historical_service.py` (claimed better stats: ANOVA/Mann-Whitney/Cohen's d, unwired). Given how the game-situations item actually turned out (the "unwired duplicate" was already fully dead, not a live consolidation decision), **check first whether `advanced_historical_service.py` even still exists** — the decommission doc's own note (see `docs/audits/DECOMMISSION_TASK_LIST.md` line ~52) says it "was deleted alongside these routes" during the historical.py cleanup. If it's gone, this item is also already resolved — just verify and check it off.
+2. **Matchup analysis** — `matchup_analysis.py` endpoint file (6 routes) with zero frontend callers. Verify caller count is still accurate before deciding surface-vs-decommission.
+3. **Blog** — `blog.py`+`content_service.py` vs. shipped `content.py`+`content_generation_service.py`. Verify `blog.py` is still registered/dead before acting.
+4. **Player AI analysis** — two parallel paths, decide canonical one. Lower urgency (both work, just a decision).
 
-Otherwise: ask the user whether they'd rather tackle a consolidation decision, or consider the backlog closed out and look for new work (e.g., resume something from `docs/audits/UX_PRODUCT_REVIEW.md`'s long-term deferred section, or `DEFERRED_FEATURES_CHECKLIST.md`'s push-alerts MVP).
+Recommended order: check item 1 first (likely already resolved per the doc's own note), then 2 and 3 (quick grep-based verifications), then 4 only if the user wants it (it's explicitly "not urgent" in the source doc).
 
 ## Critical technical context
 
-- **This session's core lesson**: `docs/audits/DECOMMISSION_TASK_LIST.md` (and by extension any point-in-time audit doc in this repo) decays fast. Always re-verify against current code/tests before treating a listed item as an open task — don't just relay the doc's claims.
-- **Local throwaway-Postgres recipe** (useful again for any future fresh-DB/migration testing): `initdb -D <dir> -U testuser -A trust`, then `pg_ctl -D <dir> -o "-p <port> -k <short-socket-dir>" -l <logfile> start` — the socket directory must be short (Postgres caps the full socket path at 103 bytes), so don't use this session's long scratchpad path; `/tmp/<name>` works. Override `DATABASE_URL` as an env var when invoking `alembic`/the app — pydantic-settings' `SettingsConfigDict(env_file=".env")` gives real env vars precedence over `.env`, so this never touches the actual dev DB config.
-- **Grading engines**: `roster_grading.py::grade_roster` is real, deterministic, ESPN-only, already wired into `roster-analysis`.
-- **Comparison rule** (confirmed correctly applied everywhere): `UserLeague.platform` is a plain `enum.Enum` — always `.value.upper()` against a string literal.
+- **This session's core lesson, reconfirmed**: every decommission-list item checked so far was either already fixed or already removed — treat every remaining item as "probably already resolved, verify before acting," not as a live task queue.
+- **Verification pattern that's worked well**: grep every plausible caller path (both `backend/` and `frontend/src/`) for the specific symbol/route string before touching anything; check git log / existing docstrings for whether a fix note already exists; only then edit.
+- **Local throwaway-Postgres recipe** (for any future fresh-DB/migration testing): `initdb -D <dir> -U testuser -A trust`, `pg_ctl -D <dir> -o "-p <port> -k <short-socket-dir>" start` — socket dir must be short (Postgres' 103-byte Unix-socket-path cap), use `/tmp/<name>`, not the long scratchpad path. Override `DATABASE_URL` as an env var (pydantic-settings gives env vars precedence over `.env`) so the real dev DB is never touched.
+- **Backend test invocation**: from `backend/` with venv active, `pytest` or `python -m pytest` both work.
 
 ## State of the working tree at handoff time
 
-Docs move is staged (`git mv`, history preserved) but **not committed** — confirm with the user before committing. `README.md`/`CLAUDE.md` have unstaged cross-reference-fix edits. `current-state.md`/`handoff.md`/`memory.md` are untracked (never committed — ask the user if these should be committed too, or stay local-only). Pre-existing unrelated diff still present and untouched:
+Two commits ahead of `origin/main` (`b6f8a2b`, `5579788`), not pushed — ask before pushing. `current-state.md`/`handoff.md` have just been updated (this write) and are **not yet committed** — commit them if the user wants the standing context-file-update habit to also mean "commit them," otherwise they can stay local. Pre-existing unrelated diff, still untouched:
 ```
 D .claude/skills/optimize-prompt.md
 ?? .claude/skills/optimize-prompt/

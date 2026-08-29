@@ -41,8 +41,10 @@ type DraftStatus = 'setup' | 'drafting' | 'complete'
 // Roster construction a team is trying to fill before it starts taking best
 // player available. Shared by the user's own "Team Needs" panel and the bot
 // pick logic below, so both use one real definition of "need" rather than
-// two that could drift apart.
-const IDEAL_POSITION_COUNTS: Record<string, number> = { RB: 2, WR: 2, QB: 1, TE: 1 }
+// two that could drift apart. Mirrors STANDARD_LINEUP in
+// draft_recommendation_fallback.py so the mock draft's own idea of "done"
+// matches what the post-draft grade actually checks against.
+const IDEAL_POSITION_COUNTS: Record<string, number> = { RB: 2, WR: 2, QB: 1, TE: 1, K: 1, DEF: 1 }
 
 function getPositionNeeds(roster: { position: string }[]): string[] {
   const positionCounts = roster.reduce((acc, player) => {
@@ -50,11 +52,15 @@ function getPositionNeeds(roster: { position: string }[]): string[] {
     return acc
   }, {} as Record<string, number>)
 
-  const needs = Object.entries(IDEAL_POSITION_COUNTS)
+  // Previously fell back to ['RB', 'WR'] whenever every real need was
+  // already filled -- meaning the "Team Needs" panel, and the recommendation
+  // requests it feeds, kept insisting RB/WR were needed forever, driving
+  // both the user and the bots to keep stacking RB/WR well past a balanced
+  // roster (the confirmed "overstocked on RB and WR" report). An empty
+  // array here correctly means "no unmet need -- best player available."
+  return Object.entries(IDEAL_POSITION_COUNTS)
     .filter(([pos, ideal]) => (positionCounts[pos] || 0) < ideal)
     .map(([pos]) => pos)
-
-  return needs.length > 0 ? needs : ['RB', 'WR']
 }
 
 const GRADE_BADGE_COLORS: Record<string, string> = {
@@ -326,21 +332,28 @@ export function DraftPage() {
         // sized generously (well beyond a single team's needs) because this
         // pool now has to sustain every team's picks for a full draft, not
         // just the user's -- e.g. 12 teams x 15 rounds needs ~180 real
-        // players across these four positions. Each request reuses the
-        // same active-roster-filtered, search_rank-sorted endpoint the real
-        // recommendation engine relies on.
-        const [rbRankings, wrRankings, qbRankings, teRankings] = await Promise.all([
+        // players across these positions. Each request reuses the same
+        // active-roster-filtered, search_rank-sorted endpoint the real
+        // recommendation engine relies on. K/DEF were previously missing
+        // here entirely -- the position filter offered them and the
+        // standard-lineup grade expects one of each, but the pool never
+        // had any to draft (the confirmed "no K/DEF available" report).
+        const [rbRankings, wrRankings, qbRankings, teRankings, kRankings, defRankings] = await Promise.all([
           draft.getPositionalRankings('RB', { limit: 100 }),
           draft.getPositionalRankings('WR', { limit: 100 }),
           draft.getPositionalRankings('QB', { limit: 40 }),
-          draft.getPositionalRankings('TE', { limit: 40 })
+          draft.getPositionalRankings('TE', { limit: 40 }),
+          draft.getPositionalRankings('K', { limit: 40 }),
+          draft.getPositionalRankings('DEF', { limit: 40 })
         ])
 
         const allPlayers = [
           ...(rbRankings.data.players || []),
           ...(wrRankings.data.players || []),
           ...(qbRankings.data.players || []),
-          ...(teRankings.data.players || [])
+          ...(teRankings.data.players || []),
+          ...(kRankings.data.players || []),
+          ...(defRankings.data.players || [])
         ]
 
         // Remove duplicates based on sleeper_id
