@@ -201,10 +201,26 @@ docker-compose down
 
 ## 📚 Additional Documentation
 
-- [Development Guide](./DEVELOPMENT.md) - Detailed development setup and workflows
 - [API Documentation](http://localhost:8000/docs) - Interactive API documentation
-- [Authentication Guide](./AUTHENTICATION_GUIDE.md) - User management and security
-- [Draft Assistant Guide](./DRAFT_ASSISTANT_GUIDE.md) - Draft feature documentation
+
+**Guides** (`docs/guides/`)
+- [Development Guide](./docs/guides/DEVELOPMENT.md) - Detailed development setup and workflows
+- [API Guide](./docs/guides/API_GUIDE.md) - Endpoint shapes and contracts
+- [Authentication Guide](./docs/guides/AUTHENTICATION_GUIDE.md) - User management and security
+- [Draft Assistant Guide](./docs/guides/DRAFT_ASSISTANT_GUIDE.md) - Draft recommendation engine
+- [Enhanced Player Data](./docs/guides/ENHANCED_PLAYER_DATA.md) - Player data model
+- [Style Guide](./docs/guides/STYLE_GUIDE.md) - Frontend visual/design conventions
+
+**Manual test procedures** (`docs/testing/`)
+- [Live Draft Test](./docs/testing/LIVE_DRAFT_TEST.md)
+- [Yahoo Integration Test](./docs/testing/YAHOO_INTEGRATION_TEST.md)
+
+**Audit history** (`docs/audits/`) - point-in-time findings, check git log before trusting an open item as still-current
+- [Audit Task List](./docs/audits/AUDIT_TASK_LIST.md)
+- [Decommission Task List](./docs/audits/DECOMMISSION_TASK_LIST.md)
+- [Deferred Features Checklist](./docs/audits/DEFERRED_FEATURES_CHECKLIST.md)
+- [UX Product Review](./docs/audits/UX_PRODUCT_REVIEW.md)
+- [UX Task Checklist](./docs/audits/UX_TASK_CHECKLIST.md)
 
 ## 🤝 Contributing
 
@@ -220,4 +236,4 @@ MIT License - see LICENSE file for details
 
 ---
 
-**Need help?** Check the [troubleshooting guide](./DEVELOPMENT.md#troubleshooting) or open an issue.
+**Need help?** Check the [troubleshooting guide](./docs/guides/DEVELOPMENT.md#troubleshooting) or open an issue.
