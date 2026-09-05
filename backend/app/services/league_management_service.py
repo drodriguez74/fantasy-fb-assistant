@@ -7,6 +7,7 @@ from app.services.yahoo_service import yahoo_service
 from app.services.sleeper_service import sleeper_service
 from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
+from app.services import roster_grading
 from datetime import datetime, timedelta
 import logging
 import json
@@ -113,38 +114,64 @@ class LeagueManagementService:
                 return {"error": roster_data["error"]}
 
             players = roster_data.get("players", [])
-            
+
+            # Real per-league starter requirements, when Yahoo actually
+            # exposes them for this league -- see yahoo_service.get_league_settings.
+            # Falls back to None (which grade_roster itself turns into a
+            # standard 1-QB/2-RB/2-WR/1-TE/1-K/1-DEF lineup) rather than
+            # fabricating Yahoo-specific settings that aren't real.
+            league_settings = None
+            if league.league_key:
+                yahoo_settings = await yahoo_service.get_league_settings(access_token, league.league_key)
+                if "error" not in yahoo_settings and yahoo_settings.get("starters"):
+                    league_settings = {"starters": yahoo_settings["starters"]}
+
+            # Real, deterministic grade from actual roster composition vs
+            # actual (or honestly-fallback) starter requirements -- replaces
+            # the old pure-LLM-opinion average of per-position AI grades.
+            grading_result = roster_grading.grade_roster(players, league_settings)
+            position_breakdown = grading_result.get("position_breakdown", {})
+
             # Analyze each position group
             position_analysis = {}
             roster_strengths = []
             roster_weaknesses = []
-            
+
             positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
-            
+
             for position in positions:
                 pos_players = [p for p in players if p.get("position") == position]
-                
-                if pos_players:
-                    # Get AI analysis for position group
-                    pos_analysis = await self._analyze_position_group(position, pos_players)
-                    position_analysis[position] = pos_analysis
-                    
-                    # Determine if position is strength or weakness
-                    if pos_analysis.get("grade", "C") in ["A", "B"]:
-                        roster_strengths.append(f"{position}: {pos_analysis.get('summary', '')}")
-                    elif pos_analysis.get("grade", "C") in ["D", "F"]:
-                        roster_weaknesses.append(f"{position}: {pos_analysis.get('summary', '')}")
 
-            # Generate overall roster grade
-            overall_grade = await self._calculate_overall_roster_grade(position_analysis)
-            
+                if pos_players:
+                    # AI-generated summary/strengths/concerns text is still
+                    # genuinely useful color -- kept for descriptive text
+                    # only, not as the source of truth for the letter grade.
+                    pos_analysis = await self._analyze_position_group(
+                        position, pos_players, league.league_size, league.scoring_format
+                    )
+                    position_analysis[position] = pos_analysis
+
+                    # Strength/weakness classification now comes from the
+                    # real, deterministic per-position breakdown
+                    # (needs_attention/overstocked flags), not the AI's
+                    # self-reported letter grade -- the AI summary text is
+                    # still included for color.
+                    breakdown = position_breakdown.get(position)
+                    if breakdown:
+                        if breakdown.get("overstocked"):
+                            roster_strengths.append(f"{position}: {pos_analysis.get('summary', '')}")
+                        elif breakdown.get("needs_attention"):
+                            roster_weaknesses.append(f"{position}: {pos_analysis.get('summary', '')}")
+
             # Get injury concerns
             injury_concerns = await self._check_roster_injuries(players)
 
             return {
                 "total_players": len(players),
                 "position_analysis": position_analysis,
-                "overall_grade": overall_grade,
+                "overall_grade": grading_result.get("grade", "C"),
+                "composition_score": grading_result.get("composition_score"),
+                "position_breakdown": position_breakdown,
                 "strengths": roster_strengths,
                 "weaknesses": roster_weaknesses,
                 "injury_concerns": injury_concerns,
@@ -154,8 +181,24 @@ class LeagueManagementService:
         except Exception as e:
             return {"error": f"Failed to analyze roster: {str(e)}"}
 
-    async def _analyze_position_group(self, position: str, players: List[Dict]) -> Dict[str, Any]:
-        """Analyze a specific position group"""
+    async def _analyze_position_group(
+        self,
+        position: str,
+        players: List[Dict],
+        league_size: Optional[int] = None,
+        scoring_format: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Analyze a specific position group.
+
+        league_size/scoring_format are real per-league settings threaded
+        through from _analyze_yahoo_roster's call site, so the AI's
+        descriptive text is at least aware of real league context (a 12-team
+        PPR league vs. a 10-team standard league). Note: as of this fix,
+        this method's returned "grade" is no longer the source of truth for
+        the roster's overall grade -- see roster_grading.grade_roster for
+        the real, deterministic grade. This method's summary/strengths/
+        concerns text is still genuinely useful descriptive color.
+        """
         try:
             player_names = [p.get("name", "Unknown") for p in players]
             
@@ -181,12 +224,15 @@ class LeagueManagementService:
                         })
 
             # Generate AI analysis
+            league_context = (
+                f"{league_size}-team" if league_size else "this"
+            ) + f" {scoring_format or 'unknown-scoring'} league"
             analysis_prompt = f"""
-            Analyze this {position} group for fantasy football:
-            
+            Analyze this {position} group for fantasy football in {league_context}:
+
             Players: {player_names}
             Enhanced Data: {enhanced_players}
-            
+
             Provide:
             1. Position group grade (A-F)
             2. Brief summary (2-3 sentences)
@@ -446,32 +492,6 @@ class LeagueManagementService:
 
         except Exception as e:
             return {"error": f"Failed to get trade recommendations: {str(e)}"}
-
-    async def _calculate_overall_roster_grade(self, position_analysis: Dict) -> str:
-        """Calculate overall roster grade from position analyses"""
-        grades = []
-        grade_values = {"A": 4, "B": 3, "C": 2, "D": 1, "F": 0}
-        
-        for pos_data in position_analysis.values():
-            grade = pos_data.get("grade", "C")
-            if grade in grade_values:
-                grades.append(grade_values[grade])
-        
-        if not grades:
-            return "C"
-        
-        avg_grade = sum(grades) / len(grades)
-        
-        if avg_grade >= 3.5:
-            return "A"
-        elif avg_grade >= 2.5:
-            return "B"
-        elif avg_grade >= 1.5:
-            return "C"
-        elif avg_grade >= 0.5:
-            return "D"
-        else:
-            return "F"
 
     async def _check_roster_injuries(self, players: List[Dict]) -> List[Dict]:
         """Check for injury concerns in roster"""

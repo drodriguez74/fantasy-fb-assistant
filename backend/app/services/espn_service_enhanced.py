@@ -1,4 +1,5 @@
 from espn_api.football import League
+from espn_api.football.constant import POSITION_MAP
 from typing import Dict, List, Optional, Any, Union
 import asyncio
 from datetime import datetime
@@ -172,10 +173,63 @@ class ESPNFantasyServiceEnhanced:
             logger.error(f"Error getting league info: {str(e)}")
             return {"error": f"Failed to get league info: {str(e)}"}
 
+    def _real_position_slot_counts(self, league: League) -> Dict[str, int]:
+        """Correctly parse ESPN's real per-league lineup slot counts,
+        bypassing espn_api's `Settings.position_slot_counts` -- confirmed
+        broken (`espn_api/football/settings.py`): it takes ESPN's raw
+        `rosterSettings.lineupSlotCounts` dict (string-keyed by REAL numeric
+        slot ID, e.g. "0"=QB, "2"=RB, "4"=WR, "6"=TE, "20"=BE, "23"=FLEX --
+        see espn_api's own `POSITION_MAP`) and discards those keys entirely,
+        instead zipping the raw values *positionally* against a name list
+        sliced to the same length. That's only correct if a league's active
+        slot IDs are exactly 0..N-1 contiguous from zero -- false for
+        essentially every real league (nobody uses TQB=1, OP=7, or the IDP
+        slots 8-15), so every label from RB onward silently binds to the
+        wrong count. Confirmed in production: a real 12-team PPR league's
+        TE requirement came back as its bench count instead of its real
+        single-TE starting slot, corrupting composition/requirement grading
+        for that position with no error or warning.
+
+        Fixed by re-deriving the same `lineupSlotCounts` dict straight from
+        ESPN's raw league JSON (one extra authenticated call through the
+        League's own already-cached `espn_request`, using the same real
+        slot-ID keys) and mapping each key through `POSITION_MAP` by its
+        actual integer ID rather than by position in a list.
+
+        Falls back to the (potentially wrong) `position_slot_counts`
+        attribute only if the raw re-fetch itself fails (e.g. a transient
+        network error) -- better than a hard failure, but this path should
+        be rare, not the default.
+        """
+        try:
+            raw = league.espn_request.get_league()
+            lineup_slot_counts = (
+                raw.get("settings", {}).get("rosterSettings", {}).get("lineupSlotCounts", {})
+            )
+            counts: Dict[str, int] = {}
+            for slot_id_str, count in (lineup_slot_counts or {}).items():
+                try:
+                    slot_id = int(slot_id_str)
+                except (TypeError, ValueError):
+                    continue
+                label = POSITION_MAP.get(slot_id)
+                if not label or not count:
+                    continue
+                counts[label] = counts.get(label, 0) + count
+            if counts:
+                return counts
+        except Exception as e:
+            logger.warning(f"Falling back to espn_api's position_slot_counts (raw re-fetch failed): {e}")
+
+        return getattr(league.settings, "position_slot_counts", {}) or {}
+
     @async_wrapper
     def get_scoring_and_roster_settings(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> Dict[str, Any]:
         """Real, granular roster-slot counts and points-per-reception for a
-        league, read directly off espn_api's League.settings object.
+        league. Slot counts go through `_real_position_slot_counts` rather
+        than reading `league.settings.position_slot_counts` directly --
+        that espn_api attribute is confirmed broken (see that method's
+        docstring), so this method re-derives it correctly instead.
 
         get_league_info's `roster_settings` block above (roster_size /
         starting_lineup_size) is NOT real per-league data: espn_api's
@@ -218,7 +272,7 @@ class ESPNFantasyServiceEnhanced:
             if not settings:
                 return {"error": "League settings unavailable"}
 
-            raw_slots = getattr(settings, 'position_slot_counts', {}) or {}
+            raw_slots = self._real_position_slot_counts(league)
             # ESPN's slot labels don't match Sleeper's vocabulary 1:1;
             # normalize the two this app actually distinguishes so
             # downstream roster-needs logic doesn't need to know which

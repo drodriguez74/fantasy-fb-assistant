@@ -39,6 +39,11 @@ def _is_rosterable_player(player_data: Dict[str, Any]) -> bool:
 # Fantasy-relevant positions we're willing to recommend off the waiver wire.
 _WAIVER_ELIGIBLE_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
 
+# Same fallback used elsewhere in this codebase (roster_grading.py,
+# post_draft_analysis_service.py) when no real per-league starter
+# requirements are available.
+_FALLBACK_STARTERS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "DEF": 1}
+
 
 class WaiverWireService:
     """Intelligent waiver wire analysis and recommendations"""
@@ -105,7 +110,9 @@ class WaiverWireService:
         self,
         position: Optional[str] = None,
         priority: Optional[str] = None,
-        limit: int = 20
+        limit: int = 20,
+        user_roster: Optional[List[Dict[str, Any]]] = None,
+        league_settings: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Real waiver-add recommendations sourced from Sleeper's live
         trending-add feed (players actually being added across real fantasy
@@ -120,6 +127,14 @@ class WaiverWireService:
         with the widest possible filters. This method draws instead from the
         same live Sleeper source already used successfully elsewhere in the
         app (Draft Assistant trending candidates / positional rankings).
+
+        `user_roster`/`league_settings` are both optional and backward
+        compatible -- when neither is supplied, ranking is unweighted, exactly
+        as before. When both are supplied, real per-league starter
+        requirements (via DraftAssistantService._effective_position_requirements,
+        the same FLEX-aware helper roster_grading.py/post_draft_analysis_service.py
+        already use) are used to boost/penalize candidates at a position the
+        user's real roster actually needs/is overstocked at.
         """
         try:
             # Over-fetch: some trending adds will be filtered out by the
@@ -137,6 +152,50 @@ class WaiverWireService:
                 return []
 
             target_position = position.upper() if position else None
+
+            # Real roster-need weighting: only computed when the caller
+            # actually supplied both a roster and league settings, so
+            # existing callers that pass neither stay unweighted.
+            position_requirements: Optional[Dict[str, int]] = None
+            roster_position_counts: Dict[str, int] = {}
+            if user_roster is not None and league_settings is not None:
+                for entry in user_roster:
+                    pos = (entry.get("position") or "").upper()
+                    if pos:
+                        roster_position_counts[pos] = roster_position_counts.get(pos, 0) + 1
+
+                raw_starters = dict(league_settings.get("starters") or {}) or dict(_FALLBACK_STARTERS)
+
+                from app.services.draft_assistant_service import draft_assistant
+                position_requirements = draft_assistant._effective_position_requirements(
+                    roster_position_counts, {"starters": raw_starters}
+                )
+
+            # Real bye-week awareness: current NFL week, computed the same
+            # way matchup_analysis_service does everywhere else in this app.
+            try:
+                current_week = self.matchup_service.get_current_week()
+            except Exception as e:
+                logger.warning(f"Could not determine current NFL week for bye-week check: {str(e)}")
+                current_week = None
+
+            # Honest scoring-format context: pass through the league's real
+            # scoring format if the caller supplied one, without pretending
+            # it drove the whole ranking.
+            league_scoring_context = None
+            is_high_ppr = False
+            if league_settings:
+                scoring_format = league_settings.get("scoring_format")
+                ppr_value = league_settings.get("points_per_reception")
+                if scoring_format or ppr_value is not None:
+                    league_scoring_context = {
+                        "scoring_format": scoring_format,
+                        "points_per_reception": ppr_value,
+                    }
+                if isinstance(ppr_value, (int, float)):
+                    is_high_ppr = ppr_value >= 0.75
+                elif isinstance(scoring_format, str):
+                    is_high_ppr = "ppr" in scoring_format.lower() and "half" not in scoring_format.lower()
 
             candidates = []
             for entry in trending:
@@ -186,7 +245,70 @@ class WaiverWireService:
                 # Sleeper add-count data (this player's adds relative to the
                 # single most-added player in today's pool) -- not a flat or
                 # templated value.
-                confidence = round(add_count / max_add_count, 3)
+                confidence = add_count / max_add_count
+                reason_parts = [
+                    f"Trending add: {add_count:,} adds across Sleeper fantasy "
+                    f"leagues in the last 24 hours."
+                ]
+
+                # Real roster-need weighting.
+                roster_need = None
+                if position_requirements is not None:
+                    required = position_requirements.get(player_position, 0)
+                    actual = roster_position_counts.get(player_position, 0)
+                    if required > 0 and actual < required:
+                        roster_need = "needs_attention"
+                        confidence *= 1.3
+                        reason_parts.append(
+                            f"Your roster currently has {actual}/{required} required {player_position}s."
+                        )
+                    elif actual > required + 1:
+                        roster_need = "overstocked"
+                        confidence *= 0.7
+                        reason_parts.append(
+                            f"Your roster is already deep at {player_position} ({actual} rostered)."
+                        )
+
+                # Real bye-week awareness: try to find a local Player row for
+                # this Sleeper player (by sleeper_id) to check its real
+                # bye_week. Best-effort -- the local Player table is sparse,
+                # so this only fires when a real match exists.
+                bye_week_flag = False
+                local_bye_week = None
+                try:
+                    local_player = self.db.query(Player).filter(
+                        Player.sleeper_id == str(sleeper_id)
+                    ).first()
+                except Exception:
+                    local_player = None
+
+                if local_player and local_player.bye_week:
+                    local_bye_week = local_player.bye_week
+                    if current_week is not None and local_bye_week == current_week:
+                        bye_week_flag = True
+                        confidence *= 0.5
+                        reason_parts.append(
+                            f"On bye in Week {current_week} -- cannot play this week."
+                        )
+
+                # Mild, honest pass-catcher reweighting: only applied when we
+                # have a real local target_share for this player AND the
+                # league's real scoring format is PPR/high-PPR. No fabricated
+                # per-player point precision -- this nudges an already-real
+                # signal (target_share), it doesn't invent one.
+                pass_catcher_boost = False
+                if (
+                    is_high_ppr
+                    and local_player
+                    and player_position in ("RB", "WR")
+                    and local_player.target_share
+                    and local_player.target_share >= 15.0
+                ):
+                    pass_catcher_boost = True
+                    confidence *= 1.1
+                    reason_parts.append(
+                        f"Strong target share ({local_player.target_share:.1f}%) in a PPR league."
+                    )
 
                 recommendations.append({
                     'player_id': player_id,
@@ -195,21 +317,28 @@ class WaiverWireService:
                     'team': player_data.get('team'),
                     'recommendation_type': RecommendationType.ADD.value,
                     'priority': rec_priority,
-                    'confidence_score': confidence,
-                    'reason': (
-                        f"Trending add: {add_count:,} adds across Sleeper fantasy "
-                        f"leagues in the last 24 hours."
-                    ),
+                    'confidence_score': round(confidence, 3),
+                    'reason': " ".join(reason_parts),
                     'projected_points': None,
                     'ownership_percentage': None,
                     'trend_direction': 'up',
                     'add_count_24h': add_count,
+                    'roster_need': roster_need,
+                    'bye_week': local_bye_week,
+                    'bye_week_flag': bye_week_flag,
+                    'pass_catcher_boost': pass_catcher_boost,
+                    'league_scoring_context': league_scoring_context,
                 })
 
-                if len(recommendations) >= limit:
-                    break
+            # When roster-need weighting is active, re-rank by the real
+            # weighted confidence score rather than raw add-count order, so
+            # personalization actually changes which players surface (not
+            # just a cosmetic number) -- otherwise a boosted RB could still
+            # be cut off by `limit` before it's ever shown.
+            if position_requirements is not None:
+                recommendations.sort(key=lambda r: r['confidence_score'], reverse=True)
 
-            return recommendations
+            return recommendations[:limit]
 
         except Exception as e:
             logger.error(f"Error getting live trending waiver recommendations: {str(e)}")
@@ -337,44 +466,82 @@ class WaiverWireService:
         season: int
     ) -> Optional[Dict[str, Any]]:
         """Evaluate a single player for waiver wire potential"""
-        
-        # Temporarily skip historical performance requirement - generate recommendations based on current data
-        recent_performances = []
-        
+
+        # Real historical-performance query, mirroring _calculate_drop_score's
+        # exact pattern -- this local historical data is known to be sparse,
+        # so `recent_performances` will genuinely come back empty for most
+        # players (that's expected and handled honestly below, not treated
+        # as a bug).
+        recent_performances = self.db.query(PlayerHistoricalPerformance).filter(
+            and_(
+                PlayerHistoricalPerformance.player_id == player.id,
+                PlayerHistoricalPerformance.season == season,
+                PlayerHistoricalPerformance.week >= max(1, week - 4)
+            )
+        ).order_by(PlayerHistoricalPerformance.week.desc()).all()
+
         # Skip players with very high ownership (not waiver eligible)
         if player.ownership_percentage and player.ownership_percentage > 80.0:
             return None
-        
-        # Calculate component scores
+
+        # Calculate component scores. performance/opportunity/trend can come
+        # back None ("insufficient data") rather than a fabricated flat 0.5
+        # when there's genuinely nothing real to compute from -- see each
+        # function's docstring.
         performance_score = self._calculate_performance_score(recent_performances)
         opportunity_score = self._calculate_opportunity_score(player, recent_performances)
         matchup_score = await self._calculate_matchup_score(player, week, season)
         ownership_score = self._calculate_ownership_score(player)
         trend_score = self._calculate_trend_score(recent_performances)
-        
-        # Calculate composite score
-        total_score = (
-            performance_score * self.weights['recent_performance'] +
-            opportunity_score * self.weights['opportunity_trend'] +
-            matchup_score * self.weights['upcoming_matchups'] +
-            ownership_score * self.weights['ownership_level'] +
-            trend_score * self.weights['target_share_trend']
-        )
-        
+
+        # Composite score: drop any component that came back None and
+        # renormalize the remaining weights over what's left, the same
+        # pattern grading.combined_grade uses (missing data shrinks the
+        # basis for the score, it never gets silently treated as 0 or a
+        # fabricated default). matchup_score/ownership_score are always
+        # real (they don't depend on recent_performances), so they're
+        # always included.
+        weighted_components: Dict[str, Tuple[float, float]] = {
+            'upcoming_matchups': (matchup_score, self.weights['upcoming_matchups']),
+            'ownership_level': (ownership_score, self.weights['ownership_level']),
+        }
+        if performance_score is not None:
+            weighted_components['recent_performance'] = (performance_score, self.weights['recent_performance'])
+        if opportunity_score is not None:
+            weighted_components['opportunity_trend'] = (opportunity_score, self.weights['opportunity_trend'])
+        if trend_score is not None:
+            weighted_components['target_share_trend'] = (trend_score, self.weights['target_share_trend'])
+
+        total_weight = sum(w for _, w in weighted_components.values()) or 1.0
+        total_score = sum(s * w for s, w in weighted_components.values()) / total_weight
+
+        # Data-confidence indicator (mirrors the frontend's three-state
+        # DataConfidenceBadge: computed / heuristic / insufficient) so a
+        # caller can render honestly rather than the response implying full
+        # personalization when the underlying historical data was thin.
+        history_backed = [performance_score, opportunity_score, trend_score]
+        present_count = sum(1 for c in history_backed if c is not None)
+        if present_count == len(history_backed):
+            data_confidence = "computed"
+        elif present_count == 0:
+            data_confidence = "insufficient"
+        else:
+            data_confidence = "heuristic"
+
         # Determine recommendation type and priority
         rec_type, priority = self._determine_recommendation_type(
             total_score, player, recent_performances
         )
-        
+
         if rec_type == RecommendationType.AVOID:
             return None
-        
+
         # Generate reasoning
         reason = self._generate_recommendation_reason(
-            player, recent_performances, performance_score, 
+            player, recent_performances, performance_score,
             opportunity_score, matchup_score
         )
-        
+
         return {
             'player_id': player.id,
             'player_name': player.name,
@@ -385,10 +552,11 @@ class WaiverWireService:
             'priority_weight': self._get_priority_weight(priority),
             'score': total_score,
             'confidence': min(1.0, total_score * 1.2),
+            'data_confidence': data_confidence,
             'reason': reason,
             'projected_points': self._calculate_projected_points(recent_performances),
             'ownership_percentage': player.ownership_percentage or 0.0,
-            'trend_direction': self._get_trend_direction(trend_score),
+            'trend_direction': self._get_trend_direction(trend_score) if trend_score is not None else 'unknown',
             'component_scores': {
                 'performance': performance_score,
                 'opportunity': opportunity_score,
@@ -398,12 +566,17 @@ class WaiverWireService:
             }
         }
     
-    def _calculate_performance_score(self, performances: List[PlayerHistoricalPerformance]) -> float:
-        """Score based on recent fantasy performance"""
+    def _calculate_performance_score(self, performances: List[PlayerHistoricalPerformance]) -> Optional[float]:
+        """Score based on recent fantasy performance.
+
+        Returns None ("insufficient data") when there's no real historical
+        performance to compute from, rather than a fabricated flat 0.5 --
+        the caller drops this component and renormalizes the remaining
+        weights (see grading.combined_grade's same pattern).
+        """
         if not performances:
-            # Use projected points as a proxy when no historical data
-            return 0.5  # Default moderate score for players without history
-        
+            return None
+
         # Weight recent games more heavily
         weights = [1.0, 0.8, 0.6, 0.4][:len(performances)]
         points = [p.fantasy_points_ppr or 0 for p in performances]
@@ -425,12 +598,21 @@ class WaiverWireService:
         return min(1.0, weighted_avg / benchmark)
     
     def _calculate_opportunity_score(
-        self, 
-        player: Player, 
+        self,
+        player: Player,
         performances: List[PlayerHistoricalPerformance]
-    ) -> float:
-        """Score based on opportunity metrics (targets, carries, snaps)"""
+    ) -> Optional[float]:
+        """Score based on opportunity metrics (targets, carries, snaps).
+
+        Returns None ("insufficient data") when there's neither historical
+        performance data nor any real current opportunity field
+        (target_share/snap_count_percentage) to compute from -- reporting a
+        flat 0.0 in that case would look like a real "no opportunity"
+        signal when the truth is simply "unknown."
+        """
         if not performances:
+            if player.target_share is None and player.snap_count_percentage is None:
+                return None
             # Use current player data when no historical data
             score = 0.0
             if player.target_share:
@@ -438,7 +620,7 @@ class WaiverWireService:
             if player.snap_count_percentage:
                 score += min(1.0, player.snap_count_percentage / 80.0) * 0.5
             return score
-        
+
         # Recent snap percentage trend
         snap_percentages = [p.snap_percentage for p in performances if p.snap_percentage]
         if snap_percentages and len(snap_percentages) >= 2:
@@ -513,15 +695,20 @@ class WaiverWireService:
         else:
             return 1.0  # Low ownership = high availability
     
-    def _calculate_trend_score(self, performances: List[PlayerHistoricalPerformance]) -> float:
-        """Score based on trending direction"""
+    def _calculate_trend_score(self, performances: List[PlayerHistoricalPerformance]) -> Optional[float]:
+        """Score based on trending direction.
+
+        Returns None ("insufficient data") when there aren't at least two
+        real historical data points to fit a trend from, rather than a
+        fabricated flat 0.5.
+        """
         if len(performances) < 2:
-            return 0.5
-        
+            return None
+
         points = [p.fantasy_points_ppr or 0 for p in performances]
         if len(points) < 2:
-            return 0.5
-        
+            return None
+
         # Simple linear trend
         trend = np.polyfit(range(len(points)), points[::-1], 1)[0]
         
@@ -569,21 +756,23 @@ class WaiverWireService:
         self,
         player: Player,
         performances: List[PlayerHistoricalPerformance],
-        performance_score: float,
-        opportunity_score: float,
+        performance_score: Optional[float],
+        opportunity_score: Optional[float],
         matchup_score: float
     ) -> str:
         """Generate human-readable reason for recommendation"""
-        
+
         reasons = []
-        
+
         # Performance-based reasons
-        if performance_score > 0.7:
+        if performance_score is not None and performance_score > 0.7:
             recent_avg = np.mean([p.fantasy_points_ppr or 0 for p in performances[:3]])
             reasons.append(f"Strong recent performance ({recent_avg:.1f} PPR avg)")
-        
+        elif performance_score is None:
+            reasons.append("Insufficient recent performance data")
+
         # Opportunity reasons
-        if opportunity_score > 0.6:
+        if opportunity_score is not None and opportunity_score > 0.6:
             if player.snap_count_percentage and player.snap_count_percentage > 60:
                 reasons.append(f"High snap share ({player.snap_count_percentage:.0f}%)")
             if player.target_share and player.target_share > 15:

@@ -283,9 +283,22 @@ export const historical = {
 
 // Waiver wire endpoints
 export const waiverWire = {
-  getRecommendations: (params: { week: number; season?: number; position?: string; priority?: string; limit?: number }) =>
+  // `league_id` is optional and opt-in: pass the id of one of the user's
+  // connected leagues (from `leagues.getAll()`) to get real roster-need /
+  // bye-week / scoring-format personalization instead of the plain
+  // unweighted live trending feed -- see
+  // WaiverWireService.get_live_trending_recommendations.
+  getRecommendations: (params: { week: number; season?: number; position?: string; priority?: string; limit?: number; league_id?: number }) =>
     api.get('/waiver-wire/recommendations', { params }),
-  
+
+  // Same live feed as getRecommendations, but always personalized against
+  // `leagueId`'s real connected roster + league settings when that roster
+  // can actually be fetched (falls back to unweighted otherwise -- see
+  // `personalized` in the response).
+  getLeagueAwareRecommendations: (leagueId: number, params: { week: number; position?: string; limit?: number }) =>
+    api.get(`/waiver-wire/league-aware-recommendations/${leagueId}`, { params }),
+
+
   analyzeRoster: (data: { roster_player_ids: number[]; week?: number; season?: number }) =>
     api.post('/waiver-wire/analyze-roster', data),
   

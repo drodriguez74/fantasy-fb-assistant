@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../hooks/useAuth'
-import { waiverWire, matchupAnalysis, notifications as notificationsApi, getErrorMessage } from '../services/api'
+import { waiverWire, matchupAnalysis, notifications as notificationsApi, leagues as leaguesApi, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { getPositionColor } from '../components/players/playerDisplay'
 import type { Notification } from '../types'
@@ -40,6 +40,21 @@ interface WaiverRecommendation {
     ownership: number
     trend: number
   }
+  // Real personalization fields -- only meaningful when a league was
+  // selected to personalize against (see WaiverWireService.
+  // get_live_trending_recommendations). null/undefined when unweighted.
+  roster_need?: 'needs_attention' | 'overstocked' | null
+  bye_week?: number | null
+  bye_week_flag?: boolean
+  pass_catcher_boost?: boolean
+  league_scoring_context?: { scoring_format?: string | null; points_per_reception?: number | null } | null
+}
+
+interface ConnectedLeagueOption {
+  id: number
+  league_name: string | null
+  platform: string
+  team_id: string | null
 }
 
 // The "Alerts" tab now reads the app's real in-app notification center
@@ -208,6 +223,16 @@ export function WaiverWirePage() {
   const [currentWeek, setCurrentWeek] = useState(getCurrentNFLWeek())
   const [trendDirection, setTrendDirection] = useState('up')
 
+  // Personalization: real roster-need / bye-week / scoring-format weighting
+  // against one of the user's connected leagues, opt-in via a dropdown --
+  // see WaiverWireService.get_live_trending_recommendations's user_roster/
+  // league_settings params. Only leagues with a team_id set can actually
+  // have their roster fetched (see /leagues/{id}/settings), so those are
+  // the only ones offered here.
+  const [connectedLeagues, setConnectedLeagues] = useState<ConnectedLeagueOption[]>([])
+  const [selectedLeagueId, setSelectedLeagueId] = useState<number | ''>('')
+  const [personalized, setPersonalized] = useState(false)
+
   // Roster analyzer
   const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
   const [addDropAnalysis, setAddDropAnalysis] = useState<AddDropAnalysis | null>(null)
@@ -224,22 +249,41 @@ export function WaiverWirePage() {
       setLoading(true)
       setError('')
 
-      const params: { week: number; position?: string; priority?: string } = { week: currentWeek }
+      const params: { week: number; position?: string; priority?: string; league_id?: number } = { week: currentWeek }
       if (selectedPosition) {
         params.position = selectedPosition
       }
       if (selectedPriority) {
         params.priority = selectedPriority
       }
+      if (selectedLeagueId !== '') {
+        params.league_id = selectedLeagueId
+      }
 
       const response = await waiverWire.getRecommendations(params)
       setRecommendations(response.data.recommendations || [])
+      setPersonalized(Boolean(response.data.personalized))
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load waiver recommendations'))
     } finally {
       setLoading(false)
     }
-  }, [currentWeek, selectedPosition, selectedPriority])
+  }, [currentWeek, selectedPosition, selectedPriority, selectedLeagueId])
+
+  // Load the user's connected leagues once, to populate the personalization
+  // dropdown. Only leagues with a team_id can have their roster fetched by
+  // the backend (see _fetch_connected_roster_and_settings), so filter down
+  // to those -- offering a league that can't actually be personalized would
+  // silently no-op and be confusing.
+  useEffect(() => {
+    if (!user) return
+    leaguesApi.getAll()
+      .then((response) => {
+        const all = (response.data || []) as ConnectedLeagueOption[]
+        setConnectedLeagues(all.filter((l) => !!l.team_id))
+      })
+      .catch(() => setConnectedLeagues([]))
+  }, [user])
 
   const loadTrendingPlayers = useCallback(async () => {
     try {
@@ -518,7 +562,29 @@ export function WaiverWirePage() {
                   <option value="watch">Watch</option>
                 </select>
               </div>
+              <div>
+                <label className="block text-sm font-medium text-ink-700 mb-1">Personalize for</label>
+                <select
+                  value={selectedLeagueId}
+                  onChange={(e) => setSelectedLeagueId(e.target.value ? parseInt(e.target.value) : '')}
+                  className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                >
+                  <option value="">Unweighted (no league)</option>
+                  {connectedLeagues.map((league) => (
+                    <option key={league.id} value={league.id}>
+                      {league.league_name || `${league.platform} League`}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
+            {selectedLeagueId !== '' && (
+              <p className="text-xs text-ink-500">
+                {personalized
+                  ? 'Boosted/flagged using your real roster, starter requirements, and bye weeks for this league.'
+                  : "Couldn't fetch your roster for this league (no team set or a live fetch error) -- showing the unweighted feed instead."}
+              </p>
+            )}
           </div>
 
           {/* Recommendations List */}
@@ -552,9 +618,37 @@ export function WaiverWirePage() {
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityBadgeColor(rec.priority)}`}>
                             {rec.priority.toUpperCase()}
                           </span>
+                          {rec.roster_need === 'needs_attention' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-800">
+                              Fills a roster need
+                            </span>
+                          )}
+                          {rec.roster_need === 'overstocked' && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-600">
+                              Position already deep
+                            </span>
+                          )}
+                          {rec.bye_week_flag && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-100 text-danger-800">
+                              On bye Week {rec.bye_week}
+                            </span>
+                          )}
+                          {rec.pass_catcher_boost && (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
+                              PPR target-share edge
+                            </span>
+                          )}
                         </div>
 
                         <p className="text-sm text-ink-600 mb-3">{rec.reason}</p>
+                        {rec.league_scoring_context?.scoring_format && (
+                          <p className="text-xs text-ink-400 mb-3">
+                            League scoring: {rec.league_scoring_context.scoring_format}
+                            {rec.league_scoring_context.points_per_reception != null &&
+                              ` (${rec.league_scoring_context.points_per_reception} pts/reception)`}
+                            {' '}-- shown for context, not the primary ranking signal.
+                          </p>
+                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
                           <div>

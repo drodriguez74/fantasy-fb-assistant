@@ -21,9 +21,23 @@ from app.services.sleeper_service import SleeperService
 from app.services.scoring_calculation_service import ScoringCalculationService
 from app.services.matchup_analysis_service import MatchupAnalysisService
 from app.models.league_scoring import LeagueScoring
-from app.services.grading import grade_from_score
+from app.services.grading import (
+    grade_from_score,
+    value_score_from_picks,
+    detect_bye_week_collisions,
+    bye_week_score,
+    combined_grade,
+    value_and_bye_strengths_weaknesses,
+    bench_depth_notes,
+)
+from app.services.draft_assistant_service import draft_assistant
 
 logger = logging.getLogger(__name__)
+
+# Same fallback used elsewhere in this codebase (roster_grading.py,
+# mock_draft_service.py) when a league doesn't carry real per-league starter
+# settings -- a standard single-QB, 2-RB/2-WR/1-TE/1-K/1-DEF lineup.
+_FALLBACK_STARTERS = {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "DEF": 1}
 
 
 class PostDraftAnalysisService:
@@ -72,11 +86,13 @@ class PostDraftAnalysisService:
             player_evaluations = await self._evaluate_roster_players(roster_players, league_scoring_id)
             
             # Identify roster strengths and weaknesses
-            strengths_weaknesses = await self._identify_strengths_weaknesses(roster_players, league_settings)
+            strengths_weaknesses = await self._identify_strengths_weaknesses(
+                roster_players, league_settings, composition_analysis, player_evaluations
+            )
             
             # Generate position-specific improvement recommendations with matchup analysis
             improvement_recs = await self._generate_improvement_recommendations(
-                roster_players, league_settings, strengths_weaknesses
+                roster_players, league_settings, strengths_weaknesses, composition_analysis
             )
             
             # Add matchup-driven waiver recommendations
@@ -85,7 +101,7 @@ class PostDraftAnalysisService:
             )
             
             # Calculate overall roster grade
-            roster_grade = await self._calculate_roster_grade(roster_players, player_evaluations)
+            roster_grade = await self._calculate_roster_grade(roster_players, player_evaluations, league_settings)
             
             return {
                 "roster_analysis": {
@@ -103,67 +119,103 @@ class PostDraftAnalysisService:
             logger.error(f"Error in comprehensive roster analysis: {str(e)}")
             return {"error": f"Roster analysis failed: {str(e)}"}
     
+    def _effective_requirements(
+        self, position_counts: Dict[str, int], league_settings: Optional[Dict[str, Any]]
+    ) -> Dict[str, int]:
+        """Real per-league starter requirements (FLEX-aware), falling back to
+        a standard lineup only when `league_settings` carries no real
+        `starters` dict. Delegates to
+        `DraftAssistantService._effective_position_requirements`, the same
+        helper `roster_grading.py::grade_roster` uses for connected-league
+        Team Analysis grading, so this path and that one can't drift apart.
+        """
+        raw_starters = dict((league_settings or {}).get('starters') or {}) or _FALLBACK_STARTERS
+        return draft_assistant._effective_position_requirements(position_counts, {"starters": raw_starters})
+
+    def _score_composition(
+        self, position_counts: Dict[str, int], requirements: Dict[str, int]
+    ) -> Dict[str, Any]:
+        """Mirrors `roster_grading._score_composition`'s formula, parameterized
+        by real per-league starter requirements instead of a hardcoded
+        standard lineup.
+        """
+        if not requirements:
+            requirements = _FALLBACK_STARTERS
+
+        composition_score = 0.0
+        position_breakdown: Dict[str, Any] = {}
+
+        for position, required_count in requirements.items():
+            if required_count <= 0:
+                continue
+            actual_count = position_counts.get(position, 0)
+
+            if actual_count >= required_count:
+                position_score = min(100, 80 + (actual_count - required_count) * 10)
+            else:
+                position_score = (actual_count / required_count) * 80
+
+            position_breakdown[position] = {
+                'players_drafted': actual_count,
+                'recommended_minimum': required_count,
+                'depth_score': round(position_score, 1),
+                'needs_attention': actual_count < required_count,
+                'overstocked': actual_count > required_count + 1
+            }
+            composition_score += position_score
+
+        composition_score = composition_score / len(position_breakdown) if position_breakdown else 0.0
+
+        return {
+            "composition_score": round(composition_score, 1),
+            "position_breakdown": position_breakdown,
+        }
+
     async def _analyze_roster_composition(
-        self, 
-        roster_players: List[Dict], 
+        self,
+        roster_players: List[Dict],
         league_settings: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Analyze roster composition and balance"""
-        
+
         # Count players by position
         position_counts = {}
         total_projected_points = 0
-        
+        normalized_players = []
+
         for roster_player in roster_players:
             player = roster_player['player']
             position = player.position.value if player.position else 'UNKNOWN'
-            
+
             position_counts[position] = position_counts.get(position, 0) + 1
             if player.projected_points:
                 total_projected_points += player.projected_points
-        
-        # Standard roster requirements
-        standard_lineup = {
-            'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DEF': 1
-        }
-        
-        # Analyze balance
-        composition_score = 0
-        position_analysis = {}
-        
-        for position, standard_count in standard_lineup.items():
-            actual_count = position_counts.get(position, 0)
-            
-            # Score based on how well position is filled
-            if actual_count >= standard_count:
-                position_score = min(100, 80 + (actual_count - standard_count) * 10)
-            else:
-                position_score = (actual_count / standard_count) * 80
-            
-            position_analysis[position] = {
-                'players_drafted': actual_count,
-                'recommended_minimum': standard_count,
-                'depth_score': position_score,
-                'needs_attention': actual_count < standard_count,
-                'overstocked': actual_count > standard_count + 1
-            }
-            
-            composition_score += position_score
-        
-        composition_score = composition_score / len(standard_lineup)
-        
+            normalized_players.append({'position': position, 'bye_week': player.bye_week})
+
+        # Real per-league starter requirements (FLEX-aware), not a hardcoded
+        # standard lineup -- see _effective_requirements.
+        requirements = self._effective_requirements(position_counts, league_settings)
+
+        composition = self._score_composition(position_counts, requirements)
+        composition_score = composition['composition_score']
+        position_analysis = composition['position_breakdown']
+
         # Calculate depth analysis
         skill_positions = ['RB', 'WR', 'TE']
         depth_strength = sum(position_counts.get(pos, 0) for pos in skill_positions)
-        
+
+        bye_week_collisions = detect_bye_week_collisions(normalized_players, requirements)
+
         return {
             "position_breakdown": position_analysis,
             "total_players": len(roster_players),
-            "composition_score": round(composition_score, 1),
+            "composition_score": composition_score,
             "projected_total_points": round(total_projected_points, 1),
             "avg_points_per_player": round(total_projected_points / len(roster_players), 1),
             "skill_position_depth": depth_strength,
-            "roster_balance_grade": self._grade_from_score(composition_score)
+            "roster_balance_grade": self._grade_from_score(composition_score),
+            "bye_week_collisions": bye_week_collisions,
+            "position_requirements": requirements,
         }
     
     async def _evaluate_roster_players(self, roster_players: List[Dict], league_scoring_id: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -183,7 +235,9 @@ class PostDraftAnalysisService:
             ).order_by(PlayerHistoricalPerformance.season.desc()).limit(16).all()
             
             # Calculate player evaluation metrics with custom scoring if available
-            value_analysis = await self._calculate_draft_value(player, draft_round, league_scoring_id)
+            value_analysis = await self._calculate_draft_value(
+                player, draft_round, roster_player.get('draft_pick'), league_scoring_id
+            )
             
             evaluation = {
                 "player_info": {
@@ -206,17 +260,36 @@ class PostDraftAnalysisService:
         
         return evaluations
     
-    async def _calculate_draft_value(self, player: Player, draft_round: int, league_scoring_id: Optional[int] = None) -> Dict[str, Any]:
-        """Calculate if player was good value at draft position"""
+    @staticmethod
+    def _value_category_and_grade(value_percentage: float) -> Tuple[str, str]:
+        if value_percentage >= 120:
+            return "Excellent Value", "A"
+        elif value_percentage >= 110:
+            return "Good Value", "B"
+        elif value_percentage >= 90:
+            return "Fair Value", "C"
+        elif value_percentage >= 70:
+            return "Slight Reach", "D"
+        else:
+            return "Significant Reach", "F"
+
+    async def _calculate_draft_value(
+        self,
+        player: Player,
+        draft_round: int,
+        draft_pick: Optional[int] = None,
+        league_scoring_id: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """Calculate if player was good value at draft position.
+
+        Primary signal: real ADP (`Player.adp`) vs. the actual overall pick
+        the player was drafted at -- mirrors
+        `mock_draft_service._pick_value`'s logic (that function also checks
+        `search_rank`, but `Player` has no such column, only `adp`).
+        Only falls back to the old round-expectations-vs-projected-points
+        estimate when there's no real ADP or no known overall pick.
+        """
         try:
-            # Expected points based on draft round (rough estimates)
-            round_expectations = {
-                1: 250, 2: 220, 3: 190, 4: 160, 5: 140, 6: 120,
-                7: 100, 8: 85, 9: 75, 10: 65, 11: 55, 12: 50
-            }
-            
-            expected_points = round_expectations.get(draft_round, 40)
-            
             # Use league-specific scoring if available
             if league_scoring_id:
                 custom_points = self.scoring_service.get_player_points_with_custom_scoring(
@@ -225,41 +298,50 @@ class PostDraftAnalysisService:
                 projected_points = custom_points.get('total_points', player.projected_points or 0)
             else:
                 projected_points = player.projected_points or 0
-            
-            # Calculate value metrics
-            value_over_expectation = projected_points - expected_points
-            value_percentage = (projected_points / expected_points * 100) if expected_points > 0 else 100
-            
-            # Determine value category
-            if value_percentage >= 120:
-                value_category = "Excellent Value"
-                value_grade = "A"
-            elif value_percentage >= 110:
-                value_category = "Good Value"
-                value_grade = "B"
-            elif value_percentage >= 90:
-                value_category = "Fair Value"
-                value_grade = "C"
-            elif value_percentage >= 70:
-                value_category = "Slight Reach"
-                value_grade = "D"
+
+            adp = player.adp
+
+            if adp is not None and adp > 0 and draft_pick is not None and draft_pick > 0:
+                # Real ADP signal: picked later than ADP suggested (pick > adp)
+                # is good value; picked earlier (reach) is bad value.
+                value_percentage = (draft_pick / adp) * 100
+                expected_points_for_round = None
+                value_over_expectation = None
+                value_source = "adp"
             else:
-                value_category = "Significant Reach"
-                value_grade = "F"
-            
+                # Fallback: rough expected-points-by-round estimate.
+                round_expectations = {
+                    1: 250, 2: 220, 3: 190, 4: 160, 5: 140, 6: 120,
+                    7: 100, 8: 85, 9: 75, 10: 65, 11: 55, 12: 50
+                }
+                expected_points_for_round = round_expectations.get(draft_round, 40)
+                value_over_expectation = round(projected_points - expected_points_for_round, 1)
+                value_percentage = (
+                    (projected_points / expected_points_for_round * 100)
+                    if expected_points_for_round > 0 else 100
+                )
+                value_source = "projected_points_vs_round"
+
+            value_category, value_grade = self._value_category_and_grade(value_percentage)
+
             return {
                 "overall_value_score": round(value_percentage, 1),
+                "value_percentage": round(value_percentage, 1),
                 "value_category": value_category,
                 "value_grade": value_grade,
                 "projected_points": projected_points,
-                "expected_points_for_round": expected_points,
-                "value_over_expectation": round(value_over_expectation, 1)
+                "expected_points_for_round": expected_points_for_round,
+                "value_over_expectation": value_over_expectation,
+                "value_source": value_source,
+                "adp": adp,
+                "draft_pick": draft_pick,
             }
-            
+
         except Exception as e:
             logger.error(f"Error calculating draft value for {player.name}: {str(e)}")
             return {
                 "overall_value_score": 50,
+                "value_percentage": None,
                 "value_category": "Unable to Calculate",
                 "value_grade": "N/A",
                 "error": str(e)
@@ -379,12 +461,24 @@ class PostDraftAnalysisService:
         }
     
     async def _identify_strengths_weaknesses(
-        self, 
-        roster_players: List[Dict], 
-        league_settings: Dict[str, Any]
+        self,
+        roster_players: List[Dict],
+        league_settings: Dict[str, Any],
+        composition_analysis: Optional[Dict[str, Any]] = None,
+        player_evaluations: Optional[List[Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
-        """Identify roster strengths and weaknesses"""
-        
+        """Identify roster strengths and weaknesses.
+
+        Two independent signal sets, merged: the count/avg-projected-points
+        heuristics below (unchanged), plus real per-league-requirement,
+        ADP-value, and bye-week signals via `grading
+        .value_and_bye_strengths_weaknesses` -- previously this method never
+        looked at `league_settings`, `player_evaluations`, or bye weeks at
+        all, so e.g. a specific overpaid pick or a bye-week collision never
+        showed up here even after `_calculate_roster_grade` started scoring
+        on exactly those signals.
+        """
+
         # Group players by position
         position_groups = {}
         for roster_player in roster_players:
@@ -442,88 +536,168 @@ class PostDraftAnalysisService:
             strengths.append("Strong overall skill position depth")
         elif len(skill_players) < 5:
             weaknesses.append("Lacks sufficient skill position depth")
-        
+
+        value_entries = None
+        if player_evaluations:
+            value_entries = [
+                {
+                    "player_name": ev["player_info"]["name"],
+                    "position": ev["player_info"]["position"],
+                    "pick": ev["value_analysis"].get("draft_pick"),
+                    "round": ev["player_info"].get("draft_round"),
+                    "value_percentage": ev["value_analysis"].get("value_percentage"),
+                }
+                for ev in player_evaluations
+            ]
+
+        real_position_breakdown = (composition_analysis or {}).get("position_breakdown", {})
+        bye_week_collisions = (composition_analysis or {}).get("bye_week_collisions", [])
+        requirements = (composition_analysis or {}).get("position_requirements", {})
+        value_sw = value_and_bye_strengths_weaknesses(
+            real_position_breakdown,
+            bye_collisions=bye_week_collisions,
+            value_entries=value_entries,
+        )
+        strengths = strengths + [s for s in value_sw["strengths"] if s not in strengths]
+        weaknesses = weaknesses + [w for w in value_sw["weaknesses"] if w not in weaknesses]
+
+        # Catches a "stud, stud, then a cliff" position that the plain
+        # per-position average above can average away entirely (see
+        # grading.bench_depth_notes docstring).
+        if requirements:
+            normalized_players = [
+                {"position": pos, "projected_points": p.projected_points or 0}
+                for pos, players in position_groups.items()
+                for p in players
+            ]
+            weaknesses += bench_depth_notes(normalized_players, requirements)
+
         return {
             "position_breakdown": {pos: len(players) for pos, players in position_groups.items()},
             "strengths": strengths,
             "weaknesses": weaknesses,
+            "bye_week_collisions": bye_week_collisions,
             "total_skill_players": len(skill_players)
         }
     
+    # Positions whose real quantity shortfall is treated as high-urgency
+    # (mirrors the old string-matched QB/RB "High" vs. WR/TE "Medium"
+    # priority split, now keyed off the real position code instead of
+    # substring-matching prose).
+    _HIGH_PRIORITY_NEED_POSITIONS = {"QB", "RB"}
+
     async def _generate_improvement_recommendations(
-        self, 
-        roster_players: List[Dict], 
+        self,
+        roster_players: List[Dict],
         league_settings: Dict[str, Any],
-        strengths_weaknesses: Dict[str, Any]
+        strengths_weaknesses: Dict[str, Any],
+        composition_analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Generate specific waiver wire targets for roster improvement"""
-        
+        """Generate specific waiver wire targets for roster improvement.
+
+        Immediate needs are decided ONLY from
+        `composition_analysis["position_breakdown"][pos]["needs_attention"]`
+        -- a real boolean already computed against real per-league starter
+        requirements by `_analyze_roster_composition` -- never by
+        substring-matching the free-text weakness sentences from
+        `_identify_strengths_weaknesses`. Those sentences now also include
+        bench-depth-cliff notes (`grading.bench_depth_notes`, e.g. "RB depth
+        beyond your top 2 is thin...") and bye-week-collision notes
+        (`grading.value_and_bye_strengths_weaknesses`, e.g. "Week 11: every
+        rostered QB is on bye...") which mention a position code but are
+        NOT a "you need to add another player at this position" quantity
+        signal -- naive `'RB' in weakness` matching would misfire on both.
+        Those two sentence types are routed to their own
+        `depth_concerns` / `bye_week_concerns` buckets instead, and never
+        feed `immediate_needs`.
+        """
+
         recommendations = {
             "immediate_needs": [],
             "depth_improvements": [],
             "upside_targets": [],
-            "handcuff_recommendations": []
+            "handcuff_recommendations": [],
+            "depth_concerns": [],
+            "bye_week_concerns": [],
         }
-        
-        # Current roster positions
+
+        # Current roster positions + a lowercase name set for filtering
+        # waiver candidates already on this roster.
         current_positions = {}
-        rb_names = []
-        
+        rostered_names = set()
+
         for roster_player in roster_players:
             player = roster_player['player']
             position = player.position.value if player.position else 'UNKNOWN'
             current_positions[position] = current_positions.get(position, 0) + 1
-            
-            if position == 'RB':
-                rb_names.append(player.name.lower())
-        
-        # Generate position-specific recommendations
-        weaknesses = strengths_weaknesses.get('weaknesses', [])
-        
-        for weakness in weaknesses:
-            if 'QB' in weakness:
-                recommendations["immediate_needs"].append({
-                    "position": "QB",
-                    "priority": "High",
-                    "reasoning": weakness,
-                    "target_criteria": "QB with 15+ projected points, favorable schedule"
+            rostered_names.add(player.name.lower())
+
+        # --- Real quantity needs: needs_attention only, never prose. ---
+        position_breakdown = (composition_analysis or {}).get("position_breakdown", {})
+        for position, info in position_breakdown.items():
+            if not info.get("needs_attention"):
+                continue
+
+            priority = "High" if position in self._HIGH_PRIORITY_NEED_POSITIONS else "Medium"
+            drafted = info.get("players_drafted")
+            required = info.get("recommended_minimum")
+            reasoning = (
+                f"{position} is below your league's required depth "
+                f"({drafted}/{required} rostered)."
+            )
+
+            targets = []
+            try:
+                candidates = await self.waiver_service.get_live_trending_recommendations(
+                    position=position, limit=3
+                )
+            except Exception as e:
+                logger.error(f"Error fetching waiver targets for {position}: {str(e)}")
+                candidates = []
+
+            for candidate in candidates:
+                candidate_name = (candidate.get("player_name") or "")
+                if candidate_name.lower() in rostered_names:
+                    continue
+                targets.append({
+                    "player_name": candidate.get("player_name"),
+                    "position": candidate.get("position"),
+                    "team": candidate.get("team"),
+                    "confidence_score": candidate.get("confidence_score"),
+                    "reason": candidate.get("reason"),
                 })
-            elif 'RB' in weakness:
-                recommendations["immediate_needs"].append({
-                    "position": "RB",
-                    "priority": "High", 
-                    "reasoning": weakness,
-                    "target_criteria": "RB with clear role, 8+ projected points"
-                })
-            elif 'WR' in weakness:
-                recommendations["immediate_needs"].append({
-                    "position": "WR",
-                    "priority": "Medium",
-                    "reasoning": weakness,
-                    "target_criteria": "WR with target share upside, favorable upcoming matchups"
-                })
-            elif 'TE' in weakness:
-                recommendations["immediate_needs"].append({
-                    "position": "TE",
-                    "priority": "Medium",
-                    "reasoning": weakness,
-                    "target_criteria": "TE with red zone usage or streaming options"
-                })
-        
+                if len(targets) >= 3:
+                    break
+
+            recommendations["immediate_needs"].append({
+                "position": position,
+                "priority": priority,
+                "reasoning": reasoning,
+                "targets": targets,
+            })
+
+        # --- Bench-quality / bye-week signals: informational only, kept
+        # separate so they can never masquerade as a quantity need above. ---
+        for weakness in strengths_weaknesses.get('weaknesses', []):
+            if weakness.startswith("Week ") and "on bye" in weakness:
+                recommendations["bye_week_concerns"].append(weakness)
+            elif "depth beyond your top" in weakness:
+                recommendations["depth_concerns"].append(weakness)
+
         # Add general improvement suggestions
         if current_positions.get('RB', 0) >= 2:
             recommendations["handcuff_recommendations"].append({
                 "reasoning": "Protect your RB investments with handcuffs",
                 "target_criteria": "Backup RBs for your starters"
             })
-        
+
         if current_positions.get('WR', 0) >= 3:
             recommendations["upside_targets"].append({
                 "position": "WR",
                 "reasoning": "Target high-upside WRs for potential breakouts",
                 "target_criteria": "Young WRs with increasing target share"
             })
-        
+
         return recommendations
     
     async def get_personalized_waiver_targets(
@@ -597,56 +771,84 @@ class PostDraftAnalysisService:
             logger.error(f"Error generating personalized waiver targets: {str(e)}")
             return {"error": f"Failed to generate personalized targets: {str(e)}"}
     
-    async def _calculate_roster_grade(self, roster_players: List[Dict], evaluations: List[Dict]) -> Dict[str, Any]:
-        """Calculate overall roster grade"""
-        
+    async def _calculate_roster_grade(
+        self,
+        roster_players: List[Dict],
+        evaluations: List[Dict],
+        league_settings: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Calculate overall roster grade.
+
+        Combines composition (real per-league starter requirements, see
+        _effective_requirements), draft value (real ADP-vs-pick where
+        available, see _calculate_draft_value), and bye-week collision
+        signals via the shared `grading.combined_grade` primitive, instead of
+        an ad-hoc avg_value_score - balance_penalty formula.
+        """
+
         if not evaluations:
             return {"grade": "N/A", "score": 0, "reasoning": "No player evaluations available"}
-        
-        # Calculate weighted average of player values
-        total_value_score = sum(eval_data['value_analysis']['overall_value_score'] for eval_data in evaluations)
-        avg_value_score = total_value_score / len(evaluations)
-        
-        # Adjust based on roster balance
+
+        # Real per-position counts + real per-league starter requirements.
         position_counts = {}
+        normalized_players = []
         for roster_player in roster_players:
-            position = roster_player['player'].position.value if roster_player['player'].position else 'UNKNOWN'
+            player = roster_player['player']
+            position = player.position.value if player.position else 'UNKNOWN'
             position_counts[position] = position_counts.get(position, 0) + 1
-        
-        # Penalty for missing key positions
+            normalized_players.append({'position': position, 'bye_week': player.bye_week})
+
+        requirements = self._effective_requirements(position_counts, league_settings)
+
+        composition = self._score_composition(position_counts, requirements)
+        composition_score = composition['composition_score']
+
+        # Draft-value component: reuse each evaluation's already-computed
+        # value_percentage (real ADP-vs-pick where available).
+        value_entries = [
+            {'value_percentage': eval_data['value_analysis'].get('value_percentage')}
+            for eval_data in evaluations
+        ]
+        value_score = value_score_from_picks(value_entries)
+
+        scored_values = [v['value_percentage'] for v in value_entries if v['value_percentage'] is not None]
+        avg_value_score = round(sum(scored_values) / len(scored_values), 1) if scored_values else 0.0
+
+        # Bye-week collision component.
+        collisions = detect_bye_week_collisions(normalized_players, requirements)
+        byes_score = bye_week_score(collisions)
+
+        combined = combined_grade(
+            composition_score=composition_score,
+            value_score=value_score,
+            bye_weeks_score=byes_score,
+        )
+
+        # Kept for backward compatibility with existing callers/UI that read
+        # a flat "balance_penalty" -- same rule as before (10pt penalty per
+        # under-filled required position), just against real requirements.
         balance_penalty = 0
-        required_positions = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1}
-        
-        for pos, min_count in required_positions.items():
+        for pos, min_count in requirements.items():
             if position_counts.get(pos, 0) < min_count:
                 balance_penalty += 10
-        
-        final_score = max(0, avg_value_score - balance_penalty)
-        
-        # Assign letter grade
-        if final_score >= 90:
-            grade = "A"
-            description = "Excellent Draft"
-        elif final_score >= 80:
-            grade = "B"
-            description = "Good Draft"
-        elif final_score >= 70:
-            grade = "C"
-            description = "Average Draft"
-        elif final_score >= 60:
-            grade = "D"
-            description = "Below Average"
-        else:
-            grade = "F"
-            description = "Poor Draft"
-        
+
+        description_by_grade = {
+            "A": "Excellent Draft",
+            "B": "Good Draft",
+            "C": "Average Draft",
+            "D": "Below Average",
+            "F": "Poor Draft",
+        }
+
         return {
-            "grade": grade,
-            "score": round(final_score, 1),
-            "description": description,
+            "grade": combined["grade"],
+            "score": combined["overall_score"],
+            "description": description_by_grade.get(combined["grade"], "Average Draft"),
             "player_count": len(roster_players),
-            "avg_player_value": round(avg_value_score, 1),
-            "balance_penalty": balance_penalty
+            "avg_player_value": avg_value_score,
+            "balance_penalty": balance_penalty,
+            "components": combined["components"],
+            "bye_week_collisions": collisions,
         }
     
     def _grade_from_score(self, score: float) -> str:

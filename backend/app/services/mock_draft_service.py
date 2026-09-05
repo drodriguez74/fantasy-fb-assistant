@@ -17,6 +17,29 @@ in `post_draft_analysis_service.py`:
     value_percentage/value_category/value_grade thresholds as
     `_calculate_draft_value`.
 
+The final letter grade (`draft_grade`) is a weighted blend of THREE
+components -- composition (did you fill your roster slots), value (were your
+picks good relative to ADP/rank, via `grading.value_score_from_picks`), and
+bye-week collisions (via `grading.detect_bye_week_collisions` /
+`grading.bye_week_score`) -- combined by `grading.combined_grade`. It is
+*not* composition-only: composition is the one component that's always
+present, but value and bye-week signals are folded into the same numeric
+grade rather than being decorative text-only output. A component with no
+usable data (no rank/ADP anywhere, or no bye_week data on any player) is
+dropped and the remaining weights renormalized, rather than being treated as
+a 0 or a 100.
+
+As of this writing, the frontend/API payload for mock-draft players
+(`MockDraftPlayerResult` in `app/api/v1/endpoints/draft.py`) does not include
+a bye week field at all -- Sleeper player data isn't currently plumbed with
+bye weeks anywhere in this codebase's mock-draft path. `_normalize_bye_week`
+below defensively checks a couple of plausible aliases in case an upstream
+payload starts including one under a different key, but in practice today
+`detect_bye_week_collisions` will see no `bye_week` on any player, find no
+collisions, and the bye-weeks component is dropped from the grade (not
+scored as a false 100) via `combined_grade`'s None-drops-the-component
+behavior.
+
 Where this deliberately differs from the real path: `_calculate_draft_value`
 compares a player's real projected fantasy points against an expected-points-
 by-round baseline pulled from the DB. Mock-draft players are Sleeper IDs with
@@ -40,7 +63,7 @@ for every player. Instead:
 
 from typing import Any, Dict, List, Optional
 
-from app.services.grading import grade_from_score
+from app.services import grading
 
 # Standard 1-QB lineup requirements, identical to
 # PostDraftAnalysisService._analyze_roster_composition's `standard_lineup`.
@@ -69,6 +92,40 @@ def _value_category_and_grade(value_percentage: float) -> tuple[str, str]:
         return "Slight Reach", "D"
     else:
         return "Significant Reach", "F"
+
+
+# Plausible aliases for a bye-week field, in preference order, in case an
+# upstream payload ever carries one under a different key than "bye_week"
+# (today none of them do -- see module docstring).
+_BYE_WEEK_ALIASES = ("bye_week", "byeWeek", "bye")
+
+
+def _normalize_bye_week(player: Dict[str, Any]) -> Optional[int]:
+    """Look up a usable bye week under any of `_BYE_WEEK_ALIASES`, in order.
+
+    Returns None (not 0 or fabricated) when the player carries no bye-week
+    data under any known key.
+    """
+    for key in _BYE_WEEK_ALIASES:
+        value = player.get(key)
+        if value:
+            return value
+    return None
+
+
+def _players_for_bye_check(user_roster: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Build the normalized {position, bye_week} dicts
+    `grading.detect_bye_week_collisions` expects, reusing the same uppercase
+    position normalization `_score_composition`/`_pick_value` already apply
+    (so this never diverges into a second, subtly different mapping).
+    """
+    return [
+        {
+            "position": (player.get("position") or "UNKNOWN").upper(),
+            "bye_week": _normalize_bye_week(player),
+        }
+        for player in user_roster
+    ]
 
 
 def _score_composition(user_roster: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -168,6 +225,7 @@ def _build_final_analysis(
     composition: Dict[str, Any],
     value_analysis: List[Dict[str, Any]],
     draft_grade: str,
+    bye_week_collisions: Optional[List[Dict[str, Any]]] = None,
 ) -> str:
     """Build a short human-readable summary, e.g.
     'Solid RB depth (3 drafted) but reached on your QB in round 4...'
@@ -228,6 +286,13 @@ def _build_final_analysis(
                 "projection data available, so their draft value couldn't be assessed."
             )
 
+    if bye_week_collisions:
+        worst = bye_week_collisions[0]
+        sentences.append(
+            f"Your starting {worst['position']}s share a Week {worst['week']} bye, "
+            "leaving you short at the position that week."
+        )
+
     return " ".join(sentences)
 
 
@@ -239,23 +304,51 @@ def grade_mock_draft(
 
     Pure function: no DB access, safe to unit test directly.
 
+    The letter grade blends composition, per-pick ADP/rank value, and
+    bye-week collisions (see module docstring and `grading.combined_grade`)
+    rather than composition alone.
+
     Returns a dict with composition_score, position_breakdown, value_analysis
-    (list of per-pick dicts), draft_grade (letter), and final_analysis (text).
+    (list of per-pick dicts), bye_week_collisions, overall_score, components
+    (per-component score breakdown), draft_grade (letter), and
+    final_analysis (text).
     """
     composition = _score_composition(user_roster)
 
     value_analysis = [_pick_value(player) for player in user_roster]
+    value_score = grading.value_score_from_picks(value_analysis)
 
-    draft_grade = grade_from_score(composition["composition_score"])
+    bye_check_players = _players_for_bye_check(user_roster)
+    has_bye_data = any(p["bye_week"] is not None for p in bye_check_players)
+    bye_week_collisions = grading.detect_bye_week_collisions(bye_check_players, STANDARD_LINEUP)
+    bye_weeks_score = grading.bye_week_score(bye_week_collisions) if has_bye_data else None
+
+    grade_result = grading.combined_grade(
+        composition_score=composition["composition_score"],
+        value_score=value_score,
+        bye_weeks_score=bye_weeks_score,
+    )
+    draft_grade = grade_result["grade"]
 
     final_analysis = _build_final_analysis(
-        draft_settings, composition, value_analysis, draft_grade
+        draft_settings, composition, value_analysis, draft_grade, bye_week_collisions
+    )
+
+    strengths_weaknesses = grading.value_and_bye_strengths_weaknesses(
+        composition["position_breakdown"],
+        bye_collisions=bye_week_collisions,
+        value_entries=value_analysis,
     )
 
     return {
         "composition_score": composition["composition_score"],
         "position_breakdown": composition["position_breakdown"],
         "value_analysis": value_analysis,
+        "bye_week_collisions": bye_week_collisions,
+        "overall_score": grade_result["overall_score"],
+        "components": grade_result["components"],
         "draft_grade": draft_grade,
+        "strengths": strengths_weaknesses["strengths"],
+        "weaknesses": strengths_weaknesses["weaknesses"],
         "final_analysis": final_analysis,
     }

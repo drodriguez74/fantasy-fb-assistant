@@ -4,6 +4,8 @@ Waiver Wire API Endpoints
 RESTful endpoints for waiver wire recommendations, analysis, and weekly insights.
 """
 
+import json
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from typing import List, Optional, Dict, Any
 from datetime import datetime
@@ -12,10 +14,125 @@ from pydantic import BaseModel
 
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
+from app.models.player import Player
 from app.services.waiver_wire_service import WaiverWireService
 from app.services.notification_service import notify_trending_adds
+from app.services.user_service import UserService
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+async def _fetch_connected_roster_and_settings(
+    db: Session, current_user: User, league_id: int
+):
+    """Best-effort real roster + league-settings fetch for a connected
+    league, so /league-aware-recommendations/{league_id} can pass real
+    personalization data into get_live_trending_recommendations instead of
+    calling it unweighted.
+
+    Reuses the exact platform roster-fetch calls already used elsewhere in
+    this codebase (post_draft.py's /import-roster/{league_id} does the same
+    ESPN/Yahoo/Sleeper branching) rather than inventing a new one. Returns
+    (None, None) on any failure (no connected league with this id, no
+    team_id configured, platform call error, etc.) -- callers should treat
+    that as "fall back to unweighted" rather than raising, since this is a
+    best-effort personalization layer, not a hard requirement of the
+    endpoint.
+    """
+    try:
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+        if not user_league or not user_league.team_id:
+            return None, None
+
+        platform = user_league.platform.value.upper()
+        roster_players: List[Dict[str, Any]] = []
+
+        if platform == "ESPN":
+            from app.services.espn_service_enhanced import espn_service_enhanced
+
+            roster_data = await espn_service_enhanced.get_team_roster(
+                league_id=user_league.league_id,
+                team_id=int(user_league.team_id),
+                season=user_league.season,
+                swid=user_league.espn_swid,
+                espn_s2=user_league.espn_s2
+            )
+            if "error" in roster_data:
+                return None, None
+            roster_players = [
+                {"position": p.get("position", "UNKNOWN")}
+                for p in roster_data.get("players", [])
+            ]
+
+        elif platform == "YAHOO":
+            from app.services.yahoo_service import yahoo_service
+
+            roster_data = await yahoo_service.get_team_roster(user_league.team_id)
+            if "error" in roster_data:
+                return None, None
+            roster_players = [
+                {"position": p.get("position", "UNKNOWN")}
+                for p in roster_data.get("players", [])
+            ]
+
+        elif platform == "SLEEPER":
+            from app.services.sleeper_service import SleeperService
+
+            sleeper = SleeperService()
+            rosters = await sleeper.get_league_rosters(user_league.league_id)
+            if rosters and isinstance(rosters, list) and isinstance(rosters[0], dict) and "error" in rosters[0]:
+                return None, None
+
+            target_roster = next(
+                (
+                    r for r in rosters
+                    if str(r.get("owner_id")) == str(user_league.team_id)
+                    or str(r.get("roster_id")) == str(user_league.team_id)
+                ),
+                None
+            )
+            if not target_roster:
+                return None, None
+
+            # Best-effort position resolution against our own (sparse) local
+            # Player table by sleeper_id -- same honest-best-effort pattern
+            # used for bye-week lookups in WaiverWireService. A Sleeper
+            # player id with no local match is simply skipped rather than
+            # guessed at.
+            for sleeper_player_id in target_roster.get("players") or []:
+                local_match = db.query(Player).filter(
+                    Player.sleeper_id == str(sleeper_player_id)
+                ).first()
+                if local_match and local_match.position:
+                    roster_players.append({"position": local_match.position.value})
+        else:
+            return None, None
+
+        if not roster_players:
+            return None, None
+
+        raw_starters = None
+        if user_league.roster_positions:
+            try:
+                parsed = json.loads(user_league.roster_positions)
+                raw_starters = parsed.get("starters")
+            except (json.JSONDecodeError, AttributeError):
+                raw_starters = None
+
+        league_settings = {
+            "starters": raw_starters or {},
+            "scoring_format": user_league.scoring_format,
+            "points_per_reception": user_league.points_per_reception,
+        }
+
+        return roster_players, league_settings
+
+    except Exception as e:
+        logger.warning(f"Could not fetch connected roster/settings for league {league_id}: {str(e)}")
+        return None, None
 
 
 @router.get("/league-aware-recommendations/{league_id}")
@@ -27,25 +144,40 @@ async def get_league_aware_waiver_recommendations(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Get waiver wire recommendations tailored for your specific league"""
+    """Get waiver wire recommendations tailored for your specific league.
+
+    Sourced from the same live Sleeper trending-add feed as GET
+    /recommendations (see WaiverWireService.get_live_trending_recommendations
+    -- the local Player/WaiverWireRecommendation tables this endpoint used
+    to read from have no ingestion pipeline and are empty in practice), but
+    additionally personalized with this user's real connected roster and
+    league settings for `league_id` when that roster can actually be
+    fetched (real per-league starter requirements -> roster-need boosting,
+    real bye-week flags, honest scoring-format context). Falls back to the
+    same unweighted live recommendations if the roster can't be fetched
+    (no connected league with this id, no team_id configured yet, or the
+    platform call fails) -- this personalization layer is best-effort, not
+    a hard requirement of the endpoint.
+    """
     try:
         from app.utils.league_data_loader import get_league_info
         league_info = get_league_info(league_id)
-        
+
         waiver_service = WaiverWireService(db)
-        
-        # Use league's season instead of default
-        season = league_info["season"]
-        
-        if position:
-            recommendations = await waiver_service.get_recommendations_by_position(
-                position.upper(), week, season, limit
-            )
-        else:
-            recommendations = await waiver_service.generate_weekly_recommendations(
-                week, season, limit
-            )
-        
+
+        user_roster, league_settings = await _fetch_connected_roster_and_settings(
+            db, current_user, league_id
+        )
+
+        recommendations = await waiver_service.get_live_trending_recommendations(
+            position=position,
+            limit=limit,
+            user_roster=user_roster,
+            league_settings=league_settings,
+        )
+
+        notify_trending_adds(db, current_user.id, recommendations)
+
         return {
             "league_info": {
                 "id": league_info["id"],
@@ -55,13 +187,14 @@ async def get_league_aware_waiver_recommendations(
                 "season": league_info["season"]
             },
             "week": week,
-            "season": season,
+            "season": league_info["season"],
             "position_filter": position,
+            "personalized": user_roster is not None,
             "recommendations": recommendations,
             "total_found": len(recommendations),
             "generated_at": datetime.utcnow().isoformat()
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get league-aware waiver recommendations: {str(e)}")
 
@@ -79,6 +212,15 @@ async def get_waiver_recommendations(
     position: Optional[str] = Query(None, description="Filter by position (QB, RB, WR, TE)"),
     priority: Optional[str] = Query(None, description="Filter by priority (urgent, high, medium, low, watch)"),
     limit: int = Query(20, description="Maximum recommendations to return"),
+    league_id: Optional[int] = Query(
+        None,
+        description=(
+            "Optional connected UserLeague id. This endpoint has no other way "
+            "to know which of the user's leagues/rosters to personalize "
+            "against, so personalization is opt-in via this param -- when "
+            "omitted this stays the plain unweighted live feed."
+        ),
+    ),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -92,8 +234,18 @@ async def get_waiver_recommendations(
     try:
         waiver_service = WaiverWireService(db)
 
+        user_roster, league_settings = (None, None)
+        if league_id is not None:
+            user_roster, league_settings = await _fetch_connected_roster_and_settings(
+                db, current_user, league_id
+            )
+
         recommendations = await waiver_service.get_live_trending_recommendations(
-            position=position, priority=priority, limit=limit
+            position=position,
+            priority=priority,
+            limit=limit,
+            user_roster=user_roster,
+            league_settings=league_settings,
         )
 
         # Lazily generate in-app notifications for genuinely new, high-signal
@@ -107,6 +259,7 @@ async def get_waiver_recommendations(
             "season": season,
             "position_filter": position,
             "priority_filter": priority,
+            "personalized": user_roster is not None,
             "recommendations": recommendations,
             "total_found": len(recommendations),
             "generated_at": datetime.utcnow().isoformat()

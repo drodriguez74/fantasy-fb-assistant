@@ -16,6 +16,10 @@ _Cross-session context that isn't project convention (that's CLAUDE.md's job) �
 - **Sleeper's live-pick feed is architecturally sound** (real, public, non-cached endpoint) — don't lump it in with the ESPN problem above.
 - **Yahoo's live-pick feed has no caching bug, but whether Yahoo exposes in-progress (vs. only post-completion) picks is unverified.** Don't assume it's fine by default — verify against a real in-progress Yahoo draft before trusting it, same rigor as was applied to ESPN.
 
+## Standing capabilities (must keep working, not one-off asks)
+
+- **Updating ESPN draft rankings from a spreadsheet is a permanent, expected capability**, not a one-time favor. `backend/scripts/update_espn_draft_rankings.py` is the maintained tool for this — see `handoff.md`'s "How to update ESPN draft rankings" for the exact procedure. It works by resolving spreadsheet players to ESPN's real playerIds (via the app's existing ESPN connection) and POSTing directly to ESPN's private write endpoint, the same one ESPN's own "Save Rankings" button uses (there's no bulk-import in ESPN's own UI). Used successfully 5+ times across evolving rankings sheets as of 2026-09-04. If ESPN's frontend build changes and the hardcoded `--platform-version` hash goes stale, refreshing it (procedure in the script's docstring) is a priority fix, not a "someday."
+
 ## Environment / infra decisions
 
 - **App is not deployed.** Running locally against a real Supabase Postgres for persistence (not a local throwaway DB) — treat data in it as real, not disposable.

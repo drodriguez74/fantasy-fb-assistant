@@ -1,11 +1,11 @@
 """
 Real Team Analysis grading for connected leagues (ESPN/Yahoo/Sleeper).
 
-Pure, deterministic, no AI calls and no DB access -- mirrors
-`mock_draft_service.py`'s approach of operating on plain player dicts, since a
-real ESPN/Yahoo/Sleeper roster's players aren't guaranteed to have a matching
-local `Player` row. Generalizes `mock_draft_service._score_composition`'s
-formula to use a connected league's REAL starter requirements (from
+Deterministic, no AI calls -- mirrors `mock_draft_service.py`'s approach of
+operating on plain player dicts, since a real ESPN/Yahoo/Sleeper roster's
+players aren't guaranteed to have a matching local `Player` row. Generalizes
+`mock_draft_service._score_composition`'s formula to use a connected league's
+REAL starter requirements (from
 `espn_service_enhanced.get_scoring_and_roster_settings` or the Sleeper/Yahoo
 equivalents) instead of a fixed standard lineup, via
 `DraftAssistantService._effective_position_requirements` (already
@@ -18,11 +18,28 @@ This intentionally does NOT call `ai_service` -- per explicit direction, real
 computed data/formulas are used wherever they're sufficient, which they are
 here (every input is a real number already returned by the platform's own
 roster fetch).
+
+One narrow, best-effort DB access was added for bye-week grading: none of
+ESPN/Yahoo/Sleeper's own roster-fetch dicts carry a `bye_week` field at all
+(verified against `espn_service_enhanced._format_player`, which has no such
+key), so `_enrich_bye_weeks` backfills it from the local `Player` table by
+name, the same by-name-match pattern
+`league_management_service._analyze_position_group` already uses. It opens
+its own short-lived session (this module still takes no `db` dependency from
+callers) and fails silently -- a DB error or a player with no local match
+just leaves `bye_week` absent for that player, exactly like real platform
+data lacking it, rather than raising or guessing.
 """
 
 from typing import Any, Dict, List, Optional
 
-from app.services.grading import grade_from_score
+from app.services.grading import (
+    combined_grade,
+    detect_bye_week_collisions,
+    bye_week_score,
+    value_and_bye_strengths_weaknesses,
+    bench_depth_notes,
+)
 from app.services.draft_assistant_service import draft_assistant
 
 # Same fallback used elsewhere in this codebase when no real per-league
@@ -45,6 +62,60 @@ def _position_counts(players: List[Dict[str, Any]]) -> Dict[str, int]:
         position = _POSITION_ALIASES.get(position, position)
         counts[position] = counts.get(position, 0) + 1
     return counts
+
+
+def _normalize_positions(players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Apply the same `_POSITION_ALIASES` normalization `_position_counts` uses
+    (e.g. ESPN's "D/ST" -> "DEF") to a copy of each player dict, so
+    `detect_bye_week_collisions` sees the same normalized positions the
+    composition/requirements check does instead of a second, divergent
+    mapping.
+    """
+    normalized = []
+    for player in players:
+        position = (player.get("position") or "UNKNOWN").upper()
+        position = _POSITION_ALIASES.get(position, position)
+        normalized.append({**player, "position": position})
+    return normalized
+
+
+def _enrich_bye_weeks(players: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Best-effort backfill of `bye_week` from the local `Player` table by
+    name, for platforms whose roster-fetch dicts don't already carry it
+    (true of all three today -- see module docstring). Only looked up for
+    players actually missing `bye_week`, so real platform-provided data (if
+    a platform ever adds it) is never overridden. Any failure -- no DB
+    reachable, no matching local row -- leaves `bye_week` absent for that
+    player rather than raising or guessing.
+    """
+    if all(player.get("bye_week") for player in players):
+        return players
+
+    try:
+        from app.db.base import SessionLocal
+        from app.models.player import Player
+    except Exception:
+        return players
+
+    enriched = list(players)
+    db = None
+    try:
+        db = SessionLocal()
+        for i, player in enumerate(enriched):
+            if player.get("bye_week"):
+                continue
+            name = player.get("name")
+            if not name:
+                continue
+            match = db.query(Player).filter(Player.name.ilike(f"%{name}%")).first()
+            if match is not None and getattr(match, "bye_week", None):
+                enriched[i] = {**player, "bye_week": match.bye_week}
+    except Exception:
+        return players
+    finally:
+        if db is not None:
+            db.close()
+    return enriched
 
 
 def _score_composition(
@@ -162,15 +233,31 @@ def grade_roster(
              Sleeper/Yahoo call; falls back to a standard 1-QB lineup when
              None or empty, same fallback used elsewhere in this codebase.
 
-    Returns {"composition_score": float, "grade": str,
+    Returns {"composition_score": float, "grade": str, "overall_score": float,
+             "components": {...}, "bye_week_collisions": [...],
              "position_breakdown": {...}, "strengths": [...], "weaknesses": [...]}.
+    `grade`/`overall_score`/`components` reflect the combined
+    composition + bye-week grade (see `grading.combined_grade`); the
+    original composition-only score is kept under `composition_score` for
+    backward compat with existing callers.
     """
     position_counts = _position_counts(players)
     raw_starters = dict((league_settings or {}).get("starters") or {}) or _FALLBACK_STARTERS
     requirements = draft_assistant._effective_position_requirements(position_counts, {"starters": raw_starters})
 
     composition = _score_composition(position_counts, requirements)
-    grade = grade_from_score(composition["composition_score"])
+
+    # No ADP/value signal exists in this connected-roster context (it's a
+    # snapshot of an already-set roster, not a draft), so combined_grade is
+    # called with value_score=None -- composition + bye-weeks only.
+    bye_week_players = _enrich_bye_weeks(_normalize_positions(players))
+    collisions = detect_bye_week_collisions(bye_week_players, requirements)
+    combined = combined_grade(
+        composition_score=composition["composition_score"],
+        value_score=None,
+        bye_weeks_score=bye_week_score(collisions),
+    )
+    grade = combined["grade"]
 
     # _identify_strengths_weaknesses's per-position rules lean on avg
     # projected_points, not just counts -- if a platform's roster fetch
@@ -183,10 +270,30 @@ def grade_roster(
     has_real_projections = any((p.get("projected_points") or 0) > 0 for p in players)
     sw = _identify_strengths_weaknesses(players) if has_real_projections else {"strengths": [], "weaknesses": []}
 
+    # Requirement- and bye-week-based signals: real per-league starter
+    # requirements (needs_attention/overstocked, already computed above) and
+    # real bye-week collisions, neither of which the count/avg-projection
+    # rules above ever look at. Merged in rather than replacing `sw` --
+    # both are real, independent signals (a position can meet its starter
+    # count and still be low-quality, or vice versa).
+    value_sw = value_and_bye_strengths_weaknesses(
+        composition["position_breakdown"], bye_collisions=collisions
+    )
+    strengths = sw["strengths"] + [s for s in value_sw["strengths"] if s not in sw["strengths"]]
+    weaknesses = sw["weaknesses"] + [w for w in value_sw["weaknesses"] if w not in sw["weaknesses"]]
+
+    # Catches a "stud, stud, then a cliff" position -- headcount and even
+    # the plain average above can both look fine while your actual bench
+    # is real injury exposure (see grading.bench_depth_notes docstring).
+    weaknesses += bench_depth_notes(_normalize_positions(players), requirements)
+
     return {
         "composition_score": composition["composition_score"],
         "position_breakdown": composition["position_breakdown"],
         "grade": grade,
-        "strengths": sw["strengths"],
-        "weaknesses": sw["weaknesses"],
+        "overall_score": combined["overall_score"],
+        "components": combined["components"],
+        "bye_week_collisions": collisions,
+        "strengths": strengths,
+        "weaknesses": weaknesses,
     }
