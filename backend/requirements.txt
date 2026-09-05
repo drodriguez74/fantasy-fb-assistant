@@ -32,3 +32,5 @@ statsmodels==0.14.6
 # Optimization
 pulp==3.3.2
 cvxpy==1.9.2
+# Spreadsheet reading (scripts/update_espn_draft_rankings.py)
+openpyxl==3.1.5
