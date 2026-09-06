@@ -256,7 +256,35 @@ class YahooFantasyService:
 
             return leagues
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
-            return [{"error": f"Failed to get leagues: {self._error_detail(e)}"}]
+            detail = self._error_detail(e)
+            # On failure, probe a ladder of progressively-simpler Fantasy
+            # endpoints and log which (if any) the token can actually reach.
+            # This pins down whether it's a whitelist block (nothing works,
+            # not even the public /game/nfl with a bearer token) or just this
+            # one collection path being fussy (simpler calls succeed).
+            await self._probe_fantasy_access(access_token)
+            return [{"error": f"Failed to get leagues: {detail}"}]
+
+    async def _probe_fantasy_access(self, access_token: str) -> None:
+        """Diagnostic: hit several Fantasy API endpoints and log status for
+        each. Purely for debugging the 403 'not authorized' situation --
+        never raises, never returned to the caller."""
+        headers = {"Authorization": f"Bearer {access_token}"}
+        probes = [
+            "/game/nfl",
+            "/users;use_login=1/games;game_keys=nfl",
+            "/users;use_login=1/games/leagues",
+            "/users;use_login=1/games;game_keys=nfl/leagues",
+        ]
+        for path in probes:
+            try:
+                r = await self.client.get(
+                    f"{self.base_url}{path}", headers=headers, params={"format": "json"}
+                )
+                body = r.text.strip()[:200]
+                logger.warning(f"Yahoo probe {r.status_code} {path} :: {body}")
+            except Exception as ex:  # noqa: BLE001 - diagnostic only
+                logger.warning(f"Yahoo probe ERROR {path} :: {ex}")
 
     async def get_league_info(self, access_token: str, league_key: str) -> Dict[str, Any]:
         """Get Yahoo league information"""
