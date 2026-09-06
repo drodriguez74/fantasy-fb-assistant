@@ -56,6 +56,13 @@ class YahooFantasyService:
         if isinstance(e, httpx.HTTPStatusError):
             status = e.response.status_code
             body = e.response.text.strip()
+            if status == 403 and "not authorized to perform this action" in body:
+                logger.error(f"Yahoo API 403 for {e.request.url}: {body}")
+                return (
+                    "Yahoo returned 403: this app's App ID is not yet whitelisted "
+                    "for the Fantasy Sports API. OAuth works but fantasy data is "
+                    "locked server-side until Yahoo support activates it."
+                )
             if body:
                 logger.error(f"Yahoo API {status} for {e.request.url}: {body}")
                 # Response bodies are commonly XML/JSON with real structure;
@@ -131,7 +138,23 @@ class YahooFantasyService:
                 print(f"Yahoo OAuth: No access token in response")
                 return {"error": "No access token received from Yahoo"}
 
+            # Log the scope Yahoo *actually* granted (not what we requested).
+            # A newly-created Fantasy Sports app stays locked server-side until
+            # Yahoo support manually whitelists the App ID: the consent screen
+            # accepts scope=fspt-w and a token is issued, but the granted scope
+            # comes back WITHOUT fspt-w and every fantasysports.yahooapis.com
+            # call 403s "This application is not authorized to perform this
+            # action". If the line below shows no "fspt" scope, that's the
+            # cause -- it is not a bug in this code.
+            granted_scope = token_data.get("scope") or token_data.get("xoauth_yahoo_scope") or "<none returned>"
             print(f"Yahoo OAuth: Successfully obtained access token")
+            print(f"Yahoo OAuth: granted scope: {granted_scope} (requested fspt-w)")
+            if "fspt" not in str(granted_scope):
+                print(
+                    "Yahoo OAuth: WARNING -- no fantasy (fspt) scope granted. "
+                    "Fantasy API calls will 403 until Yahoo support whitelists "
+                    "this App ID for Fantasy Sports API access."
+                )
 
             return token_data
         except (httpx.RequestError, httpx.HTTPStatusError) as e:

@@ -10,10 +10,11 @@ export function YahooCallbackPage() {
   useEffect(() => {
     const authorizationCode = searchParams.get('code')
     const error = searchParams.get('error')
+    const errorDescription = searchParams.get('error_description')
 
     if (error) {
       setStatus('error')
-      setMessage('Yahoo authentication was cancelled or failed')
+      setMessage(`Yahoo authentication failed: ${error}${errorDescription ? ` (${errorDescription})` : ''}`)
       
       // Send error message to parent window
       if (window.opener) {
@@ -26,7 +27,8 @@ export function YahooCallbackPage() {
         // OAuth code was arriving, it just never reached the opener.
         window.opener.postMessage({
           type: 'YAHOO_AUTH_ERROR',
-          error: error
+          error: error,
+          error_description: errorDescription
         }, '*')
         window.close()
       } else {

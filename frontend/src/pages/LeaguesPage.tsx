@@ -107,7 +107,11 @@ export function LeaguesPage() {
           handleYahooCallback(event.data.code)
         } else if (event.data.type === 'YAHOO_AUTH_ERROR') {
           cleanup()
-          setError('Yahoo authentication failed')
+          setError(
+            event.data.error
+              ? `Yahoo authentication failed: ${event.data.error}${event.data.error_description ? ` (${event.data.error_description})` : ''}`
+              : 'Yahoo authentication failed'
+          )
           setConnecting(false)
         }
       }
