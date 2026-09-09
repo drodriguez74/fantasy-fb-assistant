@@ -2,9 +2,13 @@
 
 **CURRENT STATUS:** working tree clean except the untracked `Optis_*` / `ProBowl_*`
 spreadsheets (left alone on purpose). All pushed through `fb37f71`.
-Backend tests 101 pass; frontend build + lint clean (1 pre-existing useAuth.tsx
-lint error unchanged). The draft-assistant teardown is now fully done, backend
-and frontend.
+Backend tests 102 pass; frontend build + lint clean (1 pre-existing useAuth.tsx
+lint error unchanged). Draft-assistant teardown done (backend + frontend);
+nav re-cut done; ESPN analysis speed pass done (see below).
+
+Note: `test_auth.py::test_user_registration` flakes in the full-suite run
+(passes in isolation and on re-run) — a pre-existing test-isolation issue,
+not from these changes.
 
 **Frontend teardown shipped as `fb37f71`:**
 - deleted `DraftPage.tsx`, `LiveDraftPage.tsx`, `components/draft/`
@@ -27,6 +31,19 @@ Analysis. New `ThisWeekRedirectPage` (`/this-week` → first league's This Week
 tab, or `/leagues`), new `ReportsPage` (`/reports` hub for Post-Draft / Draft
 History / Historical). Blog dropped from nav; ContentPage links to `/blog`.
 Build + lint clean, verified in browser.
+
+**ESPN analysis speed pass DONE (pushed, `8705af1`):** the `/leagues/:id`
+"~25-30s to first render" perf note (session 8) is fixed. `get_comprehensive_
+league_analysis` now takes `sections` + runs slices concurrently;
+`/waiver-recommendations` and `/trade-suggestions` compute only their own
+slice instead of the full 5 (each threw 4 away — and the page fires both).
+Independent ESPN reads + per-position AI calls are gathered.
+`espn_service_enhanced._get_league` got a per-key lock so concurrent slices
+don't each build the League. Measured warm vs the real Optis Titans league:
+waiver 4.6s, trade 3.1s, this-week 0.8s (were ~25-30s). 102 tests pass.
+Note: `_analyze_espn_roster`/`_analyze_espn_matchup`/`_get_espn_league_standings`
+are now only reachable via a no-`sections` call (none in the app today) —
+the frontend's roster/standings come from their own lighter endpoints.
 
 **NEXT — the ranked in-season backlog** (from the artifact): 1) weekly digest
 notification/email cadence, 2) kill the mock news scraper (`scraper_service`
