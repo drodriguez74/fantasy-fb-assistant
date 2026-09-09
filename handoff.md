@@ -1,9 +1,42 @@
-# Handoff (2026-09-08, session 9) — 8-session backlog + This Week + draft teardown (backend done)
+# Handoff (2026-09-08, session 10) — draft teardown COMPLETE (backend + frontend)
 
-**CURRENT STATUS:** working tree clean, all pushed through `6ed53e8`; local commits
-`d58b8d2` + `2d40783` (backend draft teardown) not yet pushed. Backend tests 101 pass.
-Untracked `Optis_*` / `ProBowl_*` spreadsheets left alone on purpose. Next action:
-the frontend draft teardown, spelled out step-by-step below. Then push.
+**CURRENT STATUS:** working tree clean except the untracked `Optis_*` / `ProBowl_*`
+spreadsheets (left alone on purpose). All pushed through `fb37f71`.
+Backend tests 101 pass; frontend build + lint clean (1 pre-existing useAuth.tsx
+lint error unchanged). The draft-assistant teardown is now fully done, backend
+and frontend.
+
+**Frontend teardown shipped as `fb37f71`:**
+- deleted `DraftPage.tsx`, `LiveDraftPage.tsx`, `components/draft/`
+- `api.ts` — removed `export const draft` + unused `MockDraftSettingsPayload` /
+  `MockDraftResult`; kept `MockDraftRosterPlayer`, `PositionBreakdownEntry`,
+  `ValueAnalysisEntry`, `DraftSessionSummary`, `DraftSessionDetail`, `users`
+  (DraftHistoryPage still uses all of these)
+- `App.tsx` — dropped the two lazy imports + routes; `/draft` and `/live-draft`
+  now `<Navigate to="/leagues" replace />`
+- `Navbar.tsx` — dropped Draft Assistant + Live Draft nav items
+- `HomePage.tsx` — the "Draft Assistant" feature card is now "This Week" → `/leagues`;
+  hero CTA + quick-action links repointed to `/leagues` / `/waiver-wire`
+- `AuthPage.tsx` — new-user landing `/draft?welcome=1` → `/leagues?welcome=1`
+  (LeaguesPage doesn't read `?welcome=1` yet — harmless no-op, worth wiring later)
+- Verified: DraftPage/LiveDraftPage chunks gone from the build output.
+
+**NEXT — the fuller nav re-cut (design task, separate commit, NOT started):**
+top nav → This Week · Leagues · Waivers · Trades · Players; Post-Draft + Draft
+History + Historical → a "Reports" area; Blog merged into Content. See the
+"The Season Is the Product" artifact for rationale.
+
+**Then the ranked in-season backlog** (from the artifact): 1) weekly digest
+notification/email cadence, 2) kill the mock news scraper (`scraper_service`
+fabricates news/trending on live paths), 3) waiver claim planner w/ FAAB,
+4) optimizer v2 + start/sit confidence, 5) trade finder, 6) Sleeper league
+analysis, 7) weekly recap + shareable card, 8) consolidate the 3 analysis pages.
+
+**Still open from before:**
+- Charts not visually verified in a running browser (select players on
+  AdvancedAnalysisPage in both themes — quick check).
+- This Week optimizer is single-pass greedy, no matchup/edge input — v1.
+- Yahoo Fantasy API still blocked at Yahoo's end (support ticket).
 
 ---
 
