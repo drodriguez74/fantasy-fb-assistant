@@ -121,6 +121,47 @@ class TestEspnComprehensiveAnalysisRouting:
         assert "suggestions" in result["trade_recommendations"]
 
 
+class TestSectionScoping:
+    """`sections` must restrict which sub-analyses run -- the
+    /waiver-recommendations and /trade-suggestions endpoints pass it so they
+    don't pay the ESPN + AI cost of the other four slices."""
+
+    @pytest.mark.asyncio
+    async def test_sections_only_runs_requested_helpers(self, test_db_session, monkeypatch):
+        league = make_espn_league()
+        test_db_session.add(league)
+        test_db_session.commit()
+
+        called = []
+
+        async def fake_waiver(_self, _league):
+            called.append("waiver")
+            return {"recommendations": []}
+
+        for name in (
+            "_analyze_espn_roster",
+            "_analyze_espn_matchup",
+            "_get_espn_league_standings",
+            "_get_espn_trade_recommendations",
+        ):
+            monkeypatch.setattr(
+                LeagueManagementService,
+                name,
+                AsyncMock(side_effect=lambda *_a, _n=name, **_k: called.append(_n)),
+            )
+        monkeypatch.setattr(LeagueManagementService, "_get_espn_waiver_recs", fake_waiver)
+
+        service = LeagueManagementService(test_db_session)
+        result = await service.get_comprehensive_league_analysis(
+            user_id=1, league_id=league.id, sections=["waiver_recommendations"]
+        )
+
+        assert called == ["waiver"]
+        assert result["waiver_recommendations"] == {"recommendations": []}
+        assert "roster_analysis" not in result
+        assert "trade_recommendations" not in result
+
+
 class TestEspnRosterGrading:
     """Mirrors TestDeterministicOverallGrade for the ESPN roster path."""
 

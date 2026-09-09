@@ -10,6 +10,7 @@ Other platforms get an honest `platform_supported: False` response rather
 than fabricated numbers, matching the pattern in
 leagues.py::get_roster_analysis.
 """
+import asyncio
 from typing import Any, Dict, List, Optional
 
 from app.models.user_league import UserLeague
@@ -151,12 +152,22 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
             ),
         }
 
-    matchup = await espn_service_enhanced.get_week_matchup(
-        league_id=league.league_id,
-        team_id=league.team_id,
-        season=league.season,
-        swid=league.espn_swid,
-        espn_s2=league.espn_s2,
+    # The weekly box score is a fresh ESPN fetch; standings reads from the
+    # already-loaded league object. Kick both off together.
+    matchup, standings = await asyncio.gather(
+        espn_service_enhanced.get_week_matchup(
+            league_id=league.league_id,
+            team_id=league.team_id,
+            season=league.season,
+            swid=league.espn_swid,
+            espn_s2=league.espn_s2,
+        ),
+        espn_service_enhanced.get_standings(
+            league_id=league.league_id,
+            season=league.season,
+            swid=league.espn_swid,
+            espn_s2=league.espn_s2,
+        ),
     )
     if "error" in matchup:
         return {
@@ -168,12 +179,6 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
             ),
         }
 
-    standings = await espn_service_enhanced.get_standings(
-        league_id=league.league_id,
-        season=league.season,
-        swid=league.espn_swid,
-        espn_s2=league.espn_s2,
-    )
     records: Dict[str, Dict[str, Any]] = {}
     if isinstance(standings, list) and standings and "error" not in standings[0]:
         for t in standings:

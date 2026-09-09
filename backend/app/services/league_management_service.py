@@ -10,6 +10,7 @@ from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
 from app.services import roster_grading
 from datetime import datetime, timedelta
+import asyncio
 import logging
 import json
 
@@ -20,14 +21,36 @@ class LeagueManagementService:
         self.db = db
         self.player_service = PlayerDataService(db)
 
-    async def get_comprehensive_league_analysis(self, user_id: int, league_id: int) -> Dict[str, Any]:
-        """Get comprehensive league analysis including roster, matchups, and recommendations"""
+    # Response-key -> (yahoo helper name, espn helper name) for each section
+    # get_comprehensive_league_analysis can produce. Callers that only need
+    # one slice (e.g. the /waiver-recommendations and /trade-suggestions
+    # endpoints) pass `sections` so we don't run -- and pay the ESPN + AI
+    # cost of -- the other four.
+    _SECTION_HELPERS = {
+        "roster_analysis": ("_analyze_yahoo_roster", "_analyze_espn_roster"),
+        "current_matchup": ("_analyze_current_matchup", "_analyze_espn_matchup"),
+        "standings": ("_get_league_standings", "_get_espn_league_standings"),
+        "waiver_recommendations": ("_get_league_specific_waiver_recs", "_get_espn_waiver_recs"),
+        "trade_recommendations": ("_get_trade_recommendations", "_get_espn_trade_recommendations"),
+    }
+
+    async def get_comprehensive_league_analysis(
+        self, user_id: int, league_id: int, sections: Optional[List[str]] = None
+    ) -> Dict[str, Any]:
+        """Get comprehensive league analysis including roster, matchups, and recommendations.
+
+        `sections` restricts which slices to compute (keys of _SECTION_HELPERS);
+        None means all five. The requested sections run concurrently --
+        they're independent, and each was previously awaited one-after-another,
+        which is the bulk of this endpoint's latency (each does its own ESPN
+        fetches and 1+ AI calls).
+        """
         try:
             league = self.db.query(UserLeague).filter(
                 UserLeague.user_id == user_id,
                 UserLeague.id == league_id
             ).first()
-            
+
             if not league:
                 return {"error": "League not found"}
 
@@ -42,41 +65,22 @@ class LeagueManagementService:
                 }
             }
 
-            if league.platform.value.upper() == "YAHOO":
-                # Get roster analysis
-                roster_analysis = await self._analyze_yahoo_roster(league)
-                analysis["roster_analysis"] = roster_analysis
-                
-                # Get matchup analysis
-                matchup_analysis = await self._analyze_current_matchup(league)
-                analysis["current_matchup"] = matchup_analysis
-                
-                # Get league standings
-                standings = await self._get_league_standings(league)
-                analysis["standings"] = standings
-                
-                # Get waiver wire recommendations
-                waiver_recs = await self._get_league_specific_waiver_recs(league)
-                analysis["waiver_recommendations"] = waiver_recs
-                
-                # Get trade recommendations
-                trade_recs = await self._get_trade_recommendations(league)
-                analysis["trade_recommendations"] = trade_recs
-            elif league.platform.value.upper() == "ESPN":
-                roster_analysis = await self._analyze_espn_roster(league)
-                analysis["roster_analysis"] = roster_analysis
+            platform = league.platform.value.upper()
+            if platform in ("YAHOO", "ESPN"):
+                helper_idx = 0 if platform == "YAHOO" else 1
+                wanted = sections or list(self._SECTION_HELPERS.keys())
+                keys = [k for k in self._SECTION_HELPERS if k in wanted]
 
-                matchup_analysis = await self._analyze_espn_matchup(league)
-                analysis["current_matchup"] = matchup_analysis
-
-                standings = await self._get_espn_league_standings(league)
-                analysis["standings"] = standings
-
-                waiver_recs = await self._get_espn_waiver_recs(league)
-                analysis["waiver_recommendations"] = waiver_recs
-
-                trade_recs = await self._get_espn_trade_recommendations(league)
-                analysis["trade_recommendations"] = trade_recs
+                results = await asyncio.gather(
+                    *(getattr(self, self._SECTION_HELPERS[k][helper_idx])(league) for k in keys),
+                    return_exceptions=True,
+                )
+                for key, result in zip(keys, results):
+                    if isinstance(result, Exception):
+                        logger.error(f"Section {key} failed: {result}")
+                        analysis[key] = {"error": str(result)}
+                    else:
+                        analysis[key] = result
             else:
                 # Sleeper roster/matchup/standings/waiver/trade analysis
                 # doesn't exist yet -- every helper above is hardcoded to
@@ -154,30 +158,39 @@ class LeagueManagementService:
             roster_weaknesses = []
 
             positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
+            active_positions = [
+                pos for pos in positions
+                if [p for p in players if p.get("position") == pos]
+            ]
 
-            for position in positions:
-                pos_players = [p for p in players if p.get("position") == position]
+            # AI-generated summary/strengths/concerns text is still genuinely
+            # useful color -- kept for descriptive text only, not as the
+            # source of truth for the letter grade. Each group is its own AI
+            # call; run them concurrently rather than in a serial loop.
+            pos_results = await asyncio.gather(*(
+                self._analyze_position_group(
+                    pos,
+                    [p for p in players if p.get("position") == pos],
+                    league.league_size,
+                    league.scoring_format,
+                )
+                for pos in active_positions
+            ))
 
-                if pos_players:
-                    # AI-generated summary/strengths/concerns text is still
-                    # genuinely useful color -- kept for descriptive text
-                    # only, not as the source of truth for the letter grade.
-                    pos_analysis = await self._analyze_position_group(
-                        position, pos_players, league.league_size, league.scoring_format
-                    )
-                    position_analysis[position] = pos_analysis
+            for position, pos_analysis in zip(active_positions, pos_results):
+                position_analysis[position] = pos_analysis
 
-                    # Strength/weakness classification now comes from the
-                    # real, deterministic per-position breakdown
-                    # (needs_attention/overstocked flags), not the AI's
-                    # self-reported letter grade -- the AI summary text is
-                    # still included for color.
-                    breakdown = position_breakdown.get(position)
-                    if breakdown:
-                        if breakdown.get("overstocked"):
-                            roster_strengths.append(f"{position}: {pos_analysis.get('summary', '')}")
-                        elif breakdown.get("needs_attention"):
-                            roster_weaknesses.append(f"{position}: {pos_analysis.get('summary', '')}")
+                # Strength/weakness classification now comes from the
+                # real, deterministic per-position breakdown
+                # (needs_attention/overstocked flags), not the AI's
+                # self-reported letter grade -- the AI summary text is
+                # still included for color.
+                breakdown = position_breakdown.get(position)
+                if breakdown:
+                    if breakdown.get("overstocked"):
+                        roster_strengths.append(f"{position}: {pos_analysis.get('summary', '')}")
+                    elif breakdown.get("needs_attention"):
+                        roster_weaknesses.append(f"{position}: {pos_analysis.get('summary', '')}")
 
             # Get injury concerns
             injury_concerns = await self._check_roster_injuries(players)
@@ -213,12 +226,21 @@ class LeagueManagementService:
             if not league.team_id:
                 return {"error": "Team ID not configured"}
 
-            roster_data = await espn_service_enhanced.get_team_roster(
-                league_id=league.league_id,
-                team_id=int(league.team_id),
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
+            # Roster and settings are independent ESPN reads -- fetch together.
+            roster_data, espn_settings = await asyncio.gather(
+                espn_service_enhanced.get_team_roster(
+                    league_id=league.league_id,
+                    team_id=int(league.team_id),
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
+                espn_service_enhanced.get_scoring_and_roster_settings(
+                    league_id=league.league_id,
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
             )
 
             if "error" in roster_data:
@@ -229,12 +251,6 @@ class LeagueManagementService:
             # Real per-league starter requirements when ESPN exposes them,
             # same fallback behavior as the Yahoo branch above.
             league_settings = None
-            espn_settings = await espn_service_enhanced.get_scoring_and_roster_settings(
-                league_id=league.league_id,
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
-            )
             if "error" not in espn_settings and espn_settings.get("starters"):
                 league_settings = {"starters": espn_settings["starters"]}
 
@@ -246,22 +262,32 @@ class LeagueManagementService:
             roster_weaknesses = []
 
             positions = ["QB", "RB", "WR", "TE", "K", "DEF"]
+            active_positions = [
+                pos for pos in positions
+                if [p for p in players if p.get("position") == pos]
+            ]
 
-            for position in positions:
-                pos_players = [p for p in players if p.get("position") == position]
+            # Each position group is its own AI call -- run them concurrently
+            # (this was a serial ~6-call loop, the single biggest cost here).
+            pos_results = await asyncio.gather(*(
+                self._analyze_position_group(
+                    pos,
+                    [p for p in players if p.get("position") == pos],
+                    league.league_size,
+                    league.scoring_format,
+                )
+                for pos in active_positions
+            ))
 
-                if pos_players:
-                    pos_analysis = await self._analyze_position_group(
-                        position, pos_players, league.league_size, league.scoring_format
-                    )
-                    position_analysis[position] = pos_analysis
+            for position, pos_analysis in zip(active_positions, pos_results):
+                position_analysis[position] = pos_analysis
 
-                    breakdown = position_breakdown.get(position)
-                    if breakdown:
-                        if breakdown.get("overstocked"):
-                            roster_strengths.append(f"{position}: {pos_analysis.get('summary', '')}")
-                        elif breakdown.get("needs_attention"):
-                            roster_weaknesses.append(f"{position}: {pos_analysis.get('summary', '')}")
+                breakdown = position_breakdown.get(position)
+                if breakdown:
+                    if breakdown.get("overstocked"):
+                        roster_strengths.append(f"{position}: {pos_analysis.get('summary', '')}")
+                    elif breakdown.get("needs_attention"):
+                        roster_weaknesses.append(f"{position}: {pos_analysis.get('summary', '')}")
 
             injury_concerns = await self._check_roster_injuries(players)
 
@@ -708,12 +734,30 @@ class LeagueManagementService:
             if not league.team_id:
                 return {"error": "Team ID not configured"}
 
-            roster_data = await espn_service_enhanced.get_team_roster(
-                league_id=league.league_id,
-                team_id=int(league.team_id),
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
+            # Roster, league settings, and the free-agent pool are three
+            # independent ESPN reads (the free-agent pull is the slow one) --
+            # fetch them concurrently.
+            roster_data, espn_settings, free_agents = await asyncio.gather(
+                espn_service_enhanced.get_team_roster(
+                    league_id=league.league_id,
+                    team_id=int(league.team_id),
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
+                espn_service_enhanced.get_scoring_and_roster_settings(
+                    league_id=league.league_id,
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
+                espn_service_enhanced.get_available_players(
+                    league_id=league.league_id,
+                    season=league.season,
+                    size=300,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
             )
             if "error" in roster_data:
                 return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
@@ -721,12 +765,6 @@ class LeagueManagementService:
             roster_players = roster_data.get("players", [])
             current_players = {(p.get("name") or "").lower() for p in roster_players}
 
-            espn_settings = await espn_service_enhanced.get_scoring_and_roster_settings(
-                league_id=league.league_id,
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
-            )
             league_settings = None
             if "error" not in espn_settings and espn_settings.get("starters"):
                 league_settings = espn_settings
@@ -743,13 +781,6 @@ class LeagueManagementService:
             # filter is applied, same fallback-to-unweighted pattern this
             # method already uses elsewhere.
             available_player_names = None
-            free_agents = await espn_service_enhanced.get_available_players(
-                league_id=league.league_id,
-                season=league.season,
-                size=300,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
-            )
             if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                 available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
 
@@ -843,22 +874,24 @@ class LeagueManagementService:
             if not league.team_id:
                 return {"error": "Team ID not configured"}
 
-            roster_data = await espn_service_enhanced.get_team_roster(
-                league_id=league.league_id,
-                team_id=int(league.team_id),
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
+            roster_data, teams = await asyncio.gather(
+                espn_service_enhanced.get_team_roster(
+                    league_id=league.league_id,
+                    team_id=int(league.team_id),
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
+                espn_service_enhanced.get_league_teams(
+                    league_id=league.league_id,
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
             )
             if "error" in roster_data:
                 return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
 
-            teams = await espn_service_enhanced.get_league_teams(
-                league_id=league.league_id,
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
-            )
             if teams and isinstance(teams, list) and "error" in teams[0]:
                 return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
 

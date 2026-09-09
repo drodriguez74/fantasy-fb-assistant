@@ -810,11 +810,13 @@ async def get_waiver_recommendations(
     """Get league-specific waiver wire recommendations"""
     try:
         league_service = LeagueManagementService(db)
-        analysis = await league_service.get_comprehensive_league_analysis(current_user.id, league_id)
-        
+        analysis = await league_service.get_comprehensive_league_analysis(
+            current_user.id, league_id, sections=["waiver_recommendations"]
+        )
+
         if "error" in analysis:
             raise HTTPException(status_code=400, detail=analysis["error"])
-        
+
         return {
             "league_info": analysis.get("league_info", {}),
             "waiver_recommendations": analysis.get("waiver_recommendations", {})
@@ -833,11 +835,13 @@ async def get_trade_suggestions(
     """Get AI-powered trade suggestions"""
     try:
         league_service = LeagueManagementService(db)
-        analysis = await league_service.get_comprehensive_league_analysis(current_user.id, league_id)
-        
+        analysis = await league_service.get_comprehensive_league_analysis(
+            current_user.id, league_id, sections=["trade_recommendations"]
+        )
+
         if "error" in analysis:
             raise HTTPException(status_code=400, detail=analysis["error"])
-        
+
         return {
             "league_info": analysis.get("league_info", {}),
             "trade_recommendations": analysis.get("trade_recommendations", {})

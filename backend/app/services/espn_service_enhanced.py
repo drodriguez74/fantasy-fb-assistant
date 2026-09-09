@@ -2,6 +2,7 @@ from espn_api.football import League
 from espn_api.football.constant import POSITION_MAP
 from typing import Dict, List, Optional, Any, Union
 import asyncio
+import threading
 from datetime import datetime
 import logging
 from functools import wraps
@@ -23,6 +24,14 @@ def async_wrapper(func):
 class ESPNFantasyServiceEnhanced:
     def __init__(self):
         self._leagues = {}  # Cache for league objects
+        # Per-cache-key locks so that when several analysis sections fire
+        # concurrently (see LeagueManagementService.get_comprehensive_league_analysis,
+        # which now gathers its sub-calls) they don't each independently
+        # construct the same espn_api League object -- constructing a League
+        # is several HTTP round-trips to ESPN, and doing it 5x in parallel on
+        # a cold cache both wastes time and risks ESPN rate-limiting us.
+        self._league_locks: Dict[str, threading.Lock] = {}
+        self._locks_guard = threading.Lock()
 
     def _get_league(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> League:
         """Get or create ESPN League object with optional authentication"""
@@ -31,105 +40,118 @@ class ESPNFantasyServiceEnhanced:
         # never gets served back to a caller that passed real per-user
         # swid/espn_s2 for that same league_id, and vice versa.
         cache_key = f"{league_id}_{season}_{'auth' if (swid and espn_s2) else 'public'}"
-        
-        if cache_key not in self._leagues:
-            try:
-                # Validate league_id
-                if not league_id:
-                    raise ValueError("League ID cannot be empty")
-                
-                league_id_int = int(league_id)
-                logger.info(f"Attempting to connect to ESPN league {league_id_int} for season {season}")
-                
-                # Try different seasons if the requested one fails
-                seasons_to_try = [season]
-                if season == 2025:
-                    seasons_to_try = [2025, 2024]  # Try 2025 first, fallback to 2024 if needed
-                elif season == 2024:
-                    seasons_to_try = [2024, 2023]  # Try 2023 as fallback
-                
-                league_obj = None
-                last_error = None
-                
-                for try_season in seasons_to_try:
-                    try:
-                        logger.info(f"Trying season {try_season} for league {league_id_int}")
-                        
-                        # For public leagues (no authentication needed)
-                        if not swid or not espn_s2:
-                            try:
-                                league_obj = League(
-                                    league_id=league_id_int, 
-                                    year=try_season
-                                )
-                            except Exception as public_error:
-                                # Check if this is the specific private league error
-                                if "'NoneType' object has no attribute 'get'" in str(public_error):
-                                    raise ValueError(f"League {league_id_int} is private and requires authentication. Please provide SWID and espn_s2 cookies from your ESPN account.")
-                                else:
-                                    raise public_error
-                        else:
-                            # For private leagues (authentication required)
-                            league_obj = League(
-                                league_id=league_id_int, 
-                                year=try_season,
-                                swid=swid,
-                                espn_s2=espn_s2
-                            )
-                        
-                        # Validate the created league object
-                        if not league_obj:
-                            logger.error(f"ESPN API returned None for league object (season {try_season})")
-                            continue
-                        
-                        # Test basic access to ensure the league is valid
+
+        # Fast path: already built.
+        if cache_key in self._leagues:
+            return self._leagues[cache_key]
+
+        with self._locks_guard:
+            lock = self._league_locks.setdefault(cache_key, threading.Lock())
+
+        with lock:
+            # Re-check under the lock -- another thread may have built it
+            # while we were waiting on the lock.
+            if cache_key not in self._leagues:
+                self._leagues[cache_key] = self._build_league(cache_key, league_id, season, swid, espn_s2)
+            return self._leagues[cache_key]
+
+    def _build_league(self, cache_key: str, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> League:
+        """Construct the espn_api League object. Caller holds this cache_key's
+        lock; the result is cached by _get_league."""
+        try:
+            # Validate league_id
+            if not league_id:
+                raise ValueError("League ID cannot be empty")
+
+            league_id_int = int(league_id)
+            logger.info(f"Attempting to connect to ESPN league {league_id_int} for season {season}")
+
+            # Try different seasons if the requested one fails
+            seasons_to_try = [season]
+            if season == 2025:
+                seasons_to_try = [2025, 2024]  # Try 2025 first, fallback to 2024 if needed
+            elif season == 2024:
+                seasons_to_try = [2024, 2023]  # Try 2023 as fallback
+
+            league_obj = None
+            last_error = None
+
+            for try_season in seasons_to_try:
+                try:
+                    logger.info(f"Trying season {try_season} for league {league_id_int}")
+
+                    # For public leagues (no authentication needed)
+                    if not swid or not espn_s2:
                         try:
-                            test_id = getattr(league_obj, 'league_id', None)
-                            test_year = getattr(league_obj, 'year', None)
-                            test_settings = getattr(league_obj, 'settings', None)
-                            
-                            logger.info(f"League object created - ID: {test_id}, Year: {test_year}, Settings: {test_settings is not None}")
-                            
-                            if test_id and test_year:
-                                logger.info(f"Successfully connected to ESPN league {test_id} for season {test_year}")
-                                self._leagues[cache_key] = league_obj
-                                return league_obj
+                            league_obj = League(
+                                league_id=league_id_int,
+                                year=try_season
+                            )
+                        except Exception as public_error:
+                            # Check if this is the specific private league error
+                            if "'NoneType' object has no attribute 'get'" in str(public_error):
+                                raise ValueError(f"League {league_id_int} is private and requires authentication. Please provide SWID and espn_s2 cookies from your ESPN account.")
                             else:
-                                logger.error(f"League validation failed - missing basic attributes (season {try_season})")
-                                continue
-                        except Exception as validation_error:
-                            logger.error(f"League validation failed for season {try_season}: {str(validation_error)}")
-                            last_error = validation_error
-                            continue
-                            
-                    except Exception as season_error:
-                        logger.error(f"Failed to create league object for season {try_season}: {str(season_error)}")
-                        last_error = season_error
+                                raise public_error
+                    else:
+                        # For private leagues (authentication required)
+                        league_obj = League(
+                            league_id=league_id_int,
+                            year=try_season,
+                            swid=swid,
+                            espn_s2=espn_s2
+                        )
+
+                    # Validate the created league object
+                    if not league_obj:
+                        logger.error(f"ESPN API returned None for league object (season {try_season})")
                         continue
-                
-                # If we get here, all seasons failed
-                if last_error:
-                    raise ValueError(f"ESPN API error after trying multiple seasons: {str(last_error)}")
-                else:
-                    raise ValueError("ESPN API returned None for league object across all attempted seasons")
-                
-            except ValueError as ve:
-                logger.error(f"Invalid league parameters: {str(ve)}")
-                raise
-            except Exception as e:
-                # Common ESPN API errors
-                error_msg = str(e).lower()
-                if "league_id" in error_msg or "invalid" in error_msg:
-                    logger.error(f"Invalid ESPN league ID {league_id}: {str(e)}")
-                    raise ValueError(f"Invalid ESPN league ID: {league_id}. The league might not exist or might be from a different season.")
-                elif "private" in error_msg or "access" in error_msg or "permission" in error_msg:
-                    logger.error(f"ESPN league {league_id} requires authentication: {str(e)}")
-                    raise ValueError(f"League {league_id} is private and requires authentication (SWID and espn_s2 cookies)")
-                else:
-                    logger.error(f"Failed to create ESPN League object: {str(e)}")
-                    raise ValueError(f"ESPN API error: {str(e)}")
-        
-        return self._leagues[cache_key]
+
+                    # Test basic access to ensure the league is valid
+                    try:
+                        test_id = getattr(league_obj, 'league_id', None)
+                        test_year = getattr(league_obj, 'year', None)
+                        test_settings = getattr(league_obj, 'settings', None)
+
+                        logger.info(f"League object created - ID: {test_id}, Year: {test_year}, Settings: {test_settings is not None}")
+
+                        if test_id and test_year:
+                            logger.info(f"Successfully connected to ESPN league {test_id} for season {test_year}")
+                            return league_obj
+                        else:
+                            logger.error(f"League validation failed - missing basic attributes (season {try_season})")
+                            continue
+                    except Exception as validation_error:
+                        logger.error(f"League validation failed for season {try_season}: {str(validation_error)}")
+                        last_error = validation_error
+                        continue
+
+                except Exception as season_error:
+                    logger.error(f"Failed to create league object for season {try_season}: {str(season_error)}")
+                    last_error = season_error
+                    continue
+
+            # If we get here, all seasons failed
+            if last_error:
+                raise ValueError(f"ESPN API error after trying multiple seasons: {str(last_error)}")
+            else:
+                raise ValueError("ESPN API returned None for league object across all attempted seasons")
+
+        except ValueError as ve:
+            logger.error(f"Invalid league parameters: {str(ve)}")
+            raise
+        except Exception as e:
+            # Common ESPN API errors
+            error_msg = str(e).lower()
+            if "league_id" in error_msg or "invalid" in error_msg:
+                logger.error(f"Invalid ESPN league ID {league_id}: {str(e)}")
+                raise ValueError(f"Invalid ESPN league ID: {league_id}. The league might not exist or might be from a different season.")
+            elif "private" in error_msg or "access" in error_msg or "permission" in error_msg:
+                logger.error(f"ESPN league {league_id} requires authentication: {str(e)}")
+                raise ValueError(f"League {league_id} is private and requires authentication (SWID and espn_s2 cookies)")
+            else:
+                logger.error(f"Failed to create ESPN League object: {str(e)}")
+                raise ValueError(f"ESPN API error: {str(e)}")
 
     @async_wrapper
     def get_league_info(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> Dict[str, Any]:
