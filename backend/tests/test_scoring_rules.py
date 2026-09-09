@@ -1,6 +1,6 @@
 """Tests for the canonical, cross-platform scoring-rules extraction and
 recalculation logic (app.services.scoring_rules), and its wiring into
-sleeper_service, espn_service_enhanced, and draft_assistant_service.
+sleeper_service and espn_service_enhanced.
 
 Real-league grounding: REAL_SLEEPER_SCORING_SETTINGS below is the actual
 `scoring_settings` dict returned live by Sleeper's public API for league
@@ -23,7 +23,6 @@ from app.services.scoring_rules import (
     scoring_rules_from_sleeper,
 )
 from app.services.sleeper_service import SleeperService
-from app.services.draft_assistant_service import DraftAssistantService
 
 
 # Captured live from api.sleeper.app/v1/league/289646328504385536 -- see
@@ -219,86 +218,3 @@ class TestDescribeScoringRules:
 
     def test_none_rules_returns_empty_string(self):
         assert describe_scoring_rules(None) == ""
-
-
-class TestCalculatePlayerValuesRecalculation:
-    """Integration coverage for draft_assistant_service._calculate_player_values'
-    scoring-rules recalculation path -- confirms it fires for a
-    non-ESPN record with a raw stat breakdown, and is explicitly skipped
-    for an ESPN-tagged record so ESPN's own already-correct
-    projected_points is never double counted."""
-
-    def _run(self, coro):
-        # asyncio.run() creates and tears down its own fresh event loop per
-        # call, so this isn't affected by ambient loop state left behind by
-        # other test files (e.g. pytest-asyncio-managed tests running
-        # earlier in the same session) -- get_event_loop() was.
-        return asyncio.run(coro)
-
-    def test_recalculates_for_non_espn_record_with_raw_stats(self):
-        service = DraftAssistantService()
-        completion_league_rules = default_scoring_rules(source="sleeper")
-        completion_league_rules["passing"]["completion"] = 0.5
-        completion_league_rules["passing"]["incompletion"] = -0.5
-
-        player = {
-            "player_id": "efficient_qb",
-            "full_name": "Efficient Ethan",
-            "position": "QB",
-            "projected_points": 0,  # Sleeper's real available_players carries no score at all
-            "ownership": 10,
-            "projected_stat_breakdown": {
-                "completions": 380, "incompletions": 190,
-                "pass_yards": 4200, "pass_tds": 28, "interceptions": 8,
-            },
-        }
-        draft_analysis = {
-            "league_settings": {
-                "points_per_reception": 0.0,
-                "scoring_rules": completion_league_rules,
-                "source": "sleeper",
-            }
-        }
-
-        result = self._run(service._calculate_player_values([player], draft_analysis))
-        # value_score = effective_points * (100 - ownership) / 100
-        # effective_points should be the full recalculated 359.0 (see
-        # test_completion_scoring_before_after_example), not the raw 0.
-        expected_effective = 4200 * 0.04 + 28 * 4 + 8 * -2 + 380 * 0.5 + 190 * -0.5
-        assert expected_effective == 359.0
-        assert result["value_picks"], "expected the recalculated value to clear the value-pick threshold"
-        assert abs(result["value_picks"][0]["value_score"] - expected_effective * 0.9) < 1e-6
-
-    def test_does_not_recalculate_espn_tagged_record(self):
-        """An ESPN-tagged player record with (hypothetically) a raw stat
-        breakdown attached must NOT be recalculated -- ESPN's own
-        projected_points already reflects the league's real scoring."""
-        service = DraftAssistantService()
-        completion_league_rules = default_scoring_rules(source="espn")
-        completion_league_rules["passing"]["completion"] = 0.5
-        completion_league_rules["passing"]["incompletion"] = -0.5
-
-        player = {
-            "player_id": "espn_qb",
-            "full_name": "ESPN QB",
-            "position": "QB",
-            "projected_points": 300.0,  # ESPN's own already-correct season total
-            "ownership": 10,
-            "platform": "espn",
-            # Even if a raw breakdown were present, it must be ignored for ESPN.
-            "projected_stat_breakdown": {
-                "completions": 380, "incompletions": 190,
-                "pass_yards": 4200, "pass_tds": 28, "interceptions": 8,
-            },
-        }
-        draft_analysis = {
-            "league_settings": {
-                "points_per_reception": 0.0,
-                "scoring_rules": completion_league_rules,
-                "source": "espn",
-            }
-        }
-
-        result = self._run(service._calculate_player_values([player], draft_analysis))
-        # Must use the untouched projected_points (300.0), not the recalculated figure.
-        assert abs(result["value_picks"][0]["value_score"] - 300.0 * 0.9) < 1e-6

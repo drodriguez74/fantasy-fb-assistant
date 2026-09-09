@@ -13,12 +13,13 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from app.services.sleeper_service import sleeper_service
-# Reuse the retired/inactive-player filter already established (and battle
-# tested) for the Draft Assistant's positional rankings, rather than
-# reimplementing the team+status heuristic here. See draft.py for the full
-# reasoning (Sleeper's `status` field alone still tags long-retired players
-# like Frank Gore as "Active"; requiring a real `team` too is the fix).
-from app.api.v1.endpoints.draft import _is_on_active_roster, _UNRANKED_SENTINEL
+# Retired/inactive-player filter (Sleeper's `status` field alone still tags
+# long-retired players like Frank Gore as "Active"; requiring a real `team`
+# too is the fix) and the "unranked" sort sentinel.
+from app.services.player_pool import (
+    is_on_active_roster as _is_on_active_roster,
+    UNRANKED_SENTINEL as _UNRANKED_SENTINEL,
+)
 
 router = APIRouter()
 
