@@ -1,3 +1,33 @@
+# Handoff (2026-09-08, session 11) — Render backend deploy + mobile responsive pass
+
+**Render backend is LIVE:** `https://fantasy-fb-assistant.onrender.com` (health `/`
+200, `/docs` 200, DB connected — login returns 401 not 503). Commits: `fcea809`
+($PORT-aware Dockerfile CMD + `backend/.dockerignore`), `425a27d` (`render.yaml`
+blueprint + DB pool 3+2). Free tier → ~30-60s cold start after 15min idle.
+
+**Vercel:** `VITE_API_URL=https://fantasy-fb-assistant.onrender.com/api/v1` added to
+Production env. The prior live bundle had `localhost:8000` baked in (Vite inlines at
+build time) — that was the "network error" on the deployed site. The git push of
+`c9bb1d6` triggers a fresh Production build that picks up VITE_API_URL, so the
+deployed site should work after that deploy finishes. (Manual `npx vercel deploy
+--prod` from repo root also works if needed.)
+
+**Demo login:** Supabase DB has ONE user `demo@test.com` (id 1); its password hash
+matches none of the documented passwords. Either reset it (DB write — blocked for
+Claude in auto mode; run the one-liner in chat) or use whatever the founder set.
+
+**`SECRET_KEY` on Render:** if copied from `.env` it's the literal dev placeholder.
+Fine for demo; set a real random value before real use (forces re-login).
+
+**Mobile responsive pass (`c9bb1d6`):** page headers stack below `sm`, tab strips
+scroll horizontally (`.no-scrollbar` helper added to index.css), button/filter rows
+`flex-wrap gap-*`, table cells `px-3 sm:px-6`, `body{overflow-x:hidden}` backstop.
+Touched 10 page files. Build + lint clean. NOT visually verified on a real device —
+the Chrome automation in this session couldn't produce a true mobile viewport
+(screenshots rendered at desktop width regardless of window resize).
+
+---
+
 # Handoff (2026-09-08, session 10) — draft teardown COMPLETE (backend + frontend)
 
 **CURRENT STATUS:** working tree clean except the untracked `Optis_*` / `ProBowl_*`
