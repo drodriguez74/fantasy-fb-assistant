@@ -18,6 +18,7 @@ from app.models.historical_performance import (
 from app.models.league_scoring import LeagueScoring, ScoringPreset, PlayerScoringCalculation
 from app.models.nfl_schedule import NFLGame, NFLTeam, DefensiveMatchupRanking, TeamMatchupStrength
 from app.models.notification import Notification
+from app.models.league_snapshot import LeagueSnapshot
 
 # Set up relationships after all models are imported
 from sqlalchemy.orm import relationship
@@ -52,5 +53,5 @@ __all__ = [
     "PlayerHistoricalPerformance", "PlayerSeasonSummary", "MatchupHistory", "PlayerTrend", "FantasyLeagueHistory",
     "LeagueScoring", "ScoringPreset", "PlayerScoringCalculation",
     "NFLGame", "NFLTeam", "DefensiveMatchupRanking", "TeamMatchupStrength",
-    "Notification",
+    "Notification", "LeagueSnapshot",
 ]

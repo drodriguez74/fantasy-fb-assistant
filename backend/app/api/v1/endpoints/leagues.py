@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -8,8 +8,8 @@ from app.services.yahoo_service import yahoo_service
 from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.league_management_service import LeagueManagementService
-from app.services.roster_grading import grade_roster
-from app.services.this_week_service import build_this_week
+from app.services.snapshot_cache import serve_swr
+from app.services.league_snapshots import SnapshotBuildError
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
 from app.core.config import settings
@@ -472,6 +472,8 @@ async def get_user_leagues(
 @router.get("/{league_id}/standings")
 async def get_league_standings(
     league_id: int,
+    background_tasks: BackgroundTasks,
+    refresh: bool = Query(False, description="Force a live fetch, bypassing the cached snapshot"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -493,67 +495,14 @@ async def get_league_standings(
         if not user_league:
             raise HTTPException(status_code=404, detail="League not found")
 
-        platform = user_league.platform.value.upper()
-
-        if platform == "ESPN":
-            standings = await espn_service_enhanced.get_standings(
-                league_id=user_league.league_id,
-                season=user_league.season,
-                swid=user_league.espn_swid,
-                espn_s2=user_league.espn_s2
-            )
-
-            if standings and isinstance(standings, list) and "error" in standings[0]:
-                raise HTTPException(status_code=400, detail=standings[0]["error"])
-
-            return {
-                "league_name": user_league.league_name,
-                "season": user_league.season,
-                "teams": standings
-            }
-
-        elif platform == "YAHOO":
-            if not user_league.yahoo_access_token:
-                raise HTTPException(status_code=400, detail="Yahoo account not connected for this league. Please reconnect your Yahoo account.")
-            if user_league.yahoo_token_expires_at and user_league.yahoo_token_expires_at < datetime.utcnow():
-                raise HTTPException(status_code=400, detail="Your Yahoo connection has expired. Please reconnect your Yahoo account.")
-
-            teams = await yahoo_service.get_league_teams(user_league.yahoo_access_token, user_league.league_key)
-
-            if teams and isinstance(teams, list) and "error" in teams[0]:
-                raise HTTPException(status_code=400, detail=teams[0]["error"])
-
-            teams.sort(key=lambda t: (-int(t.get("wins", 0) or 0), -float(t.get("points_for", 0) or 0)))
-            for i, team in enumerate(teams):
-                team["rank"] = i + 1
-
-            return {
-                "league_name": user_league.league_name,
-                "season": user_league.season,
-                "teams": teams
-            }
-
-        elif platform == "SLEEPER":
-            teams = await sleeper_service.get_league_teams(user_league.league_id)
-
-            if teams and isinstance(teams, list) and "error" in teams[0]:
-                raise HTTPException(status_code=400, detail=teams[0]["error"])
-
-            teams.sort(key=lambda t: -int(t.get("wins", 0) or 0))
-            for i, team in enumerate(teams):
-                team["rank"] = i + 1
-
-            return {
-                "league_name": user_league.league_name,
-                "season": user_league.season,
-                "teams": teams
-            }
-
-        else:
-            raise HTTPException(status_code=400, detail=f"Standings are not yet implemented for {platform} leagues.")
+        return await serve_swr(
+            db, user_league, "standings", background_tasks=background_tasks, force=refresh
+        )
 
     except HTTPException:
         raise
+    except SnapshotBuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get standings: {str(e)}")
 
@@ -628,6 +577,8 @@ async def get_league_insights(
 @router.get("/{league_id}/roster-analysis")
 async def get_roster_analysis(
     league_id: int,
+    background_tasks: BackgroundTasks,
+    refresh: bool = Query(False, description="Force a live fetch, bypassing the cached snapshot"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -653,150 +604,14 @@ async def get_roster_analysis(
         if not user_league:
             raise HTTPException(status_code=404, detail="League not found")
 
-        league_info = {
-            "id": league_id,
-            "name": user_league.league_name,
-            "platform": user_league.platform.value.upper(),
-            "season": user_league.season,
-            "scoring_format": user_league.scoring_format,
-            "league_size": user_league.league_size,
-        }
-
-        ungraded_analysis_template = {
-            "composition": {
-                "starting_lineup": [],
-                "bench_players": [],
-                "composition_score": None
-            },
-            "overall_grade": {
-                "grade": "N/A",
-                "score": None,
-                "description": "Roster grading is not yet computed."
-            },
-            "strengths_weaknesses": {
-                "strengths": [],
-                "weaknesses": []
-            }
-        }
-
-        if league_info["platform"] != "ESPN":
-            return {
-                "league_info": league_info,
-                "roster_analysis": {
-                    "team_name": None,
-                    "owner": None,
-                    "total_players": 0,
-                    **{
-                        **ungraded_analysis_template,
-                        "overall_grade": {
-                            **ungraded_analysis_template["overall_grade"],
-                            "description": f"Roster analysis is not yet implemented for {league_info['platform']} leagues."
-                        }
-                    }
-                }
-            }
-
-        if not user_league.team_id:
-            return {
-                "league_info": league_info,
-                "roster_analysis": {
-                    "team_name": None,
-                    "owner": None,
-                    "total_players": 0,
-                    **{
-                        **ungraded_analysis_template,
-                        "overall_grade": {
-                            **ungraded_analysis_template["overall_grade"],
-                            "description": "Your team is not identified for this league yet. Set your team via PUT /leagues/{league_id}/settings to see your real roster."
-                        }
-                    }
-                }
-            }
-
-        roster_data = await espn_service_enhanced.get_team_roster(
-            league_id=user_league.league_id,
-            team_id=user_league.team_id,
-            season=user_league.season,
-            swid=user_league.espn_swid,
-            espn_s2=user_league.espn_s2
+        return await serve_swr(
+            db, user_league, "roster_analysis", background_tasks=background_tasks, force=refresh
         )
-
-        if "error" in roster_data:
-            raise HTTPException(status_code=400, detail=roster_data["error"])
-
-        players = roster_data.get("players", [])
-        # "lineup_slot" (espn_api's real lineupSlot attribute, e.g.
-        # "QB"/"RB"/"BE"/"IR") replaced a previous "slot_position" field
-        # that didn't exist on the underlying object and always evaluated
-        # to "BENCH" for every player, making every ESPN roster look
-        # 100% benched regardless of real lineup. "BE" is ESPN's own
-        # bench label (see get_scoring_and_roster_settings's identical
-        # "BE" check for this league's roster-slot settings); IR is a
-        # real slot but not a "starting" one either.
-        starting_lineup = [p for p in players if p.get("lineup_slot") not in ("BE", "IR")]
-        bench_players = [p for p in players if p.get("lineup_slot") in ("BE", "IR")]
-
-        # Real injury/availability alerts -- ESPN's own roster fetch already
-        # carries each player's real injuryStatus (see
-        # espn_service_enhanced._format_player); this previously went
-        # entirely unused by this endpoint, so the frontend's "Injuries"
-        # stat tile always read 0 regardless of the real roster. No local
-        # DB lookup needed (that pattern is stale/empty in this deployment
-        # anyway) -- the platform already tells us this directly.
-        _HEALTHY_STATUSES = {"ACTIVE", "NORMAL", "HEALTHY", ""}
-        injury_concerns = [
-            {
-                "player": p.get("name"),
-                "position": p.get("position"),
-                "team": p.get("team"),
-                "status": p.get("injury_status"),
-            }
-            for p in players
-            if (p.get("injury_status") or "").upper() not in _HEALTHY_STATUSES
-        ]
-
-        # Real, deterministic grading (roster_grading.py) -- no AI call,
-        # reuses this league's own real roster-slot requirements. Falls
-        # back to a standard lineup internally if settings can't be read.
-        league_settings = await espn_service_enhanced.get_scoring_and_roster_settings(
-            league_id=user_league.league_id,
-            season=user_league.season,
-            swid=user_league.espn_swid,
-            espn_s2=user_league.espn_s2
-        )
-        if "error" in league_settings:
-            league_settings = None
-        grading = grade_roster(players, league_settings)
-
-        return {
-            "league_info": league_info,
-            "roster_analysis": {
-                "team_name": roster_data.get("team_name"),
-                "owner": roster_data.get("owner"),
-                "roster_size": roster_data.get("roster_size", len(players)),
-                "total_players": len(players),
-                "composition": {
-                    "starting_lineup": starting_lineup,
-                    "bench_players": bench_players,
-                    "composition_score": grading["composition_score"]
-                },
-                "overall_grade": {
-                    "grade": grading["grade"],
-                    "score": grading["composition_score"],
-                    "description": "Composition grade based on this league's real roster-slot requirements.",
-                    "player_count": len(players)
-                },
-                "strengths_weaknesses": {
-                    "strengths": grading["strengths"],
-                    "weaknesses": grading["weaknesses"]
-                },
-                "injury_concerns": injury_concerns,
-                "players": players
-            }
-        }
 
     except HTTPException:
         raise
+    except SnapshotBuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get roster analysis: {str(e)}")
 
@@ -854,6 +669,8 @@ async def get_trade_suggestions(
 @router.get("/{league_id}/this-week")
 async def get_this_week(
     league_id: int,
+    background_tasks: BackgroundTasks,
+    refresh: bool = Query(False, description="Force a live fetch, bypassing the cached snapshot"),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
@@ -871,9 +688,13 @@ async def get_this_week(
         if not user_league:
             raise HTTPException(status_code=404, detail="League not found")
 
-        return await build_this_week(user_league)
+        return await serve_swr(
+            db, user_league, "this_week", background_tasks=background_tasks, force=refresh
+        )
     except HTTPException:
         raise
+    except SnapshotBuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to build This Week: {str(e)}")
 

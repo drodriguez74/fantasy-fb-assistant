@@ -189,6 +189,17 @@ interface ThisWeekData {
     swaps: ThisWeekSwap[]
   }
   starter_injuries?: { name: string; position?: string; status?: string }[]
+  _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
+}
+
+function relTime(iso?: string): string {
+  if (!iso) return ''
+  const secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
+  if (secs < 45) return 'just now'
+  if (secs < 90) return '1 min ago'
+  if (secs < 3600) return `${Math.round(secs / 60)} min ago`
+  if (secs < 5400) return '1 hr ago'
+  return `${Math.round(secs / 3600)} hr ago`
 }
 
 export function LeagueDetailPage() {
@@ -224,9 +235,10 @@ export function LeagueDetailPage() {
   // leagueId / React StrictMode double-invoke can't write into state.
   const reqIdRef = useRef(0)
 
-  const loadLeagueData = useCallback(async () => {
+  const loadLeagueData = useCallback(async (force = false) => {
     const reqId = ++reqIdRef.current
     const isCurrent = () => reqIdRef.current === reqId
+    const rq = force ? '&refresh=1' : ''
 
     setLoading(true)
     setError('')
@@ -242,8 +254,8 @@ export function LeagueDetailPage() {
     // in their own sections afterwards without holding up the rest.
     void (async () => {
       const [rosterResult, standingsResult, insightsResult] = await Promise.allSettled([
-        api.get(`/leagues/${leagueId}/roster-analysis`),
-        api.get(`/leagues/${leagueId}/standings?season=2025`),
+        api.get(`/leagues/${leagueId}/roster-analysis?_=1${rq}`),
+        api.get(`/leagues/${leagueId}/standings?season=2025${rq}`),
         api.get(`/leagues/${leagueId}/insights`)
       ])
       if (!isCurrent()) return
@@ -324,15 +336,24 @@ export function LeagueDetailPage() {
     }
   }, [user, leagueId, loadLeagueData])
 
-  // The This Week payload pulls a live ESPN weekly box score (slower than
-  // the other calls), so it's fetched lazily the first time that tab is
-  // opened rather than blocking the initial page load.
-  const loadThisWeek = useCallback(async () => {
+  // The This Week payload pulls a live ESPN weekly box score. The backend
+  // now serves a stored snapshot instantly (stale-while-revalidate) and
+  // refreshes in the background, so the first open is fast; when it hands
+  // back a stale copy (`_cache.stale`) we re-fetch once a few seconds later
+  // to pick up the freshly-synced version.
+  const staleRetryRef = useRef(false)
+  const loadThisWeek = useCallback(async (force = false) => {
     setThisWeekLoading(true)
     setThisWeekError('')
     try {
-      const res = await api.get(`/leagues/${leagueId}/this-week`)
+      const res = await api.get(`/leagues/${leagueId}/this-week${force ? '?refresh=1' : ''}`)
       setThisWeek(res.data)
+      if (res.data?._cache?.stale && !staleRetryRef.current) {
+        staleRetryRef.current = true
+        setTimeout(() => { void loadThisWeek(false) }, 7000)
+      } else if (!res.data?._cache?.stale) {
+        staleRetryRef.current = false
+      }
     } catch (err) {
       setThisWeekError(getErrorMessage(err, 'This Week is unavailable for this league right now.'))
     } finally {
@@ -347,9 +368,12 @@ export function LeagueDetailPage() {
   }, [user, leagueId, activeTab, thisWeek, thisWeekLoading, thisWeekError, loadThisWeek])
 
   const refreshData = async () => {
-    setThisWeek(null)
+    staleRetryRef.current = false
     setThisWeekError('')
-    await loadLeagueData()
+    await Promise.all([
+      loadLeagueData(true),
+      activeTab === 'this-week' ? loadThisWeek(true) : Promise.resolve(),
+    ])
   }
 
   if (!user) {
@@ -604,6 +628,16 @@ export function LeagueDetailPage() {
 
         return (
           <div className="space-y-6">
+            {thisWeek._cache && (
+              <div className="flex items-center gap-2 stat-nums text-[10px] tracking-wider text-faint -mb-2">
+                <span>UPDATED {relTime(thisWeek._cache.as_of).toUpperCase()}</span>
+                {thisWeek._cache.stale && (
+                  <span className="inline-flex items-center gap-1 text-accent-ink">
+                    <ClockIcon className="h-3 w-3 animate-spin" /> SYNCING
+                  </span>
+                )}
+              </div>
+            )}
             {/* MATCHUP SCOREBOARD */}
             <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
               <div className="p-4 sm:p-6">
