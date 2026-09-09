@@ -4,6 +4,8 @@ import { useAuth } from '../hooks/useAuth'
 import { api, getErrorMessage } from '../services/api'
 import { LeagueScoringSettings } from '../components/leagues/LeagueScoringSettings'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
+import { PlayerAvatar } from '../components/players/PlayerAvatar'
+import { injuryTag } from '../components/players/playerDisplay'
 import {
   ChartBarIcon,
   UserGroupIcon,
@@ -31,6 +33,7 @@ interface LeagueInfo {
 
 interface RosterPlayer {
   name: string
+  player_id?: number | null
   position?: string
   team?: string
   total_points?: number
@@ -142,6 +145,7 @@ interface LeagueInsights {
 
 interface ThisWeekPlayer {
   name: string
+  player_id?: number | null
   position?: string
   slot_position?: string
   team?: string
@@ -597,7 +601,14 @@ export function LeagueDetailPage() {
               <span className="stat-nums text-xs text-muted">{(p.slot_position || '').toUpperCase()}</span>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className={`shrink-0 inline-flex items-center justify-center w-9 h-6 rounded text-[11px] font-semibold ${getPositionColor(p.position)}`}>
+                  <PlayerAvatar
+                    playerId={p.player_id}
+                    name={p.name}
+                    position={p.position}
+                    team={p.team}
+                    size={30}
+                  />
+                  <span className={`shrink-0 hidden sm:inline-flex items-center justify-center w-8 h-5 rounded text-[10px] font-semibold ${getPositionColor(p.position)}`}>
                     {p.position || '—'}
                   </span>
                   <span className="font-medium text-body truncate">{p.name}</span>
@@ -606,6 +617,9 @@ export function LeagueDetailPage() {
                       {formatStatusLabel(p.injury_status)}
                     </span>
                   )}
+                </div>
+                <div className="sm:hidden stat-nums text-[11px] text-faint mt-0.5 pl-[38px]">
+                  {p.pro_opponent || (p.on_bye ? 'BYE' : '')}
                 </div>
                 {showOptimal && flaggedOut && (
                   <p className="stat-nums text-[11px] text-accent-ink mt-1">
@@ -1056,12 +1070,22 @@ export function LeagueDetailPage() {
                 <h4 className="font-medium text-accent-ink mb-2">Starting Lineup</h4>
                 <div className="space-y-2">
                   {(rosterAnalysis.composition?.starting_lineup || []).map((player, index: number) => (
-                    <div key={`starter-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-highlight rounded">
-                      <div>
-                        <p className="text-sm font-medium text-body">{player.name}</p>
-                        <p className="text-xs text-muted">{player.position} • {player.team}</p>
+                    <div key={`starter-${player.name}-${index}`} className="flex items-center justify-between gap-2 p-2 bg-highlight rounded">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <PlayerAvatar playerId={player.player_id} name={player.name} position={player.position} team={player.team} size={28} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-body truncate">
+                            {player.name}
+                            {injuryTag(player.injury_status) && (
+                              <span className={`ml-1.5 text-[10px] px-1 py-px rounded font-medium ${injuryTag(player.injury_status)!.className}`}>
+                                {injuryTag(player.injury_status)!.label}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted">{player.position} • {player.team}</p>
+                        </div>
                       </div>
-                      <span className="text-xs text-accent-ink">{player.total_points || 0} pts</span>
+                      <span className="shrink-0 text-xs text-accent-ink">{player.total_points || 0} pts</span>
                     </div>
                   ))}
                 </div>
@@ -1070,12 +1094,22 @@ export function LeagueDetailPage() {
                 <h4 className="font-medium text-body mb-2">Bench Players</h4>
                 <div className="space-y-2">
                   {(rosterAnalysis.composition?.bench_players || rosterAnalysis.players || []).slice(0, 6).map((player, index: number) => (
-                    <div key={`bench-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-surface-2 rounded">
-                      <div>
-                        <p className="text-sm font-medium text-body">{player.name}</p>
-                        <p className="text-xs text-muted">{player.position} • {player.team}</p>
+                    <div key={`bench-${player.name}-${index}`} className="flex items-center justify-between gap-2 p-2 bg-surface-2 rounded">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <PlayerAvatar playerId={player.player_id} name={player.name} position={player.position} team={player.team} size={28} />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-body truncate">
+                            {player.name}
+                            {injuryTag(player.injury_status) && (
+                              <span className={`ml-1.5 text-[10px] px-1 py-px rounded font-medium ${injuryTag(player.injury_status)!.className}`}>
+                                {injuryTag(player.injury_status)!.label}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted">{player.position} • {player.team}</p>
+                        </div>
                       </div>
-                      <span className="text-xs text-muted">{player.total_points || 0} pts</span>
+                      <span className="shrink-0 text-xs text-muted">{player.total_points || 0} pts</span>
                     </div>
                   ))}
                 </div>

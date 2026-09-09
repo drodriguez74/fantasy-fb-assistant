@@ -563,6 +563,7 @@ class ESPNFantasyServiceEnhanced:
 
             def _fmt(bp) -> Dict[str, Any]:
                 return {
+                    "player_id": getattr(bp, "playerId", None),
                     "name": getattr(bp, "name", "Unknown"),
                     "position": getattr(bp, "position", "UNKNOWN"),
                     "slot_position": getattr(bp, "slot_position", None),

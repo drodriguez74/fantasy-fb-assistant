@@ -49,3 +49,21 @@ export function injuryStatusClasses(status: string): string {
   }
   return 'bg-success-100 text-success-800'
 }
+
+// Compact injury designation (ESPN-style: Q / D / O / IR / SUS / PUP / DTD)
+// plus a theme-aware color. Returns null for healthy/active players.
+export function injuryTag(status?: string | null): { label: string; className: string } | null {
+  if (!status) return null
+  const s = status.toUpperCase()
+  if (['ACTIVE', 'NORMAL', 'HEALTHY', 'PROBABLE', ''].includes(s)) return null
+  const danger = 'bg-danger-100 text-danger-800'
+  const warn = 'bg-warning-100 text-warning-800'
+  if (s.includes('IR') || s.includes('INJURY_RESERVE') || s.includes('INJURED RESERVE') || s.includes('INJURY RESERVE')) return { label: 'IR', className: danger }
+  if (s.includes('OUT')) return { label: 'O', className: danger }
+  if (s.includes('DOUBTFUL')) return { label: 'D', className: danger }
+  if (s.includes('SUSPEN')) return { label: 'SUS', className: danger }
+  if (s.includes('PUP')) return { label: 'PUP', className: danger }
+  if (s.includes('QUESTIONABLE')) return { label: 'Q', className: warn }
+  if (s.includes('DAY') || s.includes('DTD')) return { label: 'DTD', className: warn }
+  return { label: s.slice(0, 3), className: warn }
+}
