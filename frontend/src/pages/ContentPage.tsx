@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { api, getErrorMessage } from '../services/api'
 import {
@@ -210,6 +211,12 @@ export function ContentPage() {
             Draft rankings, waiver columns, and injury reports on demand. Player analysis and injury
             reports are AI-written; the rest are structured from live data.
           </p>
+          <Link
+            to="/blog"
+            className="mt-3 inline-flex items-center gap-1 font-stat text-xs font-medium text-accent-ink hover:underline"
+          >
+            View the published library
+          </Link>
         </div>
         <div className="border-b border-hairline mb-6">
           <nav className="-mb-px flex space-x-8">

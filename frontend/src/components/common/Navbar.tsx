@@ -13,22 +13,21 @@ import {
   XMarkIcon,
 } from '@heroicons/react/24/outline'
 
+// The in-season core: what a user touches every week during the season.
 const primaryNavigation = [
-  { name: 'Home', href: '/' },
+  { name: 'This Week', href: '/this-week' },
   { name: 'Leagues', href: '/leagues' },
+  { name: 'Waivers', href: '/waiver-wire' },
+  { name: 'Trades', href: '/trade-analyzer' },
   { name: 'Players', href: '/players' },
 ]
 
+// Everything else — analysis surfaces and the look-back Reports hub.
 const moreNavigation = [
-  { name: 'Draft History', href: '/draft-history' },
-  { name: 'Post-Draft Analysis', href: '/post-draft' },
-  { name: 'Waiver Wire', href: '/waiver-wire' },
-  { name: 'Trade Analyzer', href: '/trade-analyzer' },
+  { name: 'Reports', href: '/reports' },
   { name: 'Content', href: '/content' },
-  { name: 'Historical', href: '/historical' },
   { name: 'Analytics', href: '/analytics' },
   { name: 'Advanced Analysis', href: '/advanced-analysis' },
-  { name: 'Blog', href: '/blog' },
 ]
 
 const allNavigation = [...primaryNavigation, ...moreNavigation]

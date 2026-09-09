@@ -27,6 +27,8 @@ const AdvancedAnalysisPage = lazy(() => import('./pages/AdvancedAnalysisPage').t
 const PostDraftAnalysisPage = lazy(() => import('./pages/PostDraftAnalysisPage').then(m => ({ default: m.PostDraftAnalysisPage })))
 const TradeAnalyzerPage = lazy(() => import('./pages/TradeAnalyzerPage').then(m => ({ default: m.TradeAnalyzerPage })))
 const DraftHistoryPage = lazy(() => import('./pages/DraftHistoryPage').then(m => ({ default: m.DraftHistoryPage })))
+const ReportsPage = lazy(() => import('./pages/ReportsPage').then(m => ({ default: m.ReportsPage })))
+const ThisWeekRedirectPage = lazy(() => import('./pages/ThisWeekRedirectPage').then(m => ({ default: m.ThisWeekRedirectPage })))
 
 function App() {
   return (
@@ -47,6 +49,22 @@ function App() {
               <Route path="/yahoo/callback" element={<YahooCallbackPage />} />
               <Route path="/draft" element={<Navigate to="/leagues" replace />} />
               <Route path="/live-draft" element={<Navigate to="/leagues" replace />} />
+              <Route
+                path="/this-week"
+                element={
+                  <ProtectedRoute>
+                    <ThisWeekRedirectPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <ProtectedRoute>
+                    <ReportsPage />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/leagues"
                 element={
