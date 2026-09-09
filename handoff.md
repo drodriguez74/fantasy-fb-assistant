@@ -1,4 +1,12 @@
-# Handoff (2026-09-08, session 9) — backlog committed + open-items 1-5 done
+# Handoff (2026-09-08, session 9) — 8-session backlog + This Week + draft teardown (backend done)
+
+**CURRENT STATUS:** working tree clean, all pushed through `6ed53e8`; local commits
+`d58b8d2` + `2d40783` (backend draft teardown) not yet pushed. Backend tests 101 pass.
+Untracked `Optis_*` / `ProBowl_*` spreadsheets left alone on purpose. Next action:
+the frontend draft teardown, spelled out step-by-step below. Then push.
+
+---
+
 
 **Sessions 2–8's uncommitted work** committed + pushed as `1efe7f9` (60 files).
 
@@ -36,18 +44,56 @@ backlog, and the Vercel/perf constraint.
 
 New memories: [[project_draft_assistant_decommission]], [[project_vercel_free_tier]].
 
-**Teardown is plan-first — approved scope, not started:**
-- Remove: Live Draft, Mock Draft (`DraftPage`, `mock_draft_service`,
-  `draft_recommendation_fallback`, `/draft` mock+recommend routes),
-  `draft_assistant_service.py` — but ONLY after extracting
-  `_effective_position_requirements` (imported by `roster_grading.py`,
-  `waiver_wire_service.py`, `post_draft_analysis_service.py`) into a new
-  `app/services/roster_requirements.py`.
-- Keep + retarget: Post-Draft Analysis, Draft History (as a report), the ESPN
-  rankings pipeline (as an in-season valuation source), the `DraftSession` model.
-- Then re-cut nav to the weekly loop: This Week · Leagues · Waivers · Trades ·
-  Players, with Post-Draft/Draft History/Historical folded into a Reports area
-  and Blog merged into Content.
+**Teardown — founder approved the full cut list. BACKEND DONE, FRONTEND NOT STARTED.**
+
+DONE (committed, backend tests green at 101, was 131):
+- `6ed53e8` earlier committed the strategy-doc + memory updates.
+- `d58b8d2` `Extract effective_position_requirements to a shared module` — the
+  FLEX-aware helper moved from `draft_assistant_service` to new
+  `app/services/roster_requirements.py` (pure function `effective_position_requirements`);
+  `roster_grading.py`, `waiver_wire_service.py`, `post_draft_analysis_service.py`
+  repointed. No behavior change.
+- `2d40783` `Remove Live + Mock draft (backend)`:
+  - deleted `backend/app/api/v1/endpoints/{draft,live_draft}.py`,
+    `backend/app/services/{draft_assistant_service,mock_draft_service,draft_recommendation_fallback}.py`,
+    tests `test_mock_draft_endpoints.py` / `test_mock_draft_service.py` / `test_yahoo_live_draft.py`
+  - `router.py` — dropped the `/draft` and `/draft/live-draft` registrations
+  - NEW `backend/app/services/player_pool.py` holds the two generic Sleeper
+    helpers `draft.py` used to export (`is_on_active_roster`, `UNRANKED_SENTINEL`);
+    `trade.py` import repointed there (aliased back to `_is_on_active_roster` /
+    `_UNRANKED_SENTINEL` at the import so trade.py body was untouched)
+  - `test_scoring_rules.py` — removed the `TestCalculatePlayerValuesRecalculation`
+    class + its `DraftAssistantService` import (scoring_rules math still covered
+    by the other classes)
+- KEPT deliberately: `DraftSession` model + `app/schemas/draft_session.py` + the
+  `User.draft_sessions` relationship + `user_service` draft-session methods +
+  `/users/me/drafts` and `/users/me/drafts/{id}` (users.py) + all `/post-draft/*`
+  routes + `post_draft_analysis_service.py`. The `auto_draft_assistant` bool
+  column on `UserLeague` was left in place (harmless, unused — avoids a migration).
+  ESPN rankings script untouched.
+
+**NEXT — FRONTEND TEARDOWN (not started; my in-progress edit to `api.ts` was reverted, tree is clean):**
+1. Delete `frontend/src/pages/DraftPage.tsx`, `frontend/src/pages/LiveDraftPage.tsx`,
+   the whole `frontend/src/components/draft/` dir (only `DraftPickLog.tsx` + `index.ts`,
+   used only by DraftPage).
+2. `frontend/src/services/api.ts` — remove the `export const draft = { ... }` block
+   and the now-unused `MockDraftSettingsPayload` + `MockDraftResult` interfaces.
+   KEEP `MockDraftRosterPlayer`, `PositionBreakdownEntry`, `ValueAnalysisEntry`,
+   `DraftSessionSummary`, `DraftSessionDetail`, and the `users` export
+   (`getDraftHistory`/`getDraftDetail`) — DraftHistoryPage needs all of those.
+3. `frontend/src/App.tsx` — remove the `DraftPage`/`LiveDraftPage` lazy imports and
+   their two `<Route>`s; add redirects `/draft` and `/live-draft` → `/leagues`
+   (This Week lives at `/leagues/:id`, so `/leagues` is the closest home).
+4. `frontend/src/components/common/Navbar.tsx` — drop `{ name: 'Draft Assistant', href: '/draft' }`
+   from `primaryNavigation` and `{ name: 'Live Draft', href: '/live-draft' }` from `moreNavigation`.
+5. `frontend/src/pages/HomePage.tsx` — 3 links to `/draft` (lines ~18, ~87, ~178) → repoint to `/leagues`.
+6. `frontend/src/pages/AuthPage.tsx` — `navigate('/draft?welcome=1')` → `navigate('/leagues?welcome=1')`.
+7. Verify: `cd frontend && npm run build && npm run lint` (1 pre-existing useAuth.tsx
+   lint error is OK). Check the bundle shrank (DraftPage/LiveDraftPage chunks gone).
+8. Then commit + push, and do the fuller nav re-cut (This Week · Leagues · Waivers ·
+   Trades · Players top nav; Post-Draft + Draft History + Historical → a "Reports"
+   area; Blog merged into Content) as a SEPARATE follow-up commit — it's a design
+   task, not part of the mechanical teardown.
 
 **Backlog after teardown (ranked, from the artifact):** 1) weekly digest
 notification/email cadence (highest retention leverage — notification center
