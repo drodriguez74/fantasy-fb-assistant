@@ -162,18 +162,10 @@ export const players = {
   generateAnalysis: (playerId: string) => api.post(`/players/${playerId}/analysis`),
 }
 
-// Mock draft grading (POST /draft/mock-draft-results, GET /users/me/drafts*).
-// Shapes mirror the backend contract exactly -- see DraftPage.tsx /
-// DraftHistoryPage.tsx for the UI that consumes these. Built against a fixed
-// contract from a parallel backend change rather than a live-verified
-// response, so treat unfamiliar/optional fields defensively at the call site.
-export interface MockDraftSettingsPayload {
-  scoring_format: string
-  team_count: number
-  draft_position: number
-  total_rounds: number
-}
-
+// Draft-session history shapes -- see DraftHistoryPage.tsx for the UI that
+// consumes these. Built against a fixed backend contract rather than a
+// live-verified response, so treat unfamiliar/optional fields defensively
+// at the call site.
 export interface MockDraftRosterPlayer {
   sleeper_id: string
   full_name: string
@@ -201,16 +193,6 @@ export interface ValueAnalysisEntry {
   pick: number
   value_category: string
   value_grade: string
-}
-
-export interface MockDraftResult {
-  session_id: string
-  draft_grade: string
-  composition_score: number
-  position_breakdown: Record<string, PositionBreakdownEntry>
-  value_analysis: ValueAnalysisEntry[]
-  final_analysis: string
-  completed_at: string
 }
 
 export interface DraftSessionSummary {
@@ -243,32 +225,6 @@ export const users = {
 
   getDraftDetail: (sessionId: string) =>
     api.get<DraftSessionDetail>(`/users/me/drafts/${sessionId}`),
-}
-
-// Draft endpoints
-export const draft = {
-  // Direct draft recommendations (non-session based)
-  getDraftRecommendations: (data: {
-    available_players: unknown[];
-    team_needs: string[];
-    draft_position: number;
-    scoring_format?: string;
-    league_size?: number;
-  }) => api.post('/draft/recommendations', data),
-
-  getTrendingCandidates: (params?: { hours?: number; limit?: number }) =>
-    api.get('/draft/trending-candidates', { params }),
-
-  getPositionalRankings: (position: string, params?: { limit?: number }) =>
-    api.get(`/draft/positional-rankings/${position}`, { params }),
-
-  // Called once a client-side mock draft (DraftPage.tsx) finishes -- grades
-  // the user's drafted roster and persists the session so it shows up in
-  // draft history (the `users` export above).
-  saveMockDraftResults: (data: {
-    draft_settings: MockDraftSettingsPayload
-    user_roster: MockDraftRosterPlayer[]
-  }) => api.post<MockDraftResult>('/draft/mock-draft-results', data),
 }
 
 // Historical data endpoints

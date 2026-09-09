@@ -15,11 +15,11 @@ import {
 
 const FEATURES = [
   {
-    to: '/draft',
+    to: '/leagues',
     icon: CpuChipIcon,
-    title: 'Draft Assistant',
-    body: 'Best-player-available math, but it knows your roster needs before your run of RBs dries up',
-    cta: 'Open the draft board',
+    title: 'This Week',
+    body: 'Your real matchup, a start/sit call on every slot, and the waiver moves that swing it',
+    cta: 'Open this week',
   },
   {
     to: '/leagues',
@@ -79,15 +79,15 @@ export function HomePage() {
           <span className="text-accent-ink">every Sunday.</span>
         </h1>
         <p className="animate-rise-in animate-rise-in-3 mt-6 text-lg leading-8 text-muted max-w-2xl mx-auto">
-          AI-backed draft calls, PPR-tuned rankings, and waiver claims &mdash; for the people
+          AI-backed lineup calls, PPR-tuned rankings, and waiver claims &mdash; for the people
           who actually read the injury report on a Tuesday.
         </p>
         <div className="animate-rise-in animate-rise-in-4 mt-10 flex flex-wrap items-center justify-center gap-4">
           <Link
-            to={user ? '/draft' : '/auth'}
+            to={user ? '/leagues' : '/auth'}
             className="bg-volt text-volt-ink px-8 py-3 font-stat text-sm font-medium hover:bg-volt-dark transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-volt focus-visible:ring-offset-2 focus-visible:ring-offset-page"
           >
-            {user ? 'Start Draft Assistant' : 'Get Started'}
+            {user ? 'Open This Week' : 'Get Started'}
           </Link>
           <Link
             to="/players"
@@ -175,8 +175,11 @@ export function HomePage() {
                 Quick Actions
               </p>
               <div className="space-y-2">
-                <Link to="/draft" className="block text-sm font-medium text-muted hover:text-accent-ink">
-                  Start Draft Session
+                <Link to="/leagues" className="block text-sm font-medium text-muted hover:text-accent-ink">
+                  Open This Week
+                </Link>
+                <Link to="/waiver-wire" className="block text-sm font-medium text-muted hover:text-accent-ink">
+                  Waiver Targets
                 </Link>
                 <Link to="/players" className="block text-sm font-medium text-muted hover:text-accent-ink">
                   Browse Players

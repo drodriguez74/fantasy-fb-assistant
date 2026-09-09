@@ -17,12 +17,12 @@ export function AuthPage() {
 
   // Fresh registration + immediate auto-login: this is the one reliable
   // signal we have for "genuinely new user, right now" (as opposed to an
-  // existing user just logging in again). Send them to the Draft Assistant
-  // -- it works with zero connected leagues -- with a one-time welcome
-  // banner instead of the generic marketing homepage.
+  // existing user just logging in again). Send them to the Leagues page to
+  // connect a platform -- the first real step for a new user -- with a
+  // one-time welcome banner instead of the generic marketing homepage.
   const handleRegisterAutoLogin = async (token: string) => {
     await login(token)
-    navigate('/draft?welcome=1')
+    navigate('/leagues?welcome=1')
   }
 
   // Account was created but the auto-login call itself failed (rare --

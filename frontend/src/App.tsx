@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react'
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { Navbar } from './components/common/Navbar'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
@@ -12,7 +12,6 @@ import { PageLoader } from './components/common/PageLoader'
 // AdvancedAnalysisPage) being bundled into one ~1MB chunk loaded upfront.
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })))
-const DraftPage = lazy(() => import('./pages/DraftPage').then(m => ({ default: m.DraftPage })))
 const PlayersPage = lazy(() => import('./pages/PlayersPage').then(m => ({ default: m.PlayersPage })))
 const PlayerDetailPage = lazy(() => import('./pages/PlayerDetailPage').then(m => ({ default: m.PlayerDetailPage })))
 const BlogPage = lazy(() => import('./pages/BlogPage').then(m => ({ default: m.BlogPage })))
@@ -20,7 +19,6 @@ const BlogPostPage = lazy(() => import('./pages/BlogPostPage').then(m => ({ defa
 const LeaguesPage = lazy(() => import('./pages/LeaguesPage').then(m => ({ default: m.LeaguesPage })))
 const LeagueDetailPage = lazy(() => import('./pages/LeagueDetailPage').then(m => ({ default: m.LeagueDetailPage })))
 const YahooCallbackPage = lazy(() => import('./pages/YahooCallbackPage').then(m => ({ default: m.YahooCallbackPage })))
-const LiveDraftPage = lazy(() => import('./pages/LiveDraftPage').then(m => ({ default: m.LiveDraftPage })))
 const ContentPage = lazy(() => import('./pages/ContentPage').then(m => ({ default: m.ContentPage })))
 const HistoricalPage = lazy(() => import('./pages/HistoricalPage').then(m => ({ default: m.HistoricalPage })))
 const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
@@ -47,16 +45,10 @@ function App() {
               <Route path="/blog" element={<BlogPage />} />
               <Route path="/blog/:id" element={<BlogPostPage />} />
               <Route path="/yahoo/callback" element={<YahooCallbackPage />} />
-              <Route 
-                path="/draft" 
-                element={
-                  <ProtectedRoute>
-                    <DraftPage />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/leagues" 
+              <Route path="/draft" element={<Navigate to="/leagues" replace />} />
+              <Route path="/live-draft" element={<Navigate to="/leagues" replace />} />
+              <Route
+                path="/leagues"
                 element={
                   <ProtectedRoute>
                     <LeaguesPage />
@@ -71,16 +63,8 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/live-draft" 
-                element={
-                  <ProtectedRoute>
-                    <LiveDraftPage />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/content" 
+              <Route
+                path="/content"
                 element={
                   <ProtectedRoute>
                     <ContentPage />

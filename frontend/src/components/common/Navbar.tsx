@@ -15,7 +15,6 @@ import {
 
 const primaryNavigation = [
   { name: 'Home', href: '/' },
-  { name: 'Draft Assistant', href: '/draft' },
   { name: 'Leagues', href: '/leagues' },
   { name: 'Players', href: '/players' },
 ]
@@ -23,7 +22,6 @@ const primaryNavigation = [
 const moreNavigation = [
   { name: 'Draft History', href: '/draft-history' },
   { name: 'Post-Draft Analysis', href: '/post-draft' },
-  { name: 'Live Draft', href: '/live-draft' },
   { name: 'Waiver Wire', href: '/waiver-wire' },
   { name: 'Trade Analyzer', href: '/trade-analyzer' },
   { name: 'Content', href: '/content' },
