@@ -1,3 +1,15 @@
+# Handoff (2026-09-08, session 9) — 8-session backlog committed
+
+**All of sessions 2–8's uncommitted work is now committed + pushed** as `1efe7f9`
+("Gridiron Terminal frontend redesign + backend league-analysis fixes") — 60 files
+on top of the prior pushed commits. Working tree is clean except the `Optis_*` /
+`ProBowl_*` ranking spreadsheets at repo root, deliberately left untracked (local
+scratch data, not code). `.gitignore` now excludes `.env*` and `.vercel`.
+
+Nothing about the open items below changed — they remain the next chunks of work.
+
+---
+
 # Handoff (2026-09-07, session 8) — Gridiron Terminal frontend build (started)
 
 **Settled design direction** = "Gridiron Terminal" (see [[project_design_direction_gridiron_terminal]] + canvas https://claude.ai/code/artifact/5256ac5d-0797-4b66-94c1-3a30bc6f0a48, working files in `design/`). Began wiring it into the real `frontend/`.
@@ -43,7 +55,7 @@ Verified in browser (light + dark): Home, Players, Leagues, Blog, Content, Histo
 2. **Data-table pages not visually verified in dark** — backend was down this session, so LeagueDetailPage rosters, WaiverWirePage rec cards, PlayersPage table, AdvancedAnalysisPage weren't seen with real data. Class migration was systematic so they *should* be right; needs a pass with the backend running.
 3. **Recharts / chart components** still use hardcoded palettes (`components/charts/*`, `ChartTypes.ts` hex values, some inline `#6B7280` etc.) — not themed.
 4. A few `text-white` on `bg-accent-500` buttons — turf green + white is ~4.6:1, acceptable but check large-text AA.
-5. Review & commit the diff — now **52 files, +2826/-1849** on top of the sessions 2-7 pile (8 sessions uncommitted).
+5. ~~Review & commit the diff~~ — **DONE** (session 9, `1efe7f9`, pushed).
 
 ---
 
