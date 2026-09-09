@@ -508,6 +508,94 @@ class ESPNFantasyServiceEnhanced:
             return [{"error": f"Failed to get matchups: {str(e)}"}]
 
     @async_wrapper
+    def get_week_matchup(
+        self,
+        league_id: Union[str, int],
+        team_id: Union[str, int],
+        week: int = None,
+        season: int = 2024,
+        swid: str = None,
+        espn_s2: str = None,
+    ) -> Dict[str, Any]:
+        """Real weekly box-score matchup for one team.
+
+        Unlike get_matchups (which only reads scoreboard-level scores), this
+        pulls league.box_scores(week) so every player carries ESPN's own
+        *weekly* projected points and real pro opponent for the week -- the
+        data the "This Week" screen is built on. `projected_total_points`
+        (used elsewhere in this service) is a SEASON total and is the wrong
+        number for a single week; BoxPlayer.projected_points is the weekly
+        one.
+        """
+        try:
+            league = self._get_league(league_id, season, swid, espn_s2)
+            week = week or getattr(league, "current_week", 1) or 1
+
+            box_scores = league.box_scores(week=week)
+
+            def _clean(v):
+                # espn_api yields the literal string "None" (not None) for a
+                # player's pro opponent when the NFL schedule isn't loaded
+                # yet (e.g. preseason / week 1 not posted).
+                return None if v in (None, "None", "") else v
+
+            def _fmt(bp) -> Dict[str, Any]:
+                return {
+                    "name": getattr(bp, "name", "Unknown"),
+                    "position": getattr(bp, "position", "UNKNOWN"),
+                    "slot_position": getattr(bp, "slot_position", None),
+                    "team": getattr(bp, "proTeam", "FA"),
+                    "pro_opponent": _clean(getattr(bp, "pro_opponent", None)),
+                    "injury_status": getattr(bp, "injuryStatus", "ACTIVE"),
+                    "projected_points": round(float(getattr(bp, "projected_points", 0.0) or 0.0), 1),
+                    "points": round(float(getattr(bp, "points", 0.0) or 0.0), 1),
+                    "game_played": getattr(bp, "game_played", 0),
+                    "on_bye": bool(getattr(bp, "on_bye_week", False)),
+                    "eligible_slots": [s for s in getattr(bp, "eligibleSlots", []) if isinstance(s, str)],
+                }
+
+            for bs in box_scores:
+                home = getattr(bs, "home_team", None)
+                away = getattr(bs, "away_team", None)
+                home_id = getattr(home, "team_id", None) if home else None
+                away_id = getattr(away, "team_id", None) if away else None
+
+                if str(home_id) == str(team_id):
+                    mine, them = "home", "away"
+                elif str(away_id) == str(team_id):
+                    mine, them = "away", "home"
+                else:
+                    continue
+
+                my_team = home if mine == "home" else away
+                opp_team = away if mine == "home" else home
+                my_lineup = bs.home_lineup if mine == "home" else bs.away_lineup
+                opp_lineup = bs.away_lineup if mine == "home" else bs.home_lineup
+
+                return {
+                    "week": week,
+                    "my_team": {
+                        "team_id": getattr(my_team, "team_id", None),
+                        "team_name": getattr(my_team, "team_name", "My Team"),
+                        "live_score": round(float(getattr(bs, f"{mine}_score", 0.0) or 0.0), 1),
+                        "projected_score": round(float(getattr(bs, f"{mine}_projected", 0.0) or 0.0), 1),
+                    },
+                    "opponent": {
+                        "team_id": getattr(opp_team, "team_id", None) if opp_team else None,
+                        "team_name": getattr(opp_team, "team_name", "Bye") if opp_team else "Bye",
+                        "live_score": round(float(getattr(bs, f"{them}_score", 0.0) or 0.0), 1),
+                        "projected_score": round(float(getattr(bs, f"{them}_projected", 0.0) or 0.0), 1),
+                    },
+                    "my_lineup": [_fmt(p) for p in my_lineup],
+                    "opponent_lineup": [_fmt(p) for p in opp_lineup] if opp_lineup else [],
+                }
+
+            return {"error": "No matchup found for this team this week"}
+        except Exception as e:
+            logger.error(f"Error getting week matchup: {str(e)}")
+            return {"error": f"Failed to get week matchup: {str(e)}"}
+
+    @async_wrapper
     def get_standings(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> List[Dict[str, Any]]:
         """Get league standings"""
         try:

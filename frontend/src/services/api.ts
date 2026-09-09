@@ -135,6 +135,13 @@ export const leagues = {
 
   getStandings: (leagueId: number) => api.get(`/leagues/${leagueId}/standings`),
 
+  // Consolidated payload for the "This Week" screen: real weekly box-score
+  // matchup (both projected scores + every starter's weekly projection and
+  // pro opponent), standings records, and a deterministic lineup-optimizer
+  // pass. ESPN only today -- response carries `platform_supported: false`
+  // for other platforms rather than fabricated data.
+  getThisWeek: (leagueId: number) => api.get(`/leagues/${leagueId}/this-week`),
+
   updateSettings: (leagueId: number, settings: Record<string, unknown>) =>
     api.put(`/leagues/${leagueId}/settings`, settings),
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { api, getErrorMessage } from '../services/api'
@@ -15,7 +15,9 @@ import {
   ClockIcon,
   FireIcon,
   StarIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  BoltIcon,
+  CalendarDaysIcon
 } from '@heroicons/react/24/outline'
 
 interface LeagueInfo {
@@ -138,17 +140,68 @@ interface LeagueInsights {
   pickup_targets?: Array<{ player: string; position?: string }>
 }
 
+interface ThisWeekPlayer {
+  name: string
+  position?: string
+  slot_position?: string
+  team?: string
+  pro_opponent?: string
+  injury_status?: string
+  projected_points?: number
+  points?: number
+  game_played?: number
+  on_bye?: boolean
+}
+
+interface ThisWeekSwap {
+  slot?: string
+  bench_out: { name: string; position?: string; projected_points?: number }
+  start_in: { name: string; position?: string; team?: string; projected_points?: number }
+  delta: number
+}
+
+interface ThisWeekMatchupSide {
+  team_name?: string
+  live_score?: number
+  projected_score?: number
+  wins?: number
+  losses?: number
+  ties?: number
+  rank?: number
+}
+
+interface ThisWeekData {
+  league_info?: LeagueInfo
+  platform_supported: boolean
+  detail?: string
+  week?: number
+  matchup?: {
+    my_team: ThisWeekMatchupSide
+    opponent: ThisWeekMatchupSide
+    projected_margin: number
+    favored: 'my_team' | 'opponent' | 'even'
+  }
+  lineup?: ThisWeekPlayer[]
+  optimization?: {
+    current_projected: number
+    optimized_projected: number
+    points_gained: number
+    swaps: ThisWeekSwap[]
+  }
+  starter_injuries?: { name: string; position?: string; status?: string }[]
+}
+
 export function LeagueDetailPage() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
 
-  type LeagueTab = 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
-  const TABS: LeagueTab[] = ['overview', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
+  type LeagueTab = 'this-week' | 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
+  const TABS: LeagueTab[] = ['this-week', 'overview', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<LeagueTab>(
-    TABS.includes(tabParam as LeagueTab) ? (tabParam as LeagueTab) : 'overview'
+    TABS.includes(tabParam as LeagueTab) ? (tabParam as LeagueTab) : 'this-week'
   )
   const [leagueInfo, setLeagueInfo] = useState<LeagueInfo | null>(null)
   const [rosterAnalysis, setRosterAnalysis] = useState<RosterAnalysis | null>(null)
@@ -157,97 +210,112 @@ export function LeagueDetailPage() {
   const [matchupData, setMatchupData] = useState<MatchupData | null>(null)
   const [standingsData, setStandingsData] = useState<StandingsData | null>(null)
   const [insights, setInsights] = useState<LeagueInsights | null>(null)
+  const [thisWeek, setThisWeek] = useState<ThisWeekData | null>(null)
+  const [thisWeekLoading, setThisWeekLoading] = useState(false)
+  const [thisWeekError, setThisWeekError] = useState('')
+  const [showOptimal, setShowOptimal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [waiverLoading, setWaiverLoading] = useState(true)
+  const [tradeLoading, setTradeLoading] = useState(true)
   const [waiverError, setWaiverError] = useState('')
   const [tradeError, setTradeError] = useState('')
+  // Bumped on every (re)load so a stale in-flight request from a previous
+  // leagueId / React StrictMode double-invoke can't write into state.
+  const reqIdRef = useRef(0)
 
   const loadLeagueData = useCallback(async () => {
+    const reqId = ++reqIdRef.current
+    const isCurrent = () => reqIdRef.current === reqId
+
     setLoading(true)
     setError('')
     setWaiverError('')
     setTradeError('')
+    setWaiverLoading(true)
+    setTradeLoading(true)
 
-    // Fetched independently (not one Promise.all) because waiver/trade
-    // recommendations are, today, only really implemented for Yahoo and ESPN
-    // leagues (league_management_service.py honestly 400s for Sleeper instead
-    // of faking data) -- that known, documented gap must not take down
-    // roster/standings/insights, which work for every connected platform.
-    const [rosterResult, standingsResult, insightsResult, waiverResult, tradeResult] = await Promise.allSettled([
-      api.get(`/leagues/${leagueId}/roster-analysis`),
-      api.get(`/leagues/${leagueId}/standings?season=2025`),
-      api.get(`/leagues/${leagueId}/insights`),
-      api.get(`/leagues/${leagueId}/waiver-recommendations`),
-      api.get(`/leagues/${leagueId}/trade-suggestions`)
-    ])
+    // The page renders progressively: roster / standings / insights are the
+    // "core" bundle the header + most tabs need, so only those block the
+    // page-level spinner. Waiver + trade recommendations (which internally
+    // make slow live ESPN/Yahoo calls, and honestly 400 for Sleeper) fill
+    // in their own sections afterwards without holding up the rest.
+    void (async () => {
+      const [rosterResult, standingsResult, insightsResult] = await Promise.allSettled([
+        api.get(`/leagues/${leagueId}/roster-analysis`),
+        api.get(`/leagues/${leagueId}/standings?season=2025`),
+        api.get(`/leagues/${leagueId}/insights`)
+      ])
+      if (!isCurrent()) return
 
-    if (rosterResult.status === 'rejected') {
-      setError(getErrorMessage(rosterResult.reason, 'Failed to load league data'))
-      setLoading(false)
-      return
-    }
-    if (standingsResult.status === 'rejected') {
-      setError(getErrorMessage(standingsResult.reason, 'Failed to load league data'))
-      setLoading(false)
-      return
-    }
-    if (insightsResult.status === 'rejected') {
-      setError(getErrorMessage(insightsResult.reason, 'Failed to load league data'))
-      setLoading(false)
-      return
-    }
+      const firstRejection = [rosterResult, standingsResult, insightsResult].find((r) => r.status === 'rejected')
+      if (firstRejection && firstRejection.status === 'rejected') {
+        setError(getErrorMessage(firstRejection.reason, 'Failed to load league data'))
+        setLoading(false)
+        return
+      }
 
-    const rosterResponse = rosterResult.value
-    const standingsResponse = standingsResult.value
-    const insightsResponse = insightsResult.value
+      const rosterResponse = (rosterResult as PromiseFulfilledResult<{ data: { league_info: LeagueInfo; roster_analysis: RosterAnalysis } }>).value
+      const standingsResponse = (standingsResult as PromiseFulfilledResult<{ data: { teams: StandingsTeam[] } }>).value
+      const insightsResponse = (insightsResult as PromiseFulfilledResult<{ data: { insights: LeagueInsights } }>).value
 
-    // Set league info from roster analysis
-    setLeagueInfo(rosterResponse.data.league_info)
-    setRosterAnalysis(rosterResponse.data.roster_analysis)
+      setLeagueInfo(rosterResponse.data.league_info)
+      setRosterAnalysis(rosterResponse.data.roster_analysis)
 
-    // Identify "your" team by the real team name this league's roster
-    // analysis was computed for, rather than a hardcoded name -- that
-    // hardcoded name only ever matched one specific test league.
-    const userTeamName: string | undefined = rosterResponse.data.roster_analysis?.team_name
+      // Identify "your" team by the real team name this league's roster
+      // analysis was computed for, rather than a hardcoded name.
+      const userTeamName: string | undefined = rosterResponse.data.roster_analysis?.team_name
 
-    // Set standings data
-    const teams: StandingsTeam[] = standingsResponse.data.teams
-    setStandingsData({
-      teams,
-      user_team_rank: teams.find((team) => team.team_name === userTeamName)?.rank ?? 0,
-      total_teams: teams.length,
-      playoff_teams: 6,
-      updated_at: new Date().toISOString()
-    })
-
-    // Set insights
-    setInsights(insightsResponse.data.insights)
-    setMatchupData(null) // No matchup data for now
-
-    if (waiverResult.status === 'fulfilled') {
-      const waiverResponse = waiverResult.value
-      setWaiverRecs({
-        recommendations: waiverResponse.data.waiver_recommendations?.recommendations ?? [],
-        position_needs: waiverResponse.data.waiver_recommendations?.position_needs ?? {},
-        total_available: waiverResponse.data.waiver_recommendations?.total_available ?? 0,
-        updated_at: waiverResponse.data.waiver_recommendations?.updated_at ?? new Date().toISOString()
+      const teams: StandingsTeam[] = standingsResponse.data.teams
+      setStandingsData({
+        teams,
+        user_team_rank: teams.find((team) => team.team_name === userTeamName)?.rank ?? 0,
+        total_teams: teams.length,
+        playoff_teams: 6,
+        updated_at: new Date().toISOString()
       })
-    } else {
-      setWaiverError(getErrorMessage(waiverResult.reason, 'Waiver recommendations are unavailable for this league right now.'))
-    }
 
-    if (tradeResult.status === 'fulfilled') {
-      const tradeResponse = tradeResult.value
-      setTradeRecs({
-        suggestions: tradeResponse.data.trade_recommendations?.suggestions ?? [],
-        trade_deadline: tradeResponse.data.trade_recommendations?.trade_deadline ?? "Week 13",
-        updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString()
+      setInsights(insightsResponse.data.insights)
+      setMatchupData(null)
+      setLoading(false)
+    })()
+
+    // Independent, non-blocking: waiver recommendations.
+    api.get(`/leagues/${leagueId}/waiver-recommendations`)
+      .then((waiverResponse) => {
+        if (!isCurrent()) return
+        setWaiverRecs({
+          recommendations: waiverResponse.data.waiver_recommendations?.recommendations ?? [],
+          position_needs: waiverResponse.data.waiver_recommendations?.position_needs ?? {},
+          total_available: waiverResponse.data.waiver_recommendations?.total_available ?? 0,
+          updated_at: waiverResponse.data.waiver_recommendations?.updated_at ?? new Date().toISOString()
+        })
       })
-    } else {
-      setTradeError(getErrorMessage(tradeResult.reason, 'Trade suggestions are unavailable for this league right now.'))
-    }
+      .catch((err) => {
+        if (!isCurrent()) return
+        setWaiverError(getErrorMessage(err, 'Waiver recommendations are unavailable for this league right now.'))
+      })
+      .finally(() => {
+        if (isCurrent()) setWaiverLoading(false)
+      })
 
-    setLoading(false)
+    // Independent, non-blocking: trade suggestions.
+    api.get(`/leagues/${leagueId}/trade-suggestions`)
+      .then((tradeResponse) => {
+        if (!isCurrent()) return
+        setTradeRecs({
+          suggestions: tradeResponse.data.trade_recommendations?.suggestions ?? [],
+          trade_deadline: tradeResponse.data.trade_recommendations?.trade_deadline ?? "Week 13",
+          updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString()
+        })
+      })
+      .catch((err) => {
+        if (!isCurrent()) return
+        setTradeError(getErrorMessage(err, 'Trade suggestions are unavailable for this league right now.'))
+      })
+      .finally(() => {
+        if (isCurrent()) setTradeLoading(false)
+      })
   }, [leagueId])
 
   useEffect(() => {
@@ -256,7 +324,31 @@ export function LeagueDetailPage() {
     }
   }, [user, leagueId, loadLeagueData])
 
+  // The This Week payload pulls a live ESPN weekly box score (slower than
+  // the other calls), so it's fetched lazily the first time that tab is
+  // opened rather than blocking the initial page load.
+  const loadThisWeek = useCallback(async () => {
+    setThisWeekLoading(true)
+    setThisWeekError('')
+    try {
+      const res = await api.get(`/leagues/${leagueId}/this-week`)
+      setThisWeek(res.data)
+    } catch (err) {
+      setThisWeekError(getErrorMessage(err, 'This Week is unavailable for this league right now.'))
+    } finally {
+      setThisWeekLoading(false)
+    }
+  }, [leagueId])
+
+  useEffect(() => {
+    if (user && leagueId && activeTab === 'this-week' && !thisWeek && !thisWeekLoading && !thisWeekError) {
+      loadThisWeek()
+    }
+  }, [user, leagueId, activeTab, thisWeek, thisWeekLoading, thisWeekError, loadThisWeek])
+
   const refreshData = async () => {
+    setThisWeek(null)
+    setThisWeekError('')
     await loadLeagueData()
   }
 
@@ -311,6 +403,7 @@ export function LeagueDetailPage() {
   }
 
   const tabs = [
+    { id: 'this-week', name: 'This Week', icon: CalendarDaysIcon },
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'roster', name: 'Roster Analysis', icon: UserGroupIcon },
     { id: 'matchups', name: 'Matchups', icon: TrophyIcon },
@@ -352,6 +445,7 @@ export function LeagueDetailPage() {
     TE: 'bg-warning-100 text-warning-800',
     K: 'bg-surface-2 text-body',
     DEF: 'bg-ink-200 text-body',
+    'D/ST': 'bg-ink-200 text-body',
   }
   const getPositionColor = (position?: string) => POSITION_COLORS[position || ''] || 'bg-surface-2 text-body'
 
@@ -402,7 +496,7 @@ export function LeagueDetailPage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring')}
+                onClick={() => setActiveTab(tab.id as LeagueTab)}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-accent-ink text-accent-ink'
@@ -418,6 +512,287 @@ export function LeagueDetailPage() {
       </div>
 
       {/* Tab Content */}
+      {activeTab === 'this-week' && thisWeekLoading && (
+        <div className="bg-surface rounded-lg border border-hairline p-10 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-ink mx-auto mb-3" />
+          <p className="text-sm text-muted">Pulling this week&apos;s matchup and projections from ESPN.</p>
+        </div>
+      )}
+
+      {activeTab === 'this-week' && !thisWeekLoading && thisWeekError && (
+        <div className="bg-surface rounded-lg border border-hairline p-8 text-center">
+          <CalendarDaysIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+          <p className="text-sm text-muted">{thisWeekError}</p>
+        </div>
+      )}
+
+      {activeTab === 'this-week' && !thisWeekLoading && !thisWeekError && thisWeek && !thisWeek.platform_supported && (
+        <div className="bg-surface rounded-lg border border-hairline p-8 text-center">
+          <CalendarDaysIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+          <p className="text-sm text-muted">{thisWeek.detail || 'This Week is only available for ESPN leagues today.'}</p>
+        </div>
+      )}
+
+      {activeTab === 'this-week' && !thisWeekLoading && !thisWeekError && thisWeek && thisWeek.platform_supported && !thisWeek.matchup && (
+        <div className="bg-surface rounded-lg border border-hairline p-8 text-center">
+          <CalendarDaysIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+          <p className="text-sm text-muted">{thisWeek.detail || 'This week’s matchup isn’t available yet.'}</p>
+        </div>
+      )}
+
+      {activeTab === 'this-week' && !thisWeekLoading && !thisWeekError && thisWeek?.platform_supported && thisWeek.matchup && (() => {
+        const m = thisWeek.matchup!
+        const opt = thisWeek.optimization
+        const lineup = thisWeek.lineup ?? []
+        const BENCH = new Set(['BE', 'IR', 'BENCH', ''])
+        const starters = lineup.filter((p) => !BENCH.has((p.slot_position || '').toUpperCase()))
+        const bench = lineup.filter((p) => BENCH.has((p.slot_position || '').toUpperCase()))
+        const swapOutNames = new Set((opt?.swaps ?? []).map((s) => s.bench_out.name))
+        const swapInNames = new Set((opt?.swaps ?? []).map((s) => s.start_in.name))
+        const rec = (side: ThisWeekMatchupSide) =>
+          side.wins != null ? `${side.wins}–${side.losses}${side.ties ? `–${side.ties}` : ''}` : null
+        const fmtRank = (n?: number) => (n ? `#${n}` : null)
+        // Field-position marker: 0 = dead even, clamp the projected margin to
+        // a +/-30 pt visual range so a blowout projection doesn't peg the
+        // marker off the bar.
+        const margin = m.projected_margin || 0
+        const markerPct = 50 + Math.max(-30, Math.min(30, margin)) / 30 * 42
+
+        const renderRow = (p: ThisWeekPlayer, isBench: boolean) => {
+          const flaggedOut = swapOutNames.has(p.name)
+          const flaggedIn = swapInNames.has(p.name)
+          const highlight = showOptimal && (flaggedOut || flaggedIn)
+          const injured = !['ACTIVE', 'NORMAL', 'HEALTHY', ''].includes((p.injury_status || '').toUpperCase())
+          return (
+            <div
+              key={`tw-${isBench ? 'bn' : 'st'}-${p.name}`}
+              className={`grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_7rem_4rem] items-center gap-2 px-3 py-2.5 border-b border-hairline text-sm ${
+                highlight ? 'bg-highlight border-l-2 border-l-volt' : ''
+              }`}
+            >
+              <span className="stat-nums text-xs text-muted">{(p.slot_position || '').toUpperCase()}</span>
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className={`shrink-0 inline-flex items-center justify-center w-9 h-6 rounded text-[11px] font-semibold ${getPositionColor(p.position)}`}>
+                    {p.position || '—'}
+                  </span>
+                  <span className="font-medium text-body truncate">{p.name}</span>
+                  {injured && (
+                    <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${getStatusColor(p.injury_status)}`}>
+                      {formatStatusLabel(p.injury_status)}
+                    </span>
+                  )}
+                </div>
+                {showOptimal && flaggedOut && (
+                  <p className="stat-nums text-[11px] text-accent-ink mt-1">
+                    &#9662; bench &mdash; swap in {(opt?.swaps ?? []).find((s) => s.bench_out.name === p.name)?.start_in.name}
+                  </p>
+                )}
+                {showOptimal && flaggedIn && (
+                  <p className="stat-nums text-[11px] text-accent-ink mt-1">&#9656; start at {(opt?.swaps ?? []).find((s) => s.start_in.name === p.name)?.slot}</p>
+                )}
+              </div>
+              <span className="hidden sm:block stat-nums text-xs text-muted">
+                {p.pro_opponent || (p.on_bye ? 'BYE' : '—')}
+              </span>
+              <span className="stat-nums text-sm text-body text-right tabular-nums">
+                {p.projected_points != null ? p.projected_points.toFixed(1) : '—'}
+              </span>
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-6">
+            {/* MATCHUP SCOREBOARD */}
+            <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
+              <div className="p-6">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-4 sm:gap-8">
+                  <div>
+                    <div className="stat-nums text-xs text-muted">
+                      MY TEAM{rec(m.my_team) ? ` · ${rec(m.my_team)}` : ''}{fmtRank(m.my_team.rank) ? ` · ${fmtRank(m.my_team.rank)}` : ''}
+                    </div>
+                    <div className="font-display font-bold uppercase tracking-tight text-2xl sm:text-3xl text-body mt-1">
+                      {m.my_team.team_name || 'My Team'}
+                    </div>
+                  </div>
+                  <div className="font-display font-semibold tracking-[0.16em] text-sm text-faint pb-1">
+                    WK {thisWeek.week}
+                  </div>
+                  <div className="text-right">
+                    <div className="stat-nums text-xs text-muted">
+                      {rec(m.opponent) || ''}{fmtRank(m.opponent.rank) ? ` · ${fmtRank(m.opponent.rank)}` : ''} {m.opponent.team_name ? `· ${m.opponent.team_name}` : ''}
+                    </div>
+                    <div className="font-display font-bold uppercase tracking-tight text-2xl sm:text-3xl text-muted mt-1">
+                      {m.opponent.team_name || 'Opponent'}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8 mt-4">
+                  <div className="font-display font-bold text-4xl sm:text-5xl leading-none text-body">
+                    {(m.my_team.projected_score ?? 0).toFixed(1)}
+                  </div>
+                  <div className="text-center">
+                    <div className="font-display font-semibold tracking-[0.14em] text-xs text-muted">PROJECTED</div>
+                    <div className="font-display font-bold text-2xl sm:text-3xl leading-none text-accent-ink mt-1">
+                      {margin > 0 ? '+' : ''}{margin.toFixed(1)}
+                    </div>
+                  </div>
+                  <div className="font-display font-bold text-4xl sm:text-5xl leading-none text-muted text-right">
+                    {(m.opponent.projected_score ?? 0).toFixed(1)}
+                  </div>
+                </div>
+
+                {/* FIELD-POSITION BAR */}
+                <div className="mt-4">
+                  <div
+                    className="relative h-8 rounded-sm border border-hairline overflow-hidden"
+                    style={{ background: 'var(--field)' }}
+                  >
+                    <div className="absolute inset-y-0 left-0 w-[10%]" style={{ background: 'var(--field-endzone)' }} />
+                    <div className="absolute inset-y-0 right-0 w-[10%]" style={{ background: 'var(--field-endzone-alt)' }} />
+                    {[20, 30, 40, 50, 60, 70, 80].map((x) => (
+                      <div key={x} className="absolute inset-y-0 w-px" style={{ left: `${x}%`, background: 'var(--field-line)' }} />
+                    ))}
+                    <div className="absolute inset-y-0 w-px" style={{ left: '50%', background: 'var(--line)' }} />
+                    <div
+                      className="absolute inset-y-0 w-0.5"
+                      style={{ left: `${markerPct}%`, background: 'var(--color-volt)' }}
+                    />
+                  </div>
+                  <div className="flex justify-between mt-1.5">
+                    <span className="stat-nums text-[10px] text-accent-ink">
+                      {m.favored === 'my_team' ? `◄ ${m.my_team.team_name || 'MY TEAM'} FAVORED BY ${Math.abs(margin).toFixed(1)}` : ''}
+                    </span>
+                    <span className="stat-nums text-[10px] text-faint">
+                      {m.favored === 'opponent' ? `${m.opponent.team_name || 'OPPONENT'} FAVORED BY ${Math.abs(margin).toFixed(1)} ►` : ''}
+                      {m.favored === 'even' ? 'EVEN MATCHUP' : ''}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* OPTIMIZE ACTION */}
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-6 py-4 border-t border-hairline bg-surface-2">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowOptimal((v) => !v)}
+                    className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-volt text-sm font-medium"
+                  >
+                    <BoltIcon className="h-4 w-4" />
+                    <span>{showOptimal ? 'Hide optimal lineup' : 'Optimize lineup'}</span>
+                  </button>
+                  <span className="stat-nums text-xs text-muted">
+                    {opt && opt.swaps.length > 0 ? (
+                      <>Found <span className="text-accent-ink">{opt.swaps.length} upgrade{opt.swaps.length > 1 ? 's' : ''}</span> &mdash; projected <span className="text-accent-ink">+{opt.points_gained.toFixed(1)} pts</span> ({opt.current_projected.toFixed(1)} &rarr; {opt.optimized_projected.toFixed(1)})</>
+                    ) : (
+                      <>Your lineup is already the highest-projecting legal set ({opt?.current_projected.toFixed(1)} pts).</>
+                    )}
+                  </span>
+                </div>
+                <DataConfidenceBadge level="computed" label="ESPN weekly proj" />
+              </div>
+            </div>
+
+            {/* BODY: lineup + rail */}
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6">
+              <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
+                <div className="grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_7rem_4rem] gap-2 px-3 py-2 border-b border-hairline stat-nums text-[10px] tracking-wider text-faint">
+                  <span>SLOT</span><span>PLAYER</span><span className="hidden sm:block">MATCHUP</span><span className="text-right">PROJ</span>
+                </div>
+                {starters.map((p) => renderRow(p, false))}
+                {bench.length > 0 && (
+                  <>
+                    <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">BENCH</div>
+                    {bench.map((p) => renderRow(p, true))}
+                  </>
+                )}
+              </div>
+
+              {/* CALL RAIL */}
+              <div className="space-y-3">
+                <div className="font-display font-bold tracking-[0.1em] text-accent-ink">LINEUP CALL</div>
+                <div className="yard-divider" />
+
+                {opt && opt.swaps.length > 0 ? (
+                  opt.swaps.map((s, i) => (
+                    <div key={`swap-${i}`} className="border border-hairline bg-surface rounded-lg">
+                      <div className="px-4 py-2.5 border-b border-hairline flex items-center justify-between">
+                        <span className="stat-nums text-[10px] tracking-wider text-muted">LINEUP UPGRADE</span>
+                        <span className="stat-nums text-[10px] text-accent-ink">+{s.delta.toFixed(1)} PTS</span>
+                      </div>
+                      <div className="p-4">
+                        <div className="text-sm font-medium text-body leading-snug">
+                          Start <span className="text-accent-ink">{s.start_in.name}</span> over {s.bench_out.name}{s.slot ? ` at ${s.slot}` : ''}.
+                        </div>
+                        <div className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">
+                          {s.start_in.name} projects {s.start_in.projected_points?.toFixed(1)} this week vs {s.bench_out.name}&apos;s {s.bench_out.projected_points?.toFixed(1)} &mdash; a {s.delta.toFixed(1)}-point swing on ESPN&apos;s own weekly projection.
+                        </div>
+                        <button
+                          onClick={() => setShowOptimal(true)}
+                          className="mt-3 stat-nums text-[11px] text-accent-ink hover:underline"
+                        >
+                          Show in lineup &#9656;
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="border border-hairline bg-surface rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <CheckCircleIcon className="h-4 w-4 text-success-500" />
+                      <span className="text-sm font-medium text-body">Lineup is optimal</span>
+                    </div>
+                    <p className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">
+                      No bench player out-projects a current starter at a slot they&apos;re eligible for.
+                    </p>
+                  </div>
+                )}
+
+                {thisWeek.starter_injuries && thisWeek.starter_injuries.length > 0 && (
+                  <div className="border border-hairline bg-surface rounded-lg">
+                    <div className="px-4 py-2.5 border-b border-hairline">
+                      <span className="stat-nums text-[10px] tracking-wider text-warning-700">STARTER STATUS</span>
+                    </div>
+                    <div className="p-4 space-y-2">
+                      {thisWeek.starter_injuries.map((inj, i) => (
+                        <div key={`inj-${i}`} className="flex items-center justify-between">
+                          <span className="text-sm text-body">{inj.name} <span className="text-xs text-muted">{inj.position}</span></span>
+                          <span className={`stat-nums text-[10px] px-1.5 py-0.5 rounded font-medium ${getStatusColor(inj.status)}`}>
+                            {formatStatusLabel(inj.status)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {waiverRecs && waiverRecs.recommendations.length > 0 && (
+                  <div className="border border-hairline bg-surface rounded-lg">
+                    <div className="px-4 py-2.5 border-b border-hairline flex items-center justify-between">
+                      <span className="stat-nums text-[10px] tracking-wider text-muted">TOP WAIVER TARGET</span>
+                      <button onClick={() => setActiveTab('waiver')} className="stat-nums text-[10px] text-accent-ink hover:underline">All &#9656;</button>
+                    </div>
+                    <div className="p-4">
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center justify-center w-9 h-6 rounded text-[11px] font-semibold ${getPositionColor(waiverRecs.recommendations[0].player.position?.value)}`}>
+                          {waiverRecs.recommendations[0].player.position?.value || '—'}
+                        </span>
+                        <span className="text-sm font-medium text-body">{waiverRecs.recommendations[0].player.name}</span>
+                      </div>
+                      {waiverRecs.recommendations[0].reason && (
+                        <p className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">{waiverRecs.recommendations[0].reason}</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
       {activeTab === 'overview' && (
         <div className="space-y-6">
           {/* Quick Stats */}
@@ -705,7 +1080,7 @@ export function LeagueDetailPage() {
         <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
           <FireIcon className="mx-auto h-8 w-8 text-faint mb-2" />
           <p className="text-sm text-muted">
-            {waiverError || 'Loading waiver recommendations…'}
+            {waiverError || (waiverLoading ? 'Loading waiver recommendations…' : 'No waiver recommendations for this league right now.')}
           </p>
         </div>
       )}
@@ -749,7 +1124,7 @@ export function LeagueDetailPage() {
         <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
           <ArrowsRightLeftIcon className="mx-auto h-8 w-8 text-faint mb-2" />
           <p className="text-sm text-muted">
-            {tradeError || 'Loading trade suggestions…'}
+            {tradeError || (tradeLoading ? 'Loading trade suggestions…' : 'No trade suggestions for this league right now.')}
           </p>
         </div>
       )}

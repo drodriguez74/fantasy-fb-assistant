@@ -9,6 +9,7 @@ from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.league_management_service import LeagueManagementService
 from app.services.roster_grading import grade_roster
+from app.services.this_week_service import build_this_week
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
 from app.core.config import settings
@@ -844,6 +845,33 @@ async def get_trade_suggestions(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get trade suggestions: {str(e)}")
+
+
+@router.get("/{league_id}/this-week")
+async def get_this_week(
+    league_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Consolidated payload for the 'This Week' flagship screen.
+
+    Real weekly box-score matchup (both projected scores + every starter's
+    weekly projection and pro opponent), both teams' standings records, and
+    a deterministic lineup-optimizer pass. ESPN only today -- other
+    platforms get an honest `platform_supported: false` rather than
+    fabricated data (see this_week_service).
+    """
+    try:
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        return await build_this_week(user_league)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to build This Week: {str(e)}")
 
 
 @router.put("/{league_id}/settings")
