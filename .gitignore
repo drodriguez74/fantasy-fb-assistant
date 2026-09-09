@@ -125,3 +125,8 @@ jspm_packages/
 .claude/worktrees/
 .vercel
 .env*
+
+# Local ranking spreadsheets (not part of the app)
+Optis_*.xlsx
+ProBowl_Fantasy_*.xlsx
+ProBowl_Fantasy_*.csv
