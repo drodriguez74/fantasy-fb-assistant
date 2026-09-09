@@ -29,15 +29,15 @@ export function AIAnalysis({ player, showButton = true }: AIAnalysisProps) {
   if (!analysis && !showButton) return null
 
   return (
-    <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-highlight-line">
+    <div className="mt-3 p-3 bg-highlight rounded-lg border border-highlight-line">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2">
           <span className="text-sm font-semibold text-accent-ink">AI Analysis</span>
           {player.risk_level && (
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
-              player.risk_level === 'LOW' ? 'bg-green-100 text-green-800' :
-              player.risk_level === 'MEDIUM' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-red-100 text-red-800'
+              player.risk_level === 'LOW' ? 'bg-success-100 text-success-800' :
+              player.risk_level === 'MEDIUM' ? 'bg-warning-100 text-warning-800' :
+              'bg-danger-100 text-danger-800'
             }`}>
               {player.risk_level} Risk
             </span>
@@ -56,7 +56,7 @@ export function AIAnalysis({ player, showButton = true }: AIAnalysisProps) {
       </div>
 
       {error && (
-        <div className="text-xs text-red-600 mb-2">
+        <div className="text-xs text-danger-700 mb-2">
           {error}
         </div>
       )}

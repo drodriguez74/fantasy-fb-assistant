@@ -72,7 +72,7 @@ function yardsPerPointLabel(pointsPerYard: number | undefined | null): string {
 
 function StatRow({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="flex items-center justify-between py-1.5 border-b border-ink-50 last:border-0">
+    <div className="flex items-center justify-between py-1.5 border-b border-hairline last:border-0">
       <span className="text-sm text-muted">{label}</span>
       <span className="text-sm font-medium text-body tabular-nums">{value}</span>
     </div>

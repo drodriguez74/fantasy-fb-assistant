@@ -428,7 +428,7 @@ export function WaiverWirePage() {
       case 'down':
         return <ArrowTrendingDownIcon className="h-4 w-4 text-danger-600" />
       default:
-        return <div className="h-4 w-4 bg-ink-300 rounded-full" />
+        return <div className="h-4 w-4 bg-faint rounded-full" />
     }
   }
 

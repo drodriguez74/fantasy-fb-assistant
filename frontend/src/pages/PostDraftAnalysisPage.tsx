@@ -344,7 +344,7 @@ export function PostDraftAnalysisPage() {
               <button
                 onClick={analyzeRoster}
                 disabled={loading || roster.length === 0}
-                className="flex-1 bg-volt text-volt-ink py-2 px-4 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed"
+                className="flex-1 bg-volt text-volt-ink py-2 px-4 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed"
               >
                 {loading ? 'Analyzing...' : 'Analyze Roster'}
               </button>
@@ -578,7 +578,7 @@ export function PostDraftAnalysisPage() {
             getPersonalizedWaivers()
           }}
           disabled={loading || roster.length === 0}
-          className="bg-volt text-volt-ink px-8 py-3 rounded-lg hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed font-medium"
+          className="bg-volt text-volt-ink px-8 py-3 rounded-lg hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed font-medium"
         >
           {loading ? 'Analyzing...' : 'Grade Roster & Find Waiver Targets'}
         </button>

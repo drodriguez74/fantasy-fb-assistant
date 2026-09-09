@@ -133,7 +133,7 @@ function TrendsTab() {
       case 'down':
         return <ArrowTrendingDownIcon className="h-5 w-5 text-danger-600" />
       default:
-        return <div className="h-5 w-5 bg-ink-300 rounded-full" />
+        return <div className="h-5 w-5 bg-faint rounded-full" />
     }
   }
 
@@ -391,7 +391,7 @@ export function HistoricalPage() {
       case 'down':
         return <ArrowTrendingDownIcon className="h-5 w-5 text-danger-600" />
       default:
-        return <div className="h-5 w-5 bg-ink-300 rounded-full" />
+        return <div className="h-5 w-5 bg-faint rounded-full" />
     }
   }
 
@@ -445,7 +445,7 @@ export function HistoricalPage() {
             <button
               onClick={syncHistoricalData}
               disabled={syncing}
-              className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-volt flex items-center space-x-2"
+              className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-volt flex items-center space-x-2"
             >
               <ArrowPathIcon className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
               <span>{syncing ? 'Syncing...' : 'Sync Data'}</span>

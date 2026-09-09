@@ -135,7 +135,7 @@ export function NotificationBell() {
                         type="button"
                         onClick={() => !notification.is_read && handleMarkRead(notification.id)}
                         className={clsx(
-                          'block w-full border-b border-ink-50 px-4 py-3 text-left last:border-b-0 hover:bg-surface-2',
+                          'block w-full border-b border-hairline px-4 py-3 text-left last:border-b-0 hover:bg-surface-2',
                           !notification.is_read && 'bg-highlight/50'
                         )}
                       >

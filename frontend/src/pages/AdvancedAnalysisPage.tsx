@@ -1271,7 +1271,7 @@ export function AdvancedAnalysisPage() {
                 <button
                   onClick={runPlayerComparison}
                   disabled={loading || selectedPlayers.length < 2}
-                  className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed flex items-center"
+                  className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed flex items-center"
                 >
                   {loading ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1308,7 +1308,7 @@ export function AdvancedAnalysisPage() {
                   <button
                     onClick={runScheduleAnalysis}
                     disabled={loading || selectedPlayers.length === 0}
-                    className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed flex items-center"
+                    className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed flex items-center"
                   >
                     {loading ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1361,7 +1361,7 @@ export function AdvancedAnalysisPage() {
                   <button
                     onClick={runBreakoutAnalysis}
                     disabled={loading}
-                    className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed flex items-center"
+                    className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed flex items-center"
                   >
                     {loading ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1386,7 +1386,7 @@ export function AdvancedAnalysisPage() {
                 <button
                   onClick={runSituationAnalysis}
                   disabled={loading || selectedPlayers.length === 0}
-                  className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-ink-200 disabled:text-faint disabled:cursor-not-allowed flex items-center"
+                  className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:bg-surface-2 disabled:text-faint disabled:cursor-not-allowed flex items-center"
                 >
                   {loading ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>

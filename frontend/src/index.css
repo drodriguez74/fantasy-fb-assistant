@@ -303,3 +303,36 @@ body {
     transform: none;
   }
 }
+
+/*
+ * Position badges — one theme-aware hue per fantasy position. Replaces the
+ * old raw `bg-red-100 text-red-800`-style Tailwind palette classes, which
+ * were fixed light values that rendered as pale chips with near-invisible
+ * dark text on the dark theme. Light + dark tints defined together so a
+ * badge reads on either page.
+ */
+.pos-badge { background: var(--surface-2); color: var(--text-muted); }
+.pos-badge-QB   { background: #fbe3e0; color: #8f2e26; }
+.pos-badge-RB   { background: #d8efdd; color: #1e6a3e; }
+.pos-badge-WR   { background: #dce8fb; color: #1d4ed8; }
+.pos-badge-TE   { background: #f7e8c4; color: #935a13; }
+.pos-badge-K    { background: #e7ddf7; color: #5b3a9c; }
+.pos-badge-DEF  { background: #e4e4de; color: #4a4a44; }
+.pos-badge-FLEX { background: #e4e4de; color: #4a4a44; }
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .pos-badge-QB   { background: #2a1512; color: #f0938a; }
+  :root:not([data-theme="light"]) .pos-badge-RB   { background: #16351f; color: #6cd493; }
+  :root:not([data-theme="light"]) .pos-badge-WR   { background: #12213f; color: #8fb4f0; }
+  :root:not([data-theme="light"]) .pos-badge-TE   { background: #34260f; color: #e0b25e; }
+  :root:not([data-theme="light"]) .pos-badge-K    { background: #241a34; color: #c3a3f0; }
+  :root:not([data-theme="light"]) .pos-badge-DEF  { background: #1f1f22; color: #a0a0a8; }
+  :root:not([data-theme="light"]) .pos-badge-FLEX { background: #1f1f22; color: #a0a0a8; }
+}
+:root[data-theme="dark"] .pos-badge-QB   { background: #2a1512; color: #f0938a; }
+:root[data-theme="dark"] .pos-badge-RB   { background: #16351f; color: #6cd493; }
+:root[data-theme="dark"] .pos-badge-WR   { background: #12213f; color: #8fb4f0; }
+:root[data-theme="dark"] .pos-badge-TE   { background: #34260f; color: #e0b25e; }
+:root[data-theme="dark"] .pos-badge-K    { background: #241a34; color: #c3a3f0; }
+:root[data-theme="dark"] .pos-badge-DEF  { background: #1f1f22; color: #a0a0a8; }
+:root[data-theme="dark"] .pos-badge-FLEX { background: #1f1f22; color: #a0a0a8; }

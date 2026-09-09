@@ -502,7 +502,7 @@ export function LeaguesPage() {
                         />
                         <button
                           onClick={() => saveManualTeamId(league.id)}
-                          className="rounded bg-accent-500 px-2 py-1 text-xs font-medium text-white hover:bg-volt-dark"
+                          className="rounded bg-volt px-2 py-1 text-xs font-medium text-volt-ink hover:bg-volt-dark"
                         >
                           Save
                         </button>

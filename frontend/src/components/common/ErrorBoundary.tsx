@@ -36,10 +36,10 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       return (
         <div className="flex items-center justify-center min-h-screen px-4">
-          <div className="max-w-md w-full bg-red-50 border border-red-200 rounded-md p-6 text-center">
-            <ExclamationTriangleIcon className="h-10 w-10 text-red-400 mx-auto" />
-            <h1 className="mt-4 text-lg font-medium text-red-800">Something went wrong</h1>
-            <p className="mt-2 text-sm text-red-700">
+          <div className="max-w-md w-full bg-danger-50 border border-danger-200 rounded-md p-6 text-center">
+            <ExclamationTriangleIcon className="h-10 w-10 text-danger-500 mx-auto" />
+            <h1 className="mt-4 text-lg font-medium text-danger-800">Something went wrong</h1>
+            <p className="mt-2 text-sm text-danger-700">
               We hit an unexpected problem loading this page. You can try again, or head back to
               the home page.
             </p>

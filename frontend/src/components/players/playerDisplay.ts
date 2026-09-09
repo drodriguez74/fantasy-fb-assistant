@@ -8,16 +8,20 @@ import type { Position } from '../../types'
 // color. Kept in a non-component file so react-refresh/only-export-components
 // doesn't flag PlayerCard.tsx for exporting non-component values.
 
+// Theme-aware position badge classes (see `.pos-badge*` in index.css). The
+// old raw Tailwind palette classes (`bg-red-100 text-red-800`, ...) were
+// fixed light values and rendered as pale chips with invisible text in dark
+// mode.
 export const positionColors: Record<Position, string> = {
-  QB: 'bg-red-100 text-red-800',
-  RB: 'bg-green-100 text-green-800',
-  WR: 'bg-blue-100 text-blue-800',
-  TE: 'bg-yellow-100 text-yellow-800',
-  K: 'bg-purple-100 text-purple-800',
-  DEF: 'bg-gray-100 text-gray-800',
+  QB: 'pos-badge pos-badge-QB',
+  RB: 'pos-badge pos-badge-RB',
+  WR: 'pos-badge pos-badge-WR',
+  TE: 'pos-badge pos-badge-TE',
+  K: 'pos-badge pos-badge-K',
+  DEF: 'pos-badge pos-badge-DEF',
 }
 
-const FALLBACK_POSITION_COLOR = 'bg-gray-100 text-gray-800'
+const FALLBACK_POSITION_COLOR = 'pos-badge pos-badge-DEF'
 
 // Same palette as `positionColors`, but tolerant of a loosely-typed `string`
 // (rather than the `Position` union) and of unrecognized values -- for call
