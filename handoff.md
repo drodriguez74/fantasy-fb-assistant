@@ -10,6 +10,28 @@ Note: `test_auth.py::test_user_registration` flakes in the full-suite run
 (passes in isolation and on re-run) — a pre-existing test-isolation issue,
 not from these changes.
 
+**Deployed-frontend + tunneled-backend attempt (session 10, did NOT land):**
+Tried to point the deployed Vercel frontend at the local FastAPI via an
+ngrok/cloudflare tunnel so login + ESPN could be tested against production.
+- CORS was already fine (`backend/.env` `CORS_ORIGINS` includes the vercel URL).
+- Login POST worked through the tunnel; `/auth/me` then 503'd. Root cause
+  found + fixed: the SQLAlchemy engine had no `pool_pre_ping`, so stale
+  Supabase/pgbouncer connections errored on the next request (committed).
+- BUT the tunnel approach is blocked by this network: the browser can't
+  reach `*.ngrok-free.app` / `*.trycloudflare.com` at all (plain `fetch()` →
+  "Failed to fetch", requests never arrive at the tunnel; cloudflare's random
+  subdomain returns NXDOMAIN from the LAN resolver 192.168.1.1). curl from a
+  shell works; the browser/DNS filters tunnel domains. See
+  [[project_tunnel_domains_blocked]].
+- Cleaned up: tunnels killed, `VITE_API_URL` removed from Vercel, prod
+  redeployed to the prior state (defaults to `localhost:8000`, i.e. deployed
+  site still has no working backend).
+- **Real path forward:** deploy the backend to Railway/Render (a normal
+  `*.up.railway.app` / `*.onrender.com` host isn't DNS-filtered like tunnels).
+  `vercel link` is done at repo root + `frontend/` (`.vercel/` gitignored);
+  the Vercel project already has DATABASE_URL / OPENAI_API_KEY / CORS_ORIGINS /
+  SECRET_KEY etc. set as env vars from a prior setup attempt.
+
 **Frontend teardown shipped as `fb37f71`:**
 - deleted `DraftPage.tsx`, `LiveDraftPage.tsx`, `components/draft/`
 - `api.ts` — removed `export const draft` + unused `MockDraftSettingsPayload` /
