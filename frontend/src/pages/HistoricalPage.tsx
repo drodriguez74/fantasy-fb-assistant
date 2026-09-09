@@ -223,22 +223,22 @@ function TrendsTab() {
             <table className="min-w-full divide-y divide-hairline">
               <thead className="bg-surface-2">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Player
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Trend
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Performance Change
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     <span className="flex items-center gap-1.5">
                       Confidence
                       <DataConfidenceBadge level="heuristic" />
                     </span>
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Sample Size
                   </th>
                 </tr>
@@ -246,7 +246,7 @@ function TrendsTab() {
               <tbody className="bg-surface divide-y divide-hairline">
                 {trendingPlayers.map((player) => (
                   <tr key={player.player_id} className="hover:bg-surface-2">
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="flex-shrink-0">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionColor(player.position)}`}>
@@ -259,7 +259,7 @@ function TrendsTab() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center space-x-2">
                         {getTrendIcon(player.trend_direction)}
                         <span className="text-sm font-medium">
@@ -270,7 +270,7 @@ function TrendsTab() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <span className={`text-sm font-medium ${
                         player.performance_change > 0 ? 'text-success-600' : 
                         player.performance_change < 0 ? 'text-danger-600' : 'text-muted'
@@ -278,7 +278,7 @@ function TrendsTab() {
                         {formatPerformanceChange(player.performance_change)}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="w-16 bg-surface-2 rounded-full h-2">
                           <div
@@ -291,7 +291,7 @@ function TrendsTab() {
                         </span>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-body">
                       {player.sample_size} games
                     </td>
                   </tr>
@@ -429,14 +429,14 @@ export function HistoricalPage() {
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Historical Performance</h1>
             <p className="text-muted mt-2">
               Week-by-week production, boom/bust rates, and multi-season trends for any player.
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-3">
             {dataOverview?.recommendations.sync_needed && (
               <div className="text-sm text-warning-800 bg-warning-100 px-3 py-1 rounded-full">
                 Sync Needed
@@ -469,14 +469,14 @@ export function HistoricalPage() {
 
       {/* Navigation Tabs */}
       <div className="border-b border-hairline mb-6">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex gap-6 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'overview' | 'players' | 'trends' | 'analysis')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-accent-ink text-accent-ink'
                     : 'border-transparent text-muted hover:text-body hover:border-line'
@@ -751,22 +751,22 @@ export function HistoricalPage() {
                   <table className="min-w-full divide-y divide-hairline">
                     <thead className="bg-surface-2">
                       <tr>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                           Season
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                           Games
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                           Avg Points
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                           Consistency
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                           Ceiling/Floor
                         </th>
-                        <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                        <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                           Trend
                         </th>
                       </tr>
@@ -776,24 +776,24 @@ export function HistoricalPage() {
                         const consistency = getConsistencyGrade(season.consistency_score)
                         return (
                           <tr key={season.season}>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-body">
+                            <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-medium text-body">
                               {season.season}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
+                            <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-body">
                               {season.games_played}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
+                            <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-body">
                               {season.avg_points.toFixed(1)}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm">
                               <span className={`font-medium ${consistency.color}`}>
                                 {consistency.grade}
                               </span>
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
+                            <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-body">
                               {season.ceiling.toFixed(1)} / {season.floor.toFixed(1)}
                             </td>
-                            <td className="px-6 py-4 whitespace-nowrap text-sm">
+                            <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm">
                               <div className="flex items-center space-x-1">
                                 {getTrendIcon(season.trend_direction)}
                                 <span className="text-xs">{season.trend_direction}</span>

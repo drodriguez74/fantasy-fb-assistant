@@ -247,6 +247,20 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Mobile-first guard: nothing should push the page wider than the
+   * viewport. Wide content (tables, tab rails) opts into its own
+   * horizontal scroll via an overflow-x-auto wrapper. */
+  overflow-x: hidden;
+}
+
+/* Hide the scrollbar on horizontally-scrollable rails (tab strips, chip
+ * rows) while keeping them swipeable on touch. */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
 }
 
 /*

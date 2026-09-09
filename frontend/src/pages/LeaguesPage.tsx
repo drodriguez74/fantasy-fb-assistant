@@ -350,7 +350,7 @@ export function LeaguesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">My Fantasy Leagues</h1>
           <p className="text-muted mt-2">
@@ -358,7 +358,7 @@ export function LeaguesPage() {
           </p>
         </div>
 
-        <div className="flex space-x-3">
+        <div className="flex flex-wrap gap-3">
           <button
             onClick={connectYahooLeague}
             disabled={connecting}
@@ -415,7 +415,7 @@ export function LeaguesPage() {
               <p className="text-muted mb-6 max-w-md mx-auto">
                 Link an ESPN, Yahoo, or Sleeper league. We pull your real roster, scoring settings, and matchups &mdash; nothing to retype.
               </p>
-              <div className="flex space-x-3 justify-center">
+              <div className="flex flex-wrap gap-3 justify-center">
                 <button
                   onClick={connectYahooLeague}
                   disabled={connecting}
@@ -641,7 +641,7 @@ export function LeaguesPage() {
                   </div>
                 </div>
 
-                <div className="flex space-x-3 pt-4">
+                <div className="flex flex-wrap gap-3 pt-4">
                   <button
                     onClick={proceedToEspnTeamPick}
                     disabled={connecting || testingConnection || loadingTeams || !espnForm.leagueId}
@@ -693,7 +693,7 @@ export function LeaguesPage() {
                   </p>
                 </div>
 
-                <div className="flex space-x-3 pt-4">
+                <div className="flex flex-wrap gap-3 pt-4">
                   <button
                     onClick={connectEspnLeague}
                     disabled={connecting}
@@ -770,7 +770,7 @@ export function LeaguesPage() {
                   </p>
                 </div>
 
-                <div className="flex space-x-3 pt-4">
+                <div className="flex flex-wrap gap-3 pt-4">
                   <button
                     onClick={proceedToSleeperTeamPick}
                     disabled={connecting || loadingTeams || !sleeperForm.leagueId}
@@ -822,7 +822,7 @@ export function LeaguesPage() {
                   </p>
                 </div>
 
-                <div className="flex space-x-3 pt-4">
+                <div className="flex flex-wrap gap-3 pt-4">
                   <button
                     onClick={connectSleeperLeague}
                     disabled={connecting}

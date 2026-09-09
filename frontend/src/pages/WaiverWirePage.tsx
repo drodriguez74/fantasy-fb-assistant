@@ -456,14 +456,14 @@ export function WaiverWirePage() {
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Waiver Wire</h1>
             <p className="text-muted mt-2">
               Who's available, who's trending, and who you should drop to make room.
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center space-x-2">
               <label className="text-sm font-medium text-body">Week:</label>
               <select
@@ -505,14 +505,14 @@ export function WaiverWirePage() {
 
       {/* Navigation Tabs */}
       <div className="border-b border-hairline mb-6">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex gap-6 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-accent-ink text-accent-ink'
                     : 'border-transparent text-muted hover:text-body hover:border-line'
@@ -532,7 +532,7 @@ export function WaiverWirePage() {
           {/* Filters */}
           <div className="bg-surface rounded-lg shadow p-6">
             <h3 className="text-lg font-medium text-body mb-4">Recommended claims</h3>
-            <div className="flex space-x-4 mb-4">
+            <div className="flex flex-wrap gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-body mb-1">Position</label>
                 <select
@@ -711,7 +711,7 @@ export function WaiverWirePage() {
           {/* Trending Filters */}
           <div className="bg-surface rounded-lg shadow p-6">
             <h3 className="text-lg font-medium text-body mb-4">Trending Players</h3>
-            <div className="flex space-x-4">
+            <div className="flex flex-wrap gap-4">
               <div>
                 <label className="block text-sm font-medium text-body mb-1">Trend Direction</label>
                 <select
@@ -1075,7 +1075,7 @@ export function WaiverWirePage() {
               Enter your current roster player IDs to get personalized add/drop recommendations.
             </p>
 
-            <div className="flex space-x-4 mb-4">
+            <div className="flex flex-wrap gap-4 mb-4">
               <div className="flex-1">
                 <label className="block text-sm font-medium text-body mb-1">
                   Player IDs (comma-separated)

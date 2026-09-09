@@ -169,27 +169,27 @@ export function PlayersPage() {
             <table className="min-w-full divide-y divide-hairline">
               <thead className="bg-surface-2">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Player
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Position
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Team
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Projected Points
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     ADP
                   </th>
                   {sort === 'consensus' && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                    <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Consensus
                     </th>
                   )}
-                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Bye Week
                   </th>
                 </tr>
@@ -201,7 +201,7 @@ export function PlayersPage() {
                     className="hover:bg-surface-2 cursor-pointer"
                     onClick={() => openPlayer(player)}
                   >
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div>
                           <div className="text-sm font-medium text-body">{player.name}</div>
@@ -213,22 +213,22 @@ export function PlayersPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap">
                       <span className="px-2 py-1 text-xs font-medium bg-surface-2 text-body rounded-full">
                         {player.position}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-muted">
                       {player.team}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-body">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-body">
                       {player.projected_points ? player.projected_points.toFixed(1) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-muted">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-muted">
                       {player.adp ? player.adp.toFixed(1) : '-'}
                     </td>
                     {sort === 'consensus' && (
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
+                      <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-muted">
                         {player.consensus ? (
                           <div className="flex items-center gap-2">
                             <span className="text-body font-stat tabular-nums font-medium">#{player.consensus.consensus_rank}</span>
@@ -240,7 +240,7 @@ export function PlayersPage() {
                         ) : '-'}
                       </td>
                     )}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
+                    <td className="px-3 sm:px-6 py-4 whitespace-nowrap text-sm text-muted">
                       {player.bye_week ? `Week ${player.bye_week}` : '-'}
                     </td>
                   </tr>

@@ -453,22 +453,22 @@ export function LeagueDetailPage() {
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center space-x-3 min-w-0">
             <button
               onClick={() => navigate('/leagues')}
-              className="p-2 text-faint hover:text-muted"
+              className="p-2 -ml-2 shrink-0 text-faint hover:text-muted"
             >
               <ArrowLeftIcon className="h-5 w-5" />
             </button>
-            <div>
-              <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">{leagueInfo?.name}</h1>
+            <div className="min-w-0">
+              <h1 className="font-display font-bold uppercase tracking-tight text-2xl sm:text-3xl text-body break-words">{leagueInfo?.name}</h1>
               <p className="text-muted">
                 {leagueInfo?.platform} • {leagueInfo?.season} • {leagueInfo?.league_size} Teams • {leagueInfo?.scoring_format}
               </p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap items-center gap-3">
             {rosterAnalysis && (
               <span className="inline-flex items-center gap-2">
                 <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getGradeColor(rosterAnalysis.overall_grade?.grade || 'N/A')}`}>
@@ -490,14 +490,14 @@ export function LeagueDetailPage() {
 
       {/* Navigation Tabs */}
       <div className="border-b border-hairline mb-6">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex gap-6 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as LeagueTab)}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
+                className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-accent-ink text-accent-ink'
                     : 'border-transparent text-muted hover:text-body hover:border-line'

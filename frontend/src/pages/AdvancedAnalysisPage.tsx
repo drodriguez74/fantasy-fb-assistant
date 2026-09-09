@@ -427,8 +427,8 @@ export function AdvancedAnalysisPage() {
     return (
       <div className="space-y-6">
         {/* Chart Controls */}
-        <div className="flex items-center justify-between bg-surface-2 p-4 rounded-lg">
-          <div className="flex items-center space-x-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between bg-surface-2 p-4 rounded-lg">
+          <div className="flex flex-wrap items-center gap-3 sm:gap-4">
             <button
               onClick={() => setShowCharts(!showCharts)}
               className="flex items-center space-x-2 text-sm text-body hover:text-body"
@@ -1153,7 +1153,7 @@ export function AdvancedAnalysisPage() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Advanced Analysis</h1>
           <p className="text-muted mt-2">
@@ -1236,7 +1236,7 @@ export function AdvancedAnalysisPage() {
       <div className="bg-surface rounded-lg border border-hairline">
         {/* Tab Navigation */}
         <div className="border-b border-hairline">
-          <nav className="-mb-px flex space-x-8 px-6">
+          <nav className="-mb-px flex gap-6 overflow-x-auto no-scrollbar px-4 sm:px-6">
             {[
               { key: 'comparison', label: 'Player Comparison', icon: UserGroupIcon },
               { key: 'schedule', label: 'Schedule Analysis', icon: CalendarIcon },
@@ -1246,7 +1246,7 @@ export function AdvancedAnalysisPage() {
               <button
                 key={key}
                 onClick={() => setActiveTab(key as 'comparison' | 'schedule' | 'breakout' | 'situations')}
-                className={`flex items-center py-4 px-1 border-b-2 font-medium text-sm ${
+                className={`shrink-0 whitespace-nowrap flex items-center py-4 px-1 border-b-2 font-medium text-sm ${
                   activeTab === key
                     ? 'border-accent-ink text-accent-ink'
                     : 'border-transparent text-muted hover:text-body hover:border-line'

@@ -253,14 +253,14 @@ export function AnalyticsPage() {
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Advanced Analytics</h1>
             <p className="text-muted mt-2">
               Multi-week projections, lineup optimization, and correlation analysis. Still in beta — treat outputs as one input.
             </p>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-3">
             <BeakerIcon className="h-8 w-8 text-accent-ink" />
             <span className="text-xs font-semibold text-accent-ink bg-highlight px-3 py-1 rounded-full">
               Beta
@@ -284,14 +284,14 @@ export function AnalyticsPage() {
 
       {/* Navigation Tabs */}
       <div className="border-b border-hairline mb-6">
-        <nav className="-mb-px flex space-x-8">
+        <nav className="-mb-px flex gap-6 overflow-x-auto no-scrollbar">
           {tabs.map((tab) => {
             const Icon = tab.icon
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as 'predictions' | 'optimization' | 'correlations' | 'clustering' | 'visualization')}
-                className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors ${
+                className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 transition-colors ${
                   activeTab === tab.id
                     ? 'border-accent-ink text-accent-ink'
                     : 'border-transparent text-muted hover:text-body hover:border-line'

@@ -219,10 +219,10 @@ export function ContentPage() {
           </Link>
         </div>
         <div className="border-b border-hairline mb-6">
-          <nav className="-mb-px flex space-x-8">
+          <nav className="-mb-px flex gap-6 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('generate')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'generate'
                   ? 'border-accent-ink text-accent-ink'
                   : 'border-transparent text-muted hover:text-body hover:border-line'
@@ -232,7 +232,7 @@ export function ContentPage() {
             </button>
             <button
               onClick={() => setActiveTab('manage')}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'manage'
                   ? 'border-accent-ink text-accent-ink'
                   : 'border-transparent text-muted hover:text-body hover:border-line'
