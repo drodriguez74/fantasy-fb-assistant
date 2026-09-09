@@ -24,13 +24,44 @@
 
 Working tree clean except the untracked `Optis_*` / `ProBowl_*` spreadsheets.
 
-**Still open (next chunks):**
+**Session 9 continued — strategic pivot decided (NOT yet executed):**
+Founder decided to **remove the draft assistant** and refocus the product on
+in-season play (waivers / trades / weekly lineup / reports / content), and to
+keep the deployed frontend on **Vercel's free tier** (bundle/perf work serves
+this). Full write-up published as an artifact:
+https://claude.ai/code/artifact/1c5aaa93-1db3-4ae4-9dd7-36f032e3128a
+("The Season Is the Product") — audit of real-vs-scaffolding, the sequenced
+teardown plan, the 4-pillar in-season model, retention mechanics, ranked
+backlog, and the Vercel/perf constraint.
+
+New memories: [[project_draft_assistant_decommission]], [[project_vercel_free_tier]].
+
+**Teardown is plan-first — approved scope, not started:**
+- Remove: Live Draft, Mock Draft (`DraftPage`, `mock_draft_service`,
+  `draft_recommendation_fallback`, `/draft` mock+recommend routes),
+  `draft_assistant_service.py` — but ONLY after extracting
+  `_effective_position_requirements` (imported by `roster_grading.py`,
+  `waiver_wire_service.py`, `post_draft_analysis_service.py`) into a new
+  `app/services/roster_requirements.py`.
+- Keep + retarget: Post-Draft Analysis, Draft History (as a report), the ESPN
+  rankings pipeline (as an in-season valuation source), the `DraftSession` model.
+- Then re-cut nav to the weekly loop: This Week · Leagues · Waivers · Trades ·
+  Players, with Post-Draft/Draft History/Historical folded into a Reports area
+  and Blog merged into Content.
+
+**Backlog after teardown (ranked, from the artifact):** 1) weekly digest
+notification/email cadence (highest retention leverage — notification center
+exists, just not driven on a schedule), 2) kill the mock news scraper
+(`scraper_service` returns fabricated news/trending on live paths), 3) waiver
+claim planner w/ FAAB, 4) optimizer v2 + start/sit confidence, 5) trade finder,
+6) Sleeper league analysis, 7) weekly recap + shareable card, 8) consolidate the
+3 analysis pages.
+
+**Still open from before:**
 - Charts not visually verified in a running browser (select players on
   AdvancedAnalysisPage in both themes — quick check).
-- This Week optimizer is single-pass greedy (can miss multi-swap optima), no
-  matchup/edge input — fine and honest for v1.
+- This Week optimizer is single-pass greedy, no matchup/edge input — v1.
 - Yahoo Fantasy API still blocked at Yahoo's end (support ticket).
-- ESPN live-draft feed still needs a browser extension.
 
 ---
 
