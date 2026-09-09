@@ -1,0 +1,30 @@
+# Secrets / local config — never bake into the image
+.env
+.env.*
+!.env.example
+connected_league.json
+
+# Virtualenv / Python cruft
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local databases / test artifacts
+*.db
+*.db-journal
+*.sqlite3
+
+# VCS / editor / OS
+.git/
+.gitignore
+.vscode/
+.idea/
+.DS_Store
+
+# Docs & tests aren't needed at runtime
+tests/
