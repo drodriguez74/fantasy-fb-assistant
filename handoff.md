@@ -1,12 +1,36 @@
-# Handoff (2026-09-08, session 9) — 8-session backlog committed
+# Handoff (2026-09-08, session 9) — backlog committed + open-items 1-5 done
 
-**All of sessions 2–8's uncommitted work is now committed + pushed** as `1efe7f9`
-("Gridiron Terminal frontend redesign + backend league-analysis fixes") — 60 files
-on top of the prior pushed commits. Working tree is clean except the `Optis_*` /
-`ProBowl_*` ranking spreadsheets at repo root, deliberately left untracked (local
-scratch data, not code). `.gitignore` now excludes `.env*` and `.vercel`.
+**Sessions 2–8's uncommitted work** committed + pushed as `1efe7f9` (60 files).
 
-Nothing about the open items below changed — they remain the next chunks of work.
+**Then open items 1–5 from session 8's list, done via 3 parallel agents:**
+- `132bfa8` — **dark-mode contrast pass** (#2 + #5): new theme-aware `.pos-badge-*`
+  classes (position badges were invisible on dark everywhere), `disabled:bg-ink-200`
+  → `bg-surface-2`, AIAnalysis/ErrorBoundary/NotificationBell fixed-light values,
+  LeaguesPage re-auth button → `bg-volt text-volt-ink`. Walked every data page in
+  both themes with real Optis Titans data. LeagueDetailPage inspected, found clean.
+- `8362eeb` — **chart theming** (#3): new `useChartColors()` hook (reads tokens off
+  `<html>`, re-reads on `data-theme` change), `--viz-1..8` + `--viz-pos/warn/neg`
+  palette in index.css, all 5 chart components converted, tooltips given
+  surface/text `contentStyle`. Build passes; NOT rendered live in a browser
+  (charts need player selection) — one outstanding visual check.
+- `9083966` — **This Week screen** (#1) + **progressive league-detail render** (#4).
+  New default tab in LeagueDetailPage wired to a real `GET /leagues/{id}/this-week`
+  (ESPN weekly box-score projections, deterministic greedy lineup optimizer,
+  honest non-ESPN messages). EDGE/projection-range/win-prob%/FAAB omitted, not
+  faked. `loadLeagueData` now renders core sections first, waiver+trade fill in
+  their own loading state, StrictMode-guarded by a reqId ref. 4 new tests (131 pass).
+  Verified live in browser, both themes — scoreboard, field bar, optimizer,
+  lineup table, LINEUP CALL rail all render correctly with real data.
+
+Working tree clean except the untracked `Optis_*` / `ProBowl_*` spreadsheets.
+
+**Still open (next chunks):**
+- Charts not visually verified in a running browser (select players on
+  AdvancedAnalysisPage in both themes — quick check).
+- This Week optimizer is single-pass greedy (can miss multi-swap optima), no
+  matchup/edge input — fine and honest for v1.
+- Yahoo Fantasy API still blocked at Yahoo's end (support ticket).
+- ESPN live-draft feed still needs a browser extension.
 
 ---
 
