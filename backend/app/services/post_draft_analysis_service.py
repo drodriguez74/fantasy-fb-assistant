@@ -32,7 +32,7 @@ from app.services.grading import (
     bench_depth_notes,
     NFL_SEASON_GAMES,
 )
-from app.services.draft_assistant_service import draft_assistant
+from app.services.roster_requirements import effective_position_requirements
 
 logger = logging.getLogger(__name__)
 
@@ -132,7 +132,7 @@ class PostDraftAnalysisService:
         Team Analysis grading, so this path and that one can't drift apart.
         """
         raw_starters = dict((league_settings or {}).get('starters') or {}) or _FALLBACK_STARTERS
-        return draft_assistant._effective_position_requirements(position_counts, {"starters": raw_starters})
+        return effective_position_requirements(position_counts, {"starters": raw_starters})
 
     def _score_composition(
         self, position_counts: Dict[str, int], requirements: Dict[str, int]

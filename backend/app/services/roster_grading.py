@@ -42,7 +42,7 @@ from app.services.grading import (
     bench_depth_notes,
     NFL_SEASON_GAMES,
 )
-from app.services.draft_assistant_service import draft_assistant
+from app.services.roster_requirements import effective_position_requirements
 
 # Same fallback used elsewhere in this codebase when no real per-league
 # roster settings are available (see DraftAssistantService.FALLBACK_ROSTER_REQUIREMENTS).
@@ -271,7 +271,7 @@ def grade_roster(
     """
     position_counts = _position_counts(players)
     raw_starters = dict((league_settings or {}).get("starters") or {}) or _FALLBACK_STARTERS
-    requirements = draft_assistant._effective_position_requirements(position_counts, {"starters": raw_starters})
+    requirements = effective_position_requirements(position_counts, {"starters": raw_starters})
 
     composition = _score_composition(position_counts, requirements)
 

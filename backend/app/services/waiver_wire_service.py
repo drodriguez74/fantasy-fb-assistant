@@ -191,8 +191,8 @@ class WaiverWireService:
 
                 raw_starters = dict(league_settings.get("starters") or {}) or dict(_FALLBACK_STARTERS)
 
-                from app.services.draft_assistant_service import draft_assistant
-                position_requirements = draft_assistant._effective_position_requirements(
+                from app.services.roster_requirements import effective_position_requirements
+                position_requirements = effective_position_requirements(
                     roster_position_counts, {"starters": raw_starters}
                 )
 
