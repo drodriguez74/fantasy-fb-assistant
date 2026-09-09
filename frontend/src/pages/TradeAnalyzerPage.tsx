@@ -87,7 +87,7 @@ function PlayerPicker({
   const alreadySelected = (sleeperId: string) => selected.some((p) => p.sleeper_id === sleeperId)
 
   return (
-    <div className="bg-surface rounded-lg border border-hairline p-6">
+    <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
       <h3 className="text-lg font-medium text-body mb-3">{label}</h3>
 
       <div className="relative mb-3">
@@ -182,7 +182,7 @@ function ValueBar({ value, maxValue }: { value: number; maxValue: number }) {
 
 function SideResultCard({ title, side, maxValue }: { title: string; side: TradeSideResult; maxValue: number }) {
   return (
-    <div className="bg-surface rounded-lg border border-hairline p-6">
+    <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
       <div className="flex items-center justify-between mb-4">
         <h4 className="text-lg font-medium text-body">{title}</h4>
         <span className="font-stat tabular-nums text-2xl font-semibold text-body">{side.total_value.toFixed(1)}</span>

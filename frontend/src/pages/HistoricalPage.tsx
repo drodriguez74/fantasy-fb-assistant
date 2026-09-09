@@ -152,7 +152,7 @@ function TrendsTab() {
   return (
     <div className="space-y-6">
       {/* Controls */}
-      <div className="bg-surface rounded-lg border border-hairline p-6">
+      <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
         <h3 className="text-lg font-medium text-body mb-4">Performance Trends Analysis</h3>
         <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4">
           <div>
@@ -495,7 +495,7 @@ export function HistoricalPage() {
         <div className="space-y-6">
           {/* Data Coverage Cards */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <ChartBarIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -507,7 +507,7 @@ export function HistoricalPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <UserIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -519,7 +519,7 @@ export function HistoricalPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <CalendarIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -531,7 +531,7 @@ export function HistoricalPage() {
               </div>
             </div>
 
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <ArrowTrendingUpIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -545,7 +545,7 @@ export function HistoricalPage() {
           </div>
 
           {/* Data Status */}
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Data Status</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -601,7 +601,7 @@ export function HistoricalPage() {
       {activeTab === 'players' && (
         <div className="space-y-6">
           {/* Player Search */}
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Player Historical Analysis</h3>
             <div className="mb-4">
               <p className="text-sm text-muted mb-2">
@@ -682,7 +682,7 @@ export function HistoricalPage() {
           {playerSummary && (
             <div className="space-y-6">
               {/* Player Header */}
-              <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="text-xl font-bold text-body">{playerSummary.player_name}</h3>
@@ -699,7 +699,7 @@ export function HistoricalPage() {
 
               {/* Career Trends */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="bg-surface rounded-lg border border-hairline p-6">
+                <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                   <h4 className="font-medium text-body mb-4">Career Trend</h4>
                   {playerSummary.career_trend ? (
                     <div className="space-y-3">
@@ -721,7 +721,7 @@ export function HistoricalPage() {
                   )}
                 </div>
 
-                <div className="bg-surface rounded-lg border border-hairline p-6">
+                <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                   <h4 className="font-medium text-body mb-4">Recent Form</h4>
                   {playerSummary.recent_trend ? (
                     <div className="space-y-3">
@@ -745,7 +745,7 @@ export function HistoricalPage() {
               </div>
 
               {/* Season Summaries */}
-              <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <h4 className="font-medium text-body mb-4">Season-by-Season Performance</h4>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-hairline">
@@ -816,7 +816,7 @@ export function HistoricalPage() {
       )}
 
       {activeTab === 'analysis' && (
-        <div className="bg-surface rounded-lg border border-hairline p-6">
+        <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
           <h3 className="text-lg font-medium text-body mb-4">Advanced Analysis</h3>
           <p className="text-muted">Advanced statistical analysis and predictive modeling coming soon...</p>
         </div>

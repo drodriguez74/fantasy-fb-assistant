@@ -53,7 +53,7 @@ export function PlayerDetailPage() {
         Back to Players
       </button>
 
-      <div className="bg-surface rounded-lg border border-hairline p-6">
+      <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
         <div className="flex items-center space-x-3 mb-2">
           <h1 className="font-display font-bold uppercase tracking-tight text-2xl text-body">{player.name}</h1>
           <span className={clsx('px-2 py-1 text-xs font-medium rounded-full', positionColors[player.position])}>

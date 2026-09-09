@@ -606,40 +606,40 @@ export function LeagueDetailPage() {
           <div className="space-y-6">
             {/* MATCHUP SCOREBOARD */}
             <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
-              <div className="p-6">
-                <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-4 sm:gap-8">
-                  <div>
-                    <div className="stat-nums text-xs text-muted">
+              <div className="p-4 sm:p-6">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-start gap-3 sm:gap-8">
+                  <div className="min-w-0">
+                    <div className="stat-nums text-[11px] sm:text-xs text-muted">
                       MY TEAM{rec(m.my_team) ? ` · ${rec(m.my_team)}` : ''}{fmtRank(m.my_team.rank) ? ` · ${fmtRank(m.my_team.rank)}` : ''}
                     </div>
-                    <div className="font-display font-bold uppercase tracking-tight text-2xl sm:text-3xl text-body mt-1">
+                    <div className="font-display font-bold uppercase tracking-tight text-lg sm:text-3xl leading-[1.1] text-body mt-1 break-words">
                       {m.my_team.team_name || 'My Team'}
                     </div>
                   </div>
-                  <div className="font-display font-semibold tracking-[0.16em] text-sm text-faint pb-1">
+                  <div className="font-display font-semibold tracking-[0.16em] text-xs sm:text-sm text-faint whitespace-nowrap pt-4 sm:pt-0 sm:self-end sm:pb-1">
                     WK {thisWeek.week}
                   </div>
-                  <div className="text-right">
-                    <div className="stat-nums text-xs text-muted">
-                      {rec(m.opponent) || ''}{fmtRank(m.opponent.rank) ? ` · ${fmtRank(m.opponent.rank)}` : ''} {m.opponent.team_name ? `· ${m.opponent.team_name}` : ''}
+                  <div className="min-w-0 text-right">
+                    <div className="stat-nums text-[11px] sm:text-xs text-muted">
+                      OPP{rec(m.opponent) ? ` · ${rec(m.opponent)}` : ''}{fmtRank(m.opponent.rank) ? ` · ${fmtRank(m.opponent.rank)}` : ''}
                     </div>
-                    <div className="font-display font-bold uppercase tracking-tight text-2xl sm:text-3xl text-muted mt-1">
+                    <div className="font-display font-bold uppercase tracking-tight text-lg sm:text-3xl leading-[1.1] text-muted mt-1 break-words">
                       {m.opponent.team_name || 'Opponent'}
                     </div>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 sm:gap-8 mt-4">
-                  <div className="font-display font-bold text-4xl sm:text-5xl leading-none text-body">
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 sm:gap-8 mt-4">
+                  <div className="font-display font-bold text-3xl sm:text-5xl leading-none text-body">
                     {(m.my_team.projected_score ?? 0).toFixed(1)}
                   </div>
                   <div className="text-center">
-                    <div className="font-display font-semibold tracking-[0.14em] text-xs text-muted">PROJECTED</div>
-                    <div className="font-display font-bold text-2xl sm:text-3xl leading-none text-accent-ink mt-1">
+                    <div className="font-display font-semibold tracking-[0.14em] text-[10px] sm:text-xs text-muted">PROJECTED</div>
+                    <div className="font-display font-bold text-xl sm:text-3xl leading-none text-accent-ink mt-1 whitespace-nowrap">
                       {margin > 0 ? '+' : ''}{margin.toFixed(1)}
                     </div>
                   </div>
-                  <div className="font-display font-bold text-4xl sm:text-5xl leading-none text-muted text-right">
+                  <div className="font-display font-bold text-3xl sm:text-5xl leading-none text-muted text-right">
                     {(m.opponent.projected_score ?? 0).toFixed(1)}
                   </div>
                 </div>
@@ -674,7 +674,7 @@ export function LeagueDetailPage() {
               </div>
 
               {/* OPTIMIZE ACTION */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-6 py-4 border-t border-hairline bg-surface-2">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-4 sm:px-6 py-4 border-t border-hairline bg-surface-2">
                 <div className="flex items-center gap-3">
                   <button
                     onClick={() => setShowOptimal((v) => !v)}
@@ -797,7 +797,7 @@ export function LeagueDetailPage() {
         <div className="space-y-6">
           {/* Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <TrophyIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -809,7 +809,7 @@ export function LeagueDetailPage() {
               </div>
             </div>
             
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <UserGroupIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -821,7 +821,7 @@ export function LeagueDetailPage() {
               </div>
             </div>
             
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <ExclamationTriangleIcon className="h-8 w-8 text-danger-600" />
                 <div className="ml-4">
@@ -833,7 +833,7 @@ export function LeagueDetailPage() {
               </div>
             </div>
             
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center">
                 <FireIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
@@ -853,7 +853,7 @@ export function LeagueDetailPage() {
               disabled) -- this is the honest substitute: real status
               changes, not invented headlines. */}
           {rosterAnalysis?.injury_concerns && rosterAnalysis.injury_concerns.length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-medium text-body mb-1 flex items-center gap-2">
                 <ExclamationTriangleIcon className="h-5 w-5 text-danger-500" />
                 Player Alerts
@@ -885,7 +885,7 @@ export function LeagueDetailPage() {
               numbers. Full roster + bench detail still lives on the Roster
               Analysis tab. */}
           {rosterAnalysis?.composition?.starting_lineup && rosterAnalysis.composition.starting_lineup.length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-medium text-body">Your Roster</h3>
                 <span className="text-sm text-muted">{rosterAnalysis.team_name}</span>
@@ -919,7 +919,7 @@ export function LeagueDetailPage() {
 
           {/* Weekly Insights */}
           {insights && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-medium text-body mb-4">Weekly Insights</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
@@ -950,7 +950,7 @@ export function LeagueDetailPage() {
 
           {/* Current Matchup Preview */}
           {matchupData && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-medium text-body mb-4">Week {matchupData.week} Matchup</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="text-center">
@@ -972,7 +972,7 @@ export function LeagueDetailPage() {
       {activeTab === 'roster' && rosterAnalysis && (
         <div className="space-y-6">
           {/* Roster Summary */}
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-lg font-medium text-body">Roster Analysis</h3>
@@ -1015,7 +1015,7 @@ export function LeagueDetailPage() {
           </div>
 
           {/* Current Roster */}
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Current Roster</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
@@ -1051,7 +1051,7 @@ export function LeagueDetailPage() {
 
           {/* Position Analysis (if available) */}
           {rosterAnalysis.position_analysis && Object.keys(rosterAnalysis.position_analysis).length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-medium text-body mb-4">Position-by-Position Analysis</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(rosterAnalysis.position_analysis).map(([position, analysis]) => (
@@ -1087,7 +1087,7 @@ export function LeagueDetailPage() {
 
       {activeTab === 'waiver' && waiverRecs && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Waiver Wire Recommendations</h3>
             <p className="text-sm text-muted mb-6">
               Based on your roster needs and available players. {waiverRecs.total_available} targets identified.
@@ -1131,7 +1131,7 @@ export function LeagueDetailPage() {
 
       {activeTab === 'trades' && tradeRecs && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Trade Suggestions</h3>
             <p className="text-sm text-muted mb-6">
               Trade recommendations based on roster analysis. Trade deadline: {tradeRecs.trade_deadline}
@@ -1166,7 +1166,7 @@ export function LeagueDetailPage() {
 
       {activeTab === 'standings' && standingsData && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">League Standings</h3>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-hairline">
@@ -1223,7 +1223,7 @@ export function LeagueDetailPage() {
 
       {activeTab === 'matchups' && matchupData && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Week {matchupData.week} Matchup Analysis</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">

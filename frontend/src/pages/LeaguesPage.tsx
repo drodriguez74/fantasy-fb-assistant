@@ -556,7 +556,7 @@ export function LeaguesPage() {
       )}
 
       {/* Instructions */}
-      <div className="bg-highlight border border-highlight-line rounded-lg p-6">
+      <div className="bg-highlight border border-highlight-line rounded-lg p-4 sm:p-6">
         <h3 className="font-display text-lg font-bold uppercase tracking-tight text-body mb-2">What you get</h3>
         <p className="text-muted text-sm leading-relaxed">
           Connect a league and every view fills in: a roster grade, your weekly matchup, start/sit

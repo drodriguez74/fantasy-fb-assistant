@@ -222,7 +222,7 @@ export function BlogPage() {
 
       {/* Content Generation Templates */}
       {user && Object.keys(templates).length > 0 && (
-        <div className="bg-highlight rounded-lg p-6">
+        <div className="bg-highlight rounded-lg p-4 sm:p-6">
           <div className="flex items-center mb-4">
             <SparklesIcon className="h-6 w-6 text-accent-ink mr-2" />
             <h2 className="font-display text-lg font-bold uppercase tracking-tight text-body">Generate a piece</h2>
@@ -328,7 +328,7 @@ export function BlogPage() {
       )}
 
       {/* Insights Sidebar */}
-      <div className="bg-surface rounded-lg border border-hairline p-6">
+      <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
         <div className="flex items-center mb-4">
           <SparklesIcon className="h-6 w-6 text-accent-ink mr-2" />
           <h2 className="text-xl font-semibold text-body">Quick Hits</h2>

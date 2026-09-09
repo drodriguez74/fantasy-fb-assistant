@@ -308,7 +308,7 @@ export function AnalyticsPage() {
       {/* Tab Content */}
       {activeTab === 'predictions' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-body mb-4 flex items-center">
               <CpuChipIcon className="h-5 w-5 mr-2" />
               Machine Learning Player Predictions
@@ -417,7 +417,7 @@ export function AnalyticsPage() {
 
       {activeTab === 'optimization' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-body mb-1 flex items-center">
               <CalculatorIcon className="h-5 w-5 mr-2" />
               Lineup Optimization Engine
@@ -533,7 +533,7 @@ export function AnalyticsPage() {
 
       {activeTab === 'correlations' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-body mb-4 flex items-center">
               <ArrowTrendingUpIcon className="h-5 w-5 mr-2" />
               Player Correlation Analysis
@@ -604,7 +604,7 @@ export function AnalyticsPage() {
       )}
 
       {activeTab === 'clustering' && (
-        <div className="bg-surface rounded-lg border border-hairline p-6">
+        <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-body mb-4 flex items-center">
             <UserGroupIcon className="h-5 w-5 mr-2" />
             Player Performance Clustering
@@ -620,7 +620,7 @@ export function AnalyticsPage() {
       )}
 
       {activeTab === 'visualization' && (
-        <div className="bg-surface rounded-lg border border-hairline p-6">
+        <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-body mb-4 flex items-center">
             <PresentationChartLineIcon className="h-5 w-5 mr-2" />
             Advanced Data Visualizations

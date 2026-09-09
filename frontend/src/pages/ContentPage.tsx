@@ -270,7 +270,7 @@ export function ContentPage() {
         {activeTab === 'generate' && (
           <div className="space-y-8">
             {/* Quick Generation Section */}
-            <div className="bg-surface border border-hairline rounded-lg p-6">
+            <div className="bg-surface border border-hairline rounded-lg p-4 sm:p-6">
               <h3 className="text-lg font-medium text-body mb-4">Quick Generation</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
@@ -306,7 +306,7 @@ export function ContentPage() {
             </div>
 
             {/* Custom Generation Section */}
-            <div className="bg-surface border border-hairline rounded-lg p-6">
+            <div className="bg-surface border border-hairline rounded-lg p-4 sm:p-6">
               <h3 className="text-lg font-medium text-body mb-4">Custom Content Generation</h3>
 
               <div className="space-y-6">

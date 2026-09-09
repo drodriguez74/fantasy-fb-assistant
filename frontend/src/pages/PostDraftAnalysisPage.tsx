@@ -237,7 +237,7 @@ export function PostDraftAnalysisPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Roster Input */}
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold flex items-center">
                 <UserGroupIcon className="h-6 w-6 mr-2 text-accent-ink" />
@@ -385,7 +385,7 @@ export function PostDraftAnalysisPage() {
         <div className="space-y-6">
           {/* Roster Grade */}
           {analysis?.overall_grade && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center">
                   <AcademicCapIcon className="h-6 w-6 mr-2 text-accent-ink" />
@@ -421,7 +421,7 @@ export function PostDraftAnalysisPage() {
 
           {/* Strengths & Weaknesses */}
           {analysis?.strengths_weaknesses && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center mb-4">
                 <ChartBarIcon className="h-6 w-6 mr-2 text-accent-ink" />
                 <h2 className="text-xl font-semibold">Roster Analysis</h2>
@@ -471,7 +471,7 @@ export function PostDraftAnalysisPage() {
 
           {/* Personalized Waiver Targets */}
           {waiverTargets.length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2">
                   <h2 className="text-xl font-semibold flex items-center">
@@ -525,7 +525,7 @@ export function PostDraftAnalysisPage() {
 
       {/* Player Evaluations */}
       {analysis?.player_evaluations && (
-        <div className="bg-surface rounded-lg border border-hairline p-6">
+        <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
           <div className="flex items-center mb-6">
             <TrophyIcon className="h-6 w-6 mr-2 text-accent-ink" />
             <h2 className="text-xl font-semibold">Individual Player Analysis</h2>

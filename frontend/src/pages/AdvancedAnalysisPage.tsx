@@ -461,14 +461,14 @@ export function AdvancedAnalysisPage() {
         {showCharts && chartData.length > 0 && (
           <div className="space-y-6">
             {(chartType === 'radar' || chartType === 'both') && (
-              <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-body mb-4">Player Comparison Radar Chart</h3>
                 <PlayerComparisonChart data={chartData} height={450} />
               </div>
             )}
             
             {(chartType === 'bar' || chartType === 'both') && (
-              <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-body mb-4">Detailed Metrics Comparison</h3>
                 <PlayerComparisonBarChart data={chartData} height={400} />
               </div>
@@ -488,7 +488,7 @@ export function AdvancedAnalysisPage() {
 
         {/* Head-to-Head (for 2 players) */}
         {comparisonResult.head_to_head && Object.keys(comparisonResult.head_to_head).length > 0 && (
-          <div className="bg-surface rounded-lg border border-hairline p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <h3 className="text-lg font-semibold text-body mb-4">Head-to-Head Comparison</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(comparisonResult.head_to_head.categories || {}).map(([category, data]) => (
@@ -512,7 +512,7 @@ export function AdvancedAnalysisPage() {
         {/* Player Details */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {comparisonResult.players.map((player) => (
-            <div key={player.id} className="bg-surface rounded-lg border border-hairline p-6">
+            <div key={player.id} className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-body">{player.name}</h3>
                 <span className={`px-2 py-1 text-sm rounded-full ${getPositionColor(player.position)}`}>
@@ -598,7 +598,7 @@ export function AdvancedAnalysisPage() {
     return (
       <div className="space-y-6">
         {/* Summary */}
-        <div className="bg-surface rounded-lg border border-hairline p-6">
+        <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-body mb-4">Schedule Summary (Next {weeksAhead} Weeks)</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center">
@@ -624,12 +624,12 @@ export function AdvancedAnalysisPage() {
         {/* Schedule Difficulty Charts */}
         {showCharts && chartData.length > 0 && (
           <div className="space-y-6">
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-body mb-4">Schedule Difficulty Chart</h3>
               <ScheduleDifficultyChart data={chartData} height={350} />
             </div>
             
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-body mb-4">Schedule Difficulty Heatmap</h3>
               <ScheduleDifficultyHeatmap data={chartData} height={250} />
             </div>
@@ -639,7 +639,7 @@ export function AdvancedAnalysisPage() {
         {/* Player Schedule Analysis */}
         <div className="space-y-4">
           {scheduleResult.schedule_analysis.map((analysis) => (
-            <div key={analysis.player.id} className="bg-surface rounded-lg border border-hairline p-6">
+            <div key={analysis.player.id} className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-body">{analysis.player.name}</h3>
                 <div className="flex items-center space-x-4">
@@ -714,7 +714,7 @@ export function AdvancedAnalysisPage() {
     return (
       <div className="space-y-6">
         {/* Summary */}
-        <div className="bg-surface rounded-lg border border-hairline p-6">
+        <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
           <h3 className="text-lg font-semibold text-body mb-4">Breakout Analysis Summary</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="text-center">
@@ -739,12 +739,12 @@ export function AdvancedAnalysisPage() {
         {/* Breakout Candidate Charts */}
         {showCharts && chartData.length > 0 && (
           <div className="space-y-6">
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-body mb-4">Breakout Probability Analysis</h3>
               <BreakoutCandidateBubbleChart data={chartData} height={400} />
             </div>
             
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-body mb-4">Age vs Probability Scatter Plot</h3>
               <BreakoutCandidateChart 
                 data={chartData} 
@@ -759,7 +759,7 @@ export function AdvancedAnalysisPage() {
         {/* Breakout Candidates */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {breakoutResult.breakout_candidates.slice(0, 10).map((candidate) => (
-            <div key={candidate.player.id} className="bg-surface rounded-lg border border-hairline p-6">
+            <div key={candidate.player.id} className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold text-body">{candidate.player.name}</h3>
                 <div className="flex items-center space-x-2">
@@ -897,7 +897,7 @@ export function AdvancedAnalysisPage() {
         {/* Situational Analysis Charts */}
         {showCharts && homeAwayData.length > 0 && (
           <div className="space-y-6">
-            <div className="bg-surface rounded-lg border border-hairline p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
               <h3 className="text-lg font-semibold text-body mb-4">Home vs Away Performance</h3>
               <SituationalAnalysisChart
                 data={homeAwayData}
@@ -907,14 +907,14 @@ export function AdvancedAnalysisPage() {
             </div>
 
             {weatherData.length > 0 && (
-              <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-body mb-4">Weather Impact Analysis</h3>
                 <WeatherImpactChart data={weatherData} height={250} />
               </div>
             )}
 
             {gameScriptData.length > 0 && gameScriptData[0] && (
-              <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <h3 className="text-lg font-semibold text-body mb-4">Game Script Performance</h3>
                 <GameScriptChart data={gameScriptData} height={250} />
               </div>
@@ -935,7 +935,7 @@ export function AdvancedAnalysisPage() {
             const domeVsOutdoor = wa?.dome_vs_outdoor && 'dome_performance' in wa.dome_vs_outdoor ? wa.dome_vs_outdoor : null
 
             return (
-              <div key={analysis.player.id} className="bg-surface rounded-lg border border-hairline p-6">
+              <div key={analysis.player.id} className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-lg font-semibold text-body">{analysis.player.name}</h3>
                   <span className={`px-2 py-1 text-sm rounded-full ${getPositionColor(analysis.player.position)}`}>
@@ -1177,7 +1177,7 @@ export function AdvancedAnalysisPage() {
       )}
 
       {/* Player Selection */}
-      <div className="bg-surface rounded-lg border border-hairline p-6">
+      <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
         <h2 className="text-lg font-semibold text-body mb-4">Player Selection</h2>
         
         {/* Search */}

@@ -530,7 +530,7 @@ export function WaiverWirePage() {
       {activeTab === 'recommendations' && (
         <div className="space-y-6">
           {/* Filters */}
-          <div className="bg-surface rounded-lg shadow p-6">
+          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Recommended claims</h3>
             <div className="flex flex-wrap gap-4 mb-4">
               <div>
@@ -606,7 +606,7 @@ export function WaiverWirePage() {
               {recommendations.map((rec) => {
                 const addCount = getAddCount(rec)
                 return (
-                  <div key={rec.player_id} className="bg-surface rounded-lg shadow p-6">
+                  <div key={rec.player_id} className="bg-surface rounded-lg shadow p-4 sm:p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
@@ -709,7 +709,7 @@ export function WaiverWirePage() {
       {activeTab === 'trending' && (
         <div className="space-y-6">
           {/* Trending Filters */}
-          <div className="bg-surface rounded-lg shadow p-6">
+          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Trending Players</h3>
             <div className="flex flex-wrap gap-4">
               <div>
@@ -819,7 +819,7 @@ export function WaiverWirePage() {
 
       {activeTab === 'alerts' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg shadow p-6">
+          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Waiver Wire Alerts</h3>
             <p className="text-sm text-muted mb-4">
               Real, backend-tracked notifications generated from genuine waiver-wire
@@ -867,7 +867,7 @@ export function WaiverWirePage() {
 
       {activeTab === 'streaming' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg shadow p-6">
+          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-1">Defense Streaming Targets — Week {currentWeek}</h3>
             <p className="text-sm text-muted mb-4">
               Ranked by how tough this week's matchup is, not by name recognition — the defenses opposing teams
@@ -927,7 +927,7 @@ export function WaiverWirePage() {
               {!!streamingData?.streaming_recommendations?.length && (
                 <div className="space-y-4">
                   {streamingData.streaming_recommendations.map((target) => (
-                    <div key={getTeamAbbr(target)} className="bg-surface rounded-lg shadow p-6">
+                    <div key={getTeamAbbr(target)} className="bg-surface rounded-lg shadow p-4 sm:p-6">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2 flex-wrap gap-y-1">
@@ -993,7 +993,7 @@ export function WaiverWirePage() {
               )}
 
               {!!streamingData?.defenses_to_avoid?.length && (
-                <div className="bg-surface rounded-lg shadow p-6">
+                <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
                   <h4 className="font-medium text-body mb-3 flex items-center space-x-2">
                     <NoSymbolIcon className="h-5 w-5 text-danger-500" />
                     <span>Defenses to Avoid This Week</span>
@@ -1022,7 +1022,7 @@ export function WaiverWirePage() {
           )}
 
           {/* Kicker matchup outlook -- smaller secondary section, same data source */}
-          <div className="bg-surface rounded-lg shadow p-6">
+          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h4 className="font-medium text-body mb-1">Kicker Matchup Outlook</h4>
             <p className="text-sm text-muted mb-4">Best and worst upcoming matchups for streaming a kicker.</p>
             {!kickerOutlook || kickerOutlook.error || !Object.keys(kickerOutlook.weekly_outlook || {}).length ? (
@@ -1069,7 +1069,7 @@ export function WaiverWirePage() {
 
       {activeTab === 'analyzer' && (
         <div className="space-y-6">
-          <div className="bg-surface rounded-lg shadow p-6">
+          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-4">Roster Add/Drop Analyzer</h3>
             <p className="text-sm text-muted mb-4">
               Enter your current roster player IDs to get personalized add/drop recommendations.
