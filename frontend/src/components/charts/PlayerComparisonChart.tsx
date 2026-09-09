@@ -1,5 +1,6 @@
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar, Legend, Tooltip } from 'recharts'
-import { PlayerComparisonData, CHART_COLORS } from './ChartTypes'
+import { PlayerComparisonData } from './ChartTypes'
+import { useChartColors, seriesColor } from '../../hooks/useChartColors'
 
 interface PlayerComparisonChartProps {
   data: PlayerComparisonData[]
@@ -20,6 +21,7 @@ interface ComparisonTooltipProps {
 }
 
 export function PlayerComparisonChart({ data, height = 400, showLegend = true }: PlayerComparisonChartProps) {
+  const colors = useChartColors()
   // Transform data for radar chart
   const radarData = [
     {
@@ -81,10 +83,7 @@ export function PlayerComparisonChart({ data, height = 400, showLegend = true }:
   ]
 
   // Generate colors for each player
-  const playerColors = data.map((_, index) => {
-    const colors = [CHART_COLORS.primary, CHART_COLORS.success, CHART_COLORS.warning, CHART_COLORS.danger, CHART_COLORS.info]
-    return colors[index % colors.length]
-  })
+  const playerColors = data.map((_, index) => seriesColor(colors, index))
 
   const CustomTooltip = ({ active, payload, label }: ComparisonTooltipProps) => {
     if (active && payload && payload.length) {
@@ -106,16 +105,16 @@ export function PlayerComparisonChart({ data, height = 400, showLegend = true }:
     <div className="w-full">
       <ResponsiveContainer width="100%" height={height}>
         <RadarChart data={radarData} margin={{ top: 20, right: 30, bottom: 20, left: 30 }}>
-          <PolarGrid stroke="#E5E7EB" />
-          <PolarAngleAxis 
-            dataKey="metric" 
-            tick={{ fontSize: 12, fill: '#6B7280' }}
+          <PolarGrid stroke={colors.grid} />
+          <PolarAngleAxis
+            dataKey="metric"
+            tick={{ fontSize: 12, fill: colors.textMuted }}
             className="text-xs"
           />
-          <PolarRadiusAxis 
-            angle={90} 
-            domain={[0, 100]} 
-            tick={{ fontSize: 10, fill: '#9CA3AF' }}
+          <PolarRadiusAxis
+            angle={90}
+            domain={[0, 100]}
+            tick={{ fontSize: 10, fill: colors.textFaint }}
             tickCount={5}
           />
           {data.map((player, index) => (
@@ -145,16 +144,17 @@ export function PlayerComparisonChart({ data, height = 400, showLegend = true }:
 
 // Bar chart for side-by-side comparison
 export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
+  const colors = useChartColors()
   // Transform data for bar chart comparison
   const metrics: Array<{
     key: 'projectedPoints' | 'consistency' | 'valueScore' | 'upsideRating'
     name: string
     color: string
   }> = [
-    { key: 'projectedPoints', name: 'Projected Points', color: CHART_COLORS.primary },
-    { key: 'consistency', name: 'Consistency (x10)', color: CHART_COLORS.success },
-    { key: 'valueScore', name: 'Value Score', color: CHART_COLORS.warning },
-    { key: 'upsideRating', name: 'Upside (x10)', color: CHART_COLORS.info }
+    { key: 'projectedPoints', name: 'Projected Points', color: seriesColor(colors, 0) },
+    { key: 'consistency', name: 'Consistency (x10)', color: seriesColor(colors, 1) },
+    { key: 'valueScore', name: 'Value Score', color: seriesColor(colors, 2) },
+    { key: 'upsideRating', name: 'Upside (x10)', color: seriesColor(colors, 4) }
   ]
 
   return (
@@ -180,7 +180,7 @@ export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
               return (
                 <div key={player.player} className="flex items-center space-x-3">
                   <div className="w-24 text-sm text-muted truncate">{player.player}</div>
-                  <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
+                  <div className="flex-1 bg-surface-2 rounded-full h-4 relative">
                     <div
                       className="h-4 rounded-full transition-all duration-300"
                       style={{

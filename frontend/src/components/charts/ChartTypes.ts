@@ -46,30 +46,10 @@ export interface SituationalData {
   player: string
 }
 
-interface ChartColors {
-  primary: string
-  secondary: string
-  success: string
-  warning: string
-  danger: string
-  info: string
-  light: string
-  dark: string
-}
-
-export const CHART_COLORS: ChartColors = {
-  primary: '#3B82F6',    // Blue
-  secondary: '#6B7280',  // Gray
-  success: '#10B981',    // Green
-  warning: '#F59E0B',    // Yellow
-  danger: '#EF4444',     // Red
-  info: '#06B6D4',       // Cyan
-  light: '#F3F4F6',      // Light Gray
-  dark: '#1F2937'        // Dark Gray
-}
-
-export const RISK_COLORS = {
-  LOW: '#10B981',       // Green
-  MEDIUM: '#F59E0B',    // Yellow
-  HIGH: '#EF4444'       // Red
-}
+/*
+ * Chart colors are theme-aware and live in src/index.css as design tokens
+ * (--viz-1..8 categorical palette + --viz-pos/-warn/-neg semantic scale,
+ * with distinct light and dark values). Read them at runtime via the
+ * `useChartColors()` hook in src/hooks/useChartColors.ts — Recharts needs
+ * resolved color strings, and hardcoded hex here never responded to dark mode.
+ */

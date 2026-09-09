@@ -1,5 +1,6 @@
 import { ResponsiveContainer, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, Line, ComposedChart } from 'recharts'
-import { ScheduleDifficultyData, CHART_COLORS } from './ChartTypes'
+import { ScheduleDifficultyData } from './ChartTypes'
+import { useChartColors, seriesColor } from '../../hooks/useChartColors'
 
 interface ScheduleDifficultyChartProps {
   data: ScheduleDifficultyData[]
@@ -21,6 +22,7 @@ interface ScheduleTooltipProps {
 }
 
 export function ScheduleDifficultyChart({ data, height = 300, showAverage = true }: ScheduleDifficultyChartProps) {
+  const colors = useChartColors()
   // Group data by player
   const playerData = data.reduce((acc, item) => {
     if (!acc[item.player]) {
@@ -59,10 +61,7 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
       return weekData
     })
 
-  const playerColors = Object.keys(playerData).map((_, index) => {
-    const colors = [CHART_COLORS.primary, CHART_COLORS.success, CHART_COLORS.warning, CHART_COLORS.danger, CHART_COLORS.info]
-    return colors[index % colors.length]
-  })
+  const playerColors = Object.keys(playerData).map((_, index) => seriesColor(colors, index))
 
   const CustomTooltip = ({ active, payload, label }: ScheduleTooltipProps) => {
     if (active && payload && payload.length) {
@@ -104,17 +103,17 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
     <div className="w-full">
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-          <XAxis 
-            dataKey="week" 
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
+          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+          <XAxis
+            dataKey="week"
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
           />
-          <YAxis 
+          <YAxis
             domain={[0, 10]}
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
-            label={{ value: 'Difficulty (1-10)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: 'Difficulty (1-10)', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: colors.textMuted } }}
           />
           
           {/* Player difficulty bars */}
@@ -133,10 +132,10 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
             <Line
               type="monotone"
               dataKey="average"
-              stroke="#6B7280"
+              stroke={colors.textMuted}
               strokeWidth={2}
               strokeDasharray="5 5"
-              dot={{ fill: '#6B7280', strokeWidth: 2, r: 4 }}
+              dot={{ fill: colors.textMuted, strokeWidth: 2, r: 4 }}
               name="Average"
             />
           )}
@@ -155,9 +154,9 @@ export function ScheduleDifficultyHeatmap({ data }: ScheduleDifficultyChartProps
   const weeks = Array.from(new Set(data.map(d => d.week))).sort((a, b) => a - b)
 
   const getDifficultyColor = (difficulty: number) => {
-    if (difficulty <= 3.5) return 'bg-green-200 text-green-800'
-    if (difficulty <= 6.5) return 'bg-yellow-200 text-yellow-800'
-    return 'bg-red-200 text-red-800'
+    if (difficulty <= 3.5) return 'bg-success-100 text-success-700'
+    if (difficulty <= 6.5) return 'bg-warning-100 text-warning-700'
+    return 'bg-danger-100 text-danger-700'
   }
 
   return (
@@ -200,15 +199,15 @@ export function ScheduleDifficultyHeatmap({ data }: ScheduleDifficultyChartProps
         {/* Legend */}
         <div className="mt-4 flex items-center justify-center space-x-6 text-xs">
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-green-200 rounded"></div>
+            <div className="w-3 h-3 bg-success-100 rounded"></div>
             <span>Easy (1-3.5)</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-yellow-200 rounded"></div>
+            <div className="w-3 h-3 bg-warning-100 rounded"></div>
             <span>Moderate (3.5-6.5)</span>
           </div>
           <div className="flex items-center space-x-1">
-            <div className="w-3 h-3 bg-red-200 rounded"></div>
+            <div className="w-3 h-3 bg-danger-100 rounded"></div>
             <span>Difficult (6.5-10)</span>
           </div>
         </div>

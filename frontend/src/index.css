@@ -56,6 +56,21 @@
   --field-line: #dcdcd4;
   --field-endzone: #edf3d6;
   --field-endzone-alt: #efefea;
+  /* data-viz categorical palette — tuned for legibility on --surface in this
+     theme. Max 8 series; consume via the useChartColors() hook (Recharts needs
+     resolved color values, not utility classes). --viz-pos / --viz-warn /
+     --viz-neg are the semantic good / caution / bad scale (risk tiers, deltas). */
+  --viz-1: #2563eb;
+  --viz-2: #0f9d58;
+  --viz-3: #d97706;
+  --viz-4: #dc2626;
+  --viz-5: #0891b2;
+  --viz-6: #7c3aed;
+  --viz-7: #db2777;
+  --viz-8: #b45309;
+  --viz-pos: #0f9d58;
+  --viz-warn: #d97706;
+  --viz-neg: #dc2626;
   color-scheme: light;
 }
 
@@ -86,6 +101,17 @@
     --field-line: #242428;
     --field-endzone: #15160a;
     --field-endzone-alt: #17171a;
+    --viz-1: #6ea8ff;
+    --viz-2: #4ade80;
+    --viz-3: #fbbf24;
+    --viz-4: #f87171;
+    --viz-5: #22d3ee;
+    --viz-6: #a78bfa;
+    --viz-7: #f472b6;
+    --viz-8: #e3b341;
+    --viz-pos: #4ade80;
+    --viz-warn: #fbbf24;
+    --viz-neg: #f87171;
     color-scheme: dark;
   }
 }
@@ -116,6 +142,17 @@
   --field-line: #242428;
   --field-endzone: #15160a;
   --field-endzone-alt: #17171a;
+  --viz-1: #6ea8ff;
+  --viz-2: #4ade80;
+  --viz-3: #fbbf24;
+  --viz-4: #f87171;
+  --viz-5: #22d3ee;
+  --viz-6: #a78bfa;
+  --viz-7: #f472b6;
+  --viz-8: #e3b341;
+  --viz-pos: #4ade80;
+  --viz-warn: #fbbf24;
+  --viz-neg: #f87171;
   color-scheme: dark;
 }
 

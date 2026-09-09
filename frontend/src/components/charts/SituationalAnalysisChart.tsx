@@ -1,5 +1,6 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, RadialBarChart, RadialBar, PieChart, Pie, Cell } from 'recharts'
-import { SituationalData, CHART_COLORS } from './ChartTypes'
+import { SituationalData } from './ChartTypes'
+import { useChartColors, seriesColor, type ChartColors } from '../../hooks/useChartColors'
 
 interface SituationalAnalysisChartProps {
   data: SituationalData[]
@@ -19,12 +20,27 @@ interface SituationalTooltipProps {
   label?: string | number
 }
 
-export function SituationalAnalysisChart({ 
-  data, 
+/** Shared Recharts tooltip chrome so the default box reads in dark mode. */
+function tooltipStyle(colors: ChartColors) {
+  return {
+    contentStyle: {
+      backgroundColor: colors.surface,
+      border: `1px solid ${colors.grid}`,
+      borderRadius: 8,
+      color: colors.text,
+    },
+    labelStyle: { color: colors.text },
+    itemStyle: { color: colors.textMuted },
+  }
+}
+
+export function SituationalAnalysisChart({
+  data,
   height = 300,
   chartType = 'bar'
 }: SituationalAnalysisChartProps) {
-  
+  const colors = useChartColors()
+
   // Transform data for different chart types
   const chartData = data.map(item => ({
     ...item,
@@ -37,12 +53,12 @@ export function SituationalAnalysisChart({
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
-        <div className="bg-surface p-3 border border-hairline rounded-lg">
+        <div className="bg-surface p-3 border border-hairline rounded-lg text-body">
           <p className="font-semibold text-body mb-2">{data.player}</p>
           <p className="text-sm">Situation: <span className="font-medium">{label}</span></p>
           <p className="text-sm">Home: <span className="font-medium">{data.home.toFixed(1)} pts</span></p>
           <p className="text-sm">Away: <span className="font-medium">{data.away.toFixed(1)} pts</span></p>
-          <p className="text-sm">Difference: <span className={`font-medium ${data.difference > 0 ? 'text-green-600' : 'text-red-600'}`}>
+          <p className="text-sm">Difference: <span className="font-medium" style={{ color: data.difference > 0 ? colors.pos : colors.neg }}>
             {data.difference > 0 ? '+' : ''}{data.difference.toFixed(1)} pts
           </span></p>
         </div>
@@ -65,18 +81,18 @@ export function SituationalAnalysisChart({
             <RadialBar
               dataKey="home"
               cornerRadius={10}
-              fill={CHART_COLORS.primary}
-              label={{ position: 'insideStart', fill: 'white', fontSize: 12 }}
+              fill={seriesColor(colors, 0)}
+              label={{ position: 'insideStart', fill: '#fff', fontSize: 12 }}
             />
             <RadialBar
               dataKey="away"
               cornerRadius={10}
-              fill={CHART_COLORS.secondary}
-              label={{ position: 'insideStart', fill: 'white', fontSize: 12 }}
+              fill={seriesColor(colors, 4)}
+              label={{ position: 'insideStart', fill: '#fff', fontSize: 12 }}
             />
-            <Legend 
+            <Legend
               iconSize={8}
-              wrapperStyle={{ fontSize: '12px', paddingTop: '20px' }}
+              wrapperStyle={{ fontSize: '12px', paddingTop: '20px', color: colors.textMuted }}
             />
             <Tooltip content={<CustomTooltip />} />
           </RadialBarChart>
@@ -95,7 +111,7 @@ export function SituationalAnalysisChart({
               {/* Home performance */}
               <div className="flex items-center space-x-3">
                 <div className="w-12 text-xs text-muted">Home</div>
-                <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
+                <div className="flex-1 bg-surface rounded-full h-6 relative border border-hairline">
                   <div
                     className="h-6 bg-accent-500 rounded-full transition-all duration-300"
                     style={{
@@ -107,13 +123,13 @@ export function SituationalAnalysisChart({
                   </span>
                 </div>
               </div>
-              
+
               {/* Away performance */}
               <div className="flex items-center space-x-3">
                 <div className="w-12 text-xs text-muted">Away</div>
-                <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
+                <div className="flex-1 bg-surface rounded-full h-6 relative border border-hairline">
                   <div
-                    className="h-6 bg-gray-500 rounded-full transition-all duration-300"
+                    className="h-6 bg-faint rounded-full transition-all duration-300"
                     style={{
                       width: `${Math.min((player.away / Math.max(player.home, player.away)) * 100, 100)}%`
                     }}
@@ -123,7 +139,7 @@ export function SituationalAnalysisChart({
                   </span>
                 </div>
               </div>
-              
+
               {/* Difference indicator */}
               <div className="flex items-center justify-between text-xs mt-2">
                 <span className="text-muted">Preference:</span>
@@ -146,24 +162,24 @@ export function SituationalAnalysisChart({
           data={chartData}
           margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-          <XAxis 
+          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+          <XAxis
             dataKey="player"
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
             angle={-45}
             textAnchor="end"
             height={80}
           />
-          <YAxis 
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
-            label={{ value: 'Fantasy Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+          <YAxis
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: 'Fantasy Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: colors.textMuted } }}
           />
-          <Bar dataKey="home" fill={CHART_COLORS.primary} name="Home" />
-          <Bar dataKey="away" fill={CHART_COLORS.secondary} name="Away" />
+          <Bar dataKey="home" fill={seriesColor(colors, 0)} name="Home" />
+          <Bar dataKey="away" fill={seriesColor(colors, 4)} name="Away" />
           <Tooltip content={<CustomTooltip />} />
-          <Legend />
+          <Legend wrapperStyle={{ color: colors.textMuted }} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -171,13 +187,15 @@ export function SituationalAnalysisChart({
 }
 
 // Weather impact visualization
-export function WeatherImpactChart({ 
-  data, 
-  height = 250 
-}: { 
+export function WeatherImpactChart({
+  data,
+  height = 250
+}: {
   data: Array<{player: string, outdoor: number, dome: number, weatherSensitivity: string}>,
-  height?: number 
+  height?: number
 }) {
+  const colors = useChartColors()
+
   const chartData = data.map(item => ({
     ...item,
     difference: item.dome - item.outdoor,
@@ -188,10 +206,10 @@ export function WeatherImpactChart({
 
   const getSensitivityColor = (sensitivity: string) => {
     switch (sensitivity.toUpperCase()) {
-      case 'LOW': return CHART_COLORS.success
-      case 'MEDIUM': return CHART_COLORS.warning
-      case 'HIGH': return CHART_COLORS.danger
-      default: return CHART_COLORS.secondary
+      case 'LOW': return colors.pos
+      case 'MEDIUM': return colors.warn
+      case 'HIGH': return colors.neg
+      default: return colors.textMuted
     }
   }
 
@@ -199,30 +217,33 @@ export function WeatherImpactChart({
     <div className="w-full">
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 40 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-          <XAxis 
+          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+          <XAxis
             dataKey="player"
-            tick={{ fontSize: 12, fill: '#6B7280' }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
             angle={-45}
             textAnchor="end"
             height={60}
           />
-          <YAxis 
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            label={{ value: 'Fantasy Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+          <YAxis
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: 'Fantasy Points', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: colors.textMuted } }}
           />
-          <Bar dataKey="outdoor" fill="#94A3B8" name="Outdoor" />
-          <Bar dataKey="dome" fill="#3B82F6" name="Dome" />
+          <Bar dataKey="outdoor" fill={seriesColor(colors, 4)} name="Outdoor" />
+          <Bar dataKey="dome" fill={seriesColor(colors, 0)} name="Dome" />
           <Tooltip
+            cursor={{ fill: colors.grid, fillOpacity: 0.3 }}
             content={({ active, payload, label }: { active?: boolean; payload?: Array<{ payload: WeatherChartDatum }>; label?: string | number }) => {
               if (active && payload && payload.length) {
                 const data = payload[0].payload
                 return (
-                  <div className="bg-surface p-3 border border-hairline rounded-lg">
+                  <div className="bg-surface p-3 border border-hairline rounded-lg text-body">
                     <p className="font-semibold text-body mb-2">{label}</p>
                     <p className="text-sm">Outdoor: <span className="font-medium">{data.outdoor.toFixed(1)} pts</span></p>
                     <p className="text-sm">Dome: <span className="font-medium">{data.dome.toFixed(1)} pts</span></p>
-                    <p className="text-sm">Weather Sensitivity: <span 
+                    <p className="text-sm">Weather Sensitivity: <span
                       className="font-medium"
                       style={{ color: getSensitivityColor(data.weatherSensitivity) }}
                     >
@@ -234,7 +255,7 @@ export function WeatherImpactChart({
               return null
             }}
           />
-          <Legend />
+          <Legend wrapperStyle={{ color: colors.textMuted }} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -242,21 +263,23 @@ export function WeatherImpactChart({
 }
 
 // Game script analysis pie chart
-export function GameScriptChart({ 
+export function GameScriptChart({
   data,
   height = 250
-}: { 
+}: {
   data: Array<{player: string, leading: number, trailing: number, close: number}>,
-  height?: number 
+  height?: number
 }) {
+  const colors = useChartColors()
+
   if (data.length === 0) return null
 
   // Use first player's data for pie chart (can be enhanced to show multiple players)
   const player = data[0]
   const pieData = [
-    { name: 'Leading Games', value: player.leading, fill: CHART_COLORS.success },
-    { name: 'Trailing Games', value: player.trailing, fill: CHART_COLORS.danger },
-    { name: 'Close Games', value: player.close, fill: CHART_COLORS.warning }
+    { name: 'Leading Games', value: player.leading, fill: colors.pos },
+    { name: 'Trailing Games', value: player.trailing, fill: colors.neg },
+    { name: 'Close Games', value: player.close, fill: colors.warn }
   ]
 
   return (
@@ -272,6 +295,7 @@ export function GameScriptChart({
             outerRadius={80}
             paddingAngle={5}
             dataKey="value"
+            stroke={colors.surface}
             label={({ name, value }) => `${name}: ${value?.toFixed(1) || 'N/A'}`}
             labelLine={false}
           >
@@ -280,9 +304,10 @@ export function GameScriptChart({
             ))}
           </Pie>
           <Tooltip
+            {...tooltipStyle(colors)}
             formatter={(value: number) => [`${value.toFixed(1)} pts`, '']}
           />
-          <Legend />
+          <Legend wrapperStyle={{ color: colors.textMuted }} />
         </PieChart>
       </ResponsiveContainer>
     </div>

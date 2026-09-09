@@ -1,5 +1,6 @@
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Cell } from 'recharts'
-import { BreakoutCandidateData, CHART_COLORS, RISK_COLORS } from './ChartTypes'
+import { BreakoutCandidateData } from './ChartTypes'
+import { useChartColors, seriesColor, probabilityColor } from '../../hooks/useChartColors'
 
 interface BreakoutCandidateChartProps {
   data: BreakoutCandidateData[]
@@ -13,13 +14,14 @@ interface BreakoutTooltipProps {
   payload?: Array<{ payload: BreakoutCandidateData & { x: number; y: number; z: number; index: number } }>
 }
 
-export function BreakoutCandidateChart({ 
-  data, 
-  height = 400, 
-  xAxis = 'ownership', 
-  yAxis = 'probability' 
+export function BreakoutCandidateChart({
+  data,
+  height = 400,
+  xAxis = 'ownership',
+  yAxis = 'probability'
 }: BreakoutCandidateChartProps) {
-  
+  const colors = useChartColors()
+
   // Transform data for scatter plot
   const chartData = data.map((candidate, index) => ({
     ...candidate,
@@ -41,19 +43,13 @@ export function BreakoutCandidateChart({
     }
   }
 
-  const getProbabilityColor = (probability: number) => {
-    if (probability >= 0.7) return RISK_COLORS.LOW    // High probability = green
-    if (probability >= 0.5) return RISK_COLORS.MEDIUM // Medium probability = yellow
-    return RISK_COLORS.HIGH                           // Low probability = red
-  }
-
   const CustomTooltip = ({ active, payload }: BreakoutTooltipProps) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
         <div className="bg-surface p-3 border border-hairline rounded-lg">
           <p className="font-semibold text-body mb-2">{data.player}</p>
-          <div className="space-y-1 text-sm">
+          <div className="space-y-1 text-sm text-body">
             <p>Breakout Probability: <span className="font-medium">{(data.probability * 100).toFixed(1)}%</span></p>
             <p>Age: <span className="font-medium">{data.age || 'N/A'}</span></p>
             <p>Ownership: <span className="font-medium">{data.ownership?.toFixed(1) || '0'}%</span></p>
@@ -74,33 +70,33 @@ export function BreakoutCandidateChart({
           data={chartData}
           margin={{ top: 20, right: 30, bottom: 40, left: 40 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-          <XAxis 
+          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+          <XAxis
             type="number"
             dataKey="x"
             name={getAxisLabel(xAxis)}
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
-            label={{ value: getAxisLabel(xAxis), position: 'insideBottom', offset: -20, style: { textAnchor: 'middle' } }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: getAxisLabel(xAxis), position: 'insideBottom', offset: -20, style: { textAnchor: 'middle', fill: colors.textMuted } }}
           />
-          <YAxis 
+          <YAxis
             type="number"
             dataKey="y"
             name={getAxisLabel(yAxis)}
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
-            label={{ value: getAxisLabel(yAxis), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: getAxisLabel(yAxis), angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: colors.textMuted } }}
             domain={yAxis === 'probability' ? [0, 1] : undefined}
           />
           <Tooltip content={<CustomTooltip />} />
           <Scatter
             dataKey="y"
-            fill={CHART_COLORS.primary}
+            fill={seriesColor(colors, 0)}
           >
             {chartData.map((entry, index) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={getProbabilityColor(entry.probability)}
+              <Cell
+                key={`cell-${index}`}
+                fill={probabilityColor(colors, entry.probability)}
               />
             ))}
           </Scatter>
@@ -112,6 +108,8 @@ export function BreakoutCandidateChart({
 
 // Bubble chart version with three dimensions
 export function BreakoutCandidateBubbleChart({ data, height = 400 }: BreakoutCandidateChartProps) {
+  const colors = useChartColors()
+
   const chartData = data.map((candidate, index) => ({
     ...candidate,
     x: candidate.ownership || 0,
@@ -126,7 +124,7 @@ export function BreakoutCandidateBubbleChart({ data, height = 400 }: BreakoutCan
       return (
         <div className="bg-surface p-3 border border-hairline rounded-lg">
           <p className="font-semibold text-body mb-2">{data.player}</p>
-          <div className="space-y-1 text-sm">
+          <div className="space-y-1 text-sm text-body">
             <p>Breakout Probability: <span className="font-medium">{(data.probability * 100).toFixed(1)}%</span></p>
             <p>Ownership: <span className="font-medium">{data.ownership?.toFixed(1) || '0'}%</span></p>
             <p>Target Share: <span className="font-medium">{data.targetShare?.toFixed(1) || '0'}%</span> (bubble size)</p>
@@ -148,58 +146,51 @@ export function BreakoutCandidateBubbleChart({ data, height = 400 }: BreakoutCan
           data={chartData}
           margin={{ top: 20, right: 30, bottom: 40, left: 40 }}
         >
-          <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-          <XAxis 
+          <CartesianGrid strokeDasharray="3 3" stroke={colors.grid} />
+          <XAxis
             type="number"
             dataKey="x"
             name="Ownership %"
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
-            label={{ value: 'Ownership %', position: 'insideBottom', offset: -20, style: { textAnchor: 'middle' } }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: 'Ownership %', position: 'insideBottom', offset: -20, style: { textAnchor: 'middle', fill: colors.textMuted } }}
           />
-          <YAxis 
+          <YAxis
             type="number"
             dataKey="y"
             name="Breakout Probability"
             domain={[0, 1]}
-            tick={{ fontSize: 12, fill: '#6B7280' }}
-            axisLine={{ stroke: '#D1D5DB' }}
-            label={{ value: 'Breakout Probability', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle' } }}
+            tick={{ fontSize: 12, fill: colors.textMuted }}
+            axisLine={{ stroke: colors.axis }}
+            label={{ value: 'Breakout Probability', angle: -90, position: 'insideLeft', style: { textAnchor: 'middle', fill: colors.textMuted } }}
           />
           <Tooltip content={<CustomTooltip />} />
           <Scatter dataKey="y">
             {chartData.map((entry, index) => (
-              <Cell 
-                key={`cell-${index}`} 
-                fill={getProbabilityColor(entry.probability)}
+              <Cell
+                key={`cell-${index}`}
+                fill={probabilityColor(colors, entry.probability)}
               />
             ))}
           </Scatter>
         </ScatterChart>
       </ResponsiveContainer>
-      
+
       {/* Legend */}
-      <div className="mt-4 flex items-center justify-center space-x-6 text-xs">
+      <div className="mt-4 flex items-center justify-center space-x-6 text-xs text-muted">
         <div className="flex items-center space-x-1">
-          <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: colors.pos }}></div>
           <span>High Probability (70%+)</span>
         </div>
         <div className="flex items-center space-x-1">
-          <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: colors.warn }}></div>
           <span>Medium Probability (50-70%)</span>
         </div>
         <div className="flex items-center space-x-1">
-          <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: colors.neg }}></div>
           <span>Low Probability (&lt;50%)</span>
         </div>
       </div>
     </div>
   )
-}
-
-// Helper function to get color based on probability
-function getProbabilityColor(probability: number): string {
-  if (probability >= 0.7) return RISK_COLORS.LOW
-  if (probability >= 0.5) return RISK_COLORS.MEDIUM
-  return RISK_COLORS.HIGH
 }
