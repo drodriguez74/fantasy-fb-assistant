@@ -1,10 +1,12 @@
 # Handoff (2026-09-08, session 10) — draft teardown COMPLETE (backend + frontend)
 
 **CURRENT STATUS:** working tree clean except the untracked `Optis_*` / `ProBowl_*`
-spreadsheets (left alone on purpose). All pushed through `fb37f71`.
+spreadsheets (left alone on purpose). All work pushed to `main`.
 Backend tests 102 pass; frontend build + lint clean (1 pre-existing useAuth.tsx
-lint error unchanged). Draft-assistant teardown done (backend + frontend);
-nav re-cut done; ESPN analysis speed pass done (see below).
+lint error unchanged). This session (10): draft-assistant teardown done
+(backend + frontend); nav re-cut done; ESPN analysis speed pass done;
+`pool_pre_ping` added to the DB engine. **Next session: deploy backend to
+Render — full plan below.**
 
 Note: `test_auth.py::test_user_registration` flakes in the full-suite run
 (passes in isolation and on re-run) — a pre-existing test-isolation issue,
@@ -26,11 +28,63 @@ ngrok/cloudflare tunnel so login + ESPN could be tested against production.
 - Cleaned up: tunnels killed, `VITE_API_URL` removed from Vercel, prod
   redeployed to the prior state (defaults to `localhost:8000`, i.e. deployed
   site still has no working backend).
-- **Real path forward:** deploy the backend to Railway/Render (a normal
-  `*.up.railway.app` / `*.onrender.com` host isn't DNS-filtered like tunnels).
-  `vercel link` is done at repo root + `frontend/` (`.vercel/` gitignored);
-  the Vercel project already has DATABASE_URL / OPENAI_API_KEY / CORS_ORIGINS /
-  SECRET_KEY etc. set as env vars from a prior setup attempt.
+---
+
+## NEXT SESSION — deploy the FastAPI backend to Render
+
+Founder set up a **Render account** (2026-09-08) for this. Goal: a real
+public backend URL so the deployed Vercel frontend can do login + ESPN
+against production (tunnels are DNS-blocked on this network —
+[[project_tunnel_domains_blocked]]).
+
+**What's already in place:**
+- `backend/Dockerfile` exists (python:3.11-slim, installs `requirements.txt`,
+  runs `uvicorn app.main:app`). **One edit needed:** the `CMD` hardcodes
+  `--port 8000`; Render injects `$PORT` — change to
+  `CMD ["sh","-c","uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]`.
+- No `.dockerignore` — add one (`.env`, `venv/`, `__pycache__/`, `*.db*`,
+  `.git/`) so local secrets/junk don't get baked into the image.
+- App is stateless HTTP (no websockets/celery), CORS middleware reads
+  `settings.CORS_ORIGINS`, engine now has `pool_pre_ping` (session 10).
+- Health check path for Render: `GET /` (returns JSON 200).
+- DB is Supabase; `backend/.env` `DATABASE_URL` currently uses the pooler
+  host on `:5432`. For Render, consider Supabase's transaction-pooler
+  (`:6543`, `?pgbouncer=true`) — but pgbouncer transaction mode breaks
+  `pool_pre_ping`/prepared statements, so simplest is session-pooler `:5432`
+  (what we have) with the SQLAlchemy pool kept small.
+
+**Render setup steps:**
+1. New → Web Service → connect the GitHub repo, **root directory `backend/`**,
+   environment **Docker** (it'll find `backend/Dockerfile`). Free instance type.
+2. Set env vars from `backend/.env` — the load-bearing ones: `DATABASE_URL`,
+   `SECRET_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`
+   (if used), all `SUPABASE_*`, `CORS_ORIGINS`, `FANTASYPROS_API_KEY` (if set),
+   any `SMTP_*`. **Set `CORS_ORIGINS` to include the real Vercel URL**
+   `https://fantasy-fb-assistant.vercel.app` (it already does locally).
+3. Deploy. Note the URL (`https://<name>.onrender.com`). Hit
+   `/docs` and `/api/v1/auth/me` (with a minted token) to smoke-test.
+4. Run migrations once: `alembic upgrade head` — either via a Render "Job"
+   / shell, or confirm the DB is already migrated (it's the same Supabase DB
+   we run locally, so it already is — probably a no-op).
+5. **Vercel:** `vercel env add VITE_API_URL production` →
+   `https://<name>.onrender.com/api/v1` (must include `/api/v1`), then
+   `vercel deploy --prod` from the **repo root** (Vercel root dir is
+   `frontend/`, so deploying from inside `frontend/` fails with a
+   double-path error — deploy from repo root, `.vercel/` is linked there).
+6. Test on `https://fantasy-fb-assistant.vercel.app`: login with
+   `demo@test.com` / `Password123`, then This Week / Waivers / Trades on the
+   demo league (id 1, real ESPN "Optis Titans").
+
+**Caveats:** Render free web services **spin down after ~15 min idle** →
+first request after cold start takes ~30-60s. Fine for testing, annoying for
+a demo. Also free tier = 750 instance-hours/mo (one service ≈ always-on is
+within budget if it sleeps).
+
+`vercel link` is already done at repo root + `frontend/` (`.vercel/`
+gitignored). The **frontend** Vercel project also has a stale set of backend
+env vars (DATABASE_URL, OPENAI_API_KEY, etc.) from an earlier abandoned
+"backend on Vercel" attempt — harmless (unused, no `api/` dir), ignore or
+delete them.
 
 **Frontend teardown shipped as `fb37f71`:**
 - deleted `DraftPage.tsx`, `LiveDraftPage.tsx`, `components/draft/`
