@@ -21,12 +21,14 @@ and frontend.
   (LeaguesPage doesn't read `?welcome=1` yet — harmless no-op, worth wiring later)
 - Verified: DraftPage/LiveDraftPage chunks gone from the build output.
 
-**NEXT — the fuller nav re-cut (design task, separate commit, NOT started):**
-top nav → This Week · Leagues · Waivers · Trades · Players; Post-Draft + Draft
-History + Historical → a "Reports" area; Blog merged into Content. See the
-"The Season Is the Product" artifact for rationale.
+**Nav re-cut DONE as `804757e` (session 10):** top nav = This Week · Leagues ·
+Waivers · Trades · Players; "More" = Reports · Content · Analytics · Advanced
+Analysis. New `ThisWeekRedirectPage` (`/this-week` → first league's This Week
+tab, or `/leagues`), new `ReportsPage` (`/reports` hub for Post-Draft / Draft
+History / Historical). Blog dropped from nav; ContentPage links to `/blog`.
+Build + lint clean, verified in browser.
 
-**Then the ranked in-season backlog** (from the artifact): 1) weekly digest
+**NEXT — the ranked in-season backlog** (from the artifact): 1) weekly digest
 notification/email cadence, 2) kill the mock news scraper (`scraper_service`
 fabricates news/trending on live paths), 3) waiver claim planner w/ FAAB,
 4) optimizer v2 + start/sit confidence, 5) trade finder, 6) Sleeper league
