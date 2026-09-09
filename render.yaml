@@ -1,0 +1,52 @@
+# Render Blueprint for the Fantasy Football Assistant backend.
+# New > Blueprint > connect this repo; Render reads this file.
+# Secret values are set in the dashboard (sync: false) — copy them from
+# backend/.env. Do NOT put secrets in this file.
+services:
+  - type: web
+    name: fantasy-fb-assistant-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CORS_ORIGINS
+        value: https://fantasy-fb-assistant.vercel.app,http://localhost:3001,http://127.0.0.1:3001
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: SUPABASE_PUBLISHABLE_KEY
+        sync: false
+      - key: SUPABASE_JWKS_URL
+        sync: false
+      - key: SUPABASE_PROJECT_ID
+        sync: false
+      - key: ESPN_LEAGUE_ID
+        sync: false
+      - key: ESPN_SEASON
+        sync: false
+      - key: ESPN_SWID
+        sync: false
+      - key: ESPN_S2
+        sync: false
+      - key: YAHOO_CLIENT_ID
+        sync: false
+      - key: YAHOO_CLIENT_SECRET
+        sync: false
+      - key: YAHOO_SEASON
+        sync: false
+      - key: YAHOO_REDIRECT_URI
+        value: https://fantasy-fb-assistant.vercel.app/yahoo/callback
