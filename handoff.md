@@ -1,4 +1,47 @@
-# Handoff (2026-09-08, session 11) — Render backend deploy + mobile responsive pass
+# Handoff (2026-09-09, session 11) — Render deploy, mobile pass, snapshot cache, ESPN-parity polish
+
+**Snapshot cache (stale-while-revalidate)** shipped: new `league_snapshots`
+table (migration `a1b2c3d4e5f6`, ALREADY applied to Supabase — Render shares
+that DB so no deploy-time migration needed). `app/services/snapshot_cache.py`
+`serve_swr()` + `app/services/league_snapshots.py` builders. Wired into
+`/leagues/{id}/this-week`, `/roster-analysis`, `/standings` — they serve a
+stored JSON copy instantly and background-refresh when stale (TTL: this_week
+180s, others 900s). `?refresh=1` forces live. Response body gains a `_cache`
+block. Frontend LeagueDetailPage: Refresh button forces live; This Week
+re-fetches once 7s after a stale response; "UPDATED Nm AGO · SYNCING" line.
+Measured: cache hit ~0.2s vs 1.5–3s fresh.
+
+**ESPN-parity visual polish** shipped (scope chosen: logos+headshots+badges,
+not the full H2H rebuild): `<PlayerAvatar>` (ESPN headshot + team-logo corner
+badge, position-monogram fallback), `injuryTag()` in playerDisplay.ts
+(Q/D/O/IR/SUS/PUP/DTD). Wired into This Week rows + roster tab. Backend added
+`player_id` to `get_week_matchup` per-player payload.
+NOTE the bigger ESPN gap still open: side-by-side H2H matchup layout (my
+starters vs opponent's — `get_week_matchup` ALREADY returns `opponent_lineup`,
+just unused), win-probability, live in-game scoring, kickoff times (needs the
+`nfl_schedule` table). User wants to keep closing this gap.
+
+**Mobile responsive pass** shipped earlier this session: headers stack below
+`sm`, tab strips scroll (`.no-scrollbar`), `flex-wrap` button rows, card
+padding `p-4 sm:p-6`, `body{overflow-x:hidden}`, This Week scoreboard reworked
+(smaller fonts, break-words, min-w-0). Device-checked by the user via
+screenshots — This Week scoreboard was the main fix.
+
+**Render backend LIVE:** `https://fantasy-fb-assistant.onrender.com`
+(`fcea809` Dockerfile $PORT + `.dockerignore`, `425a27d` render.yaml + pool).
+Free tier → ~30-60s cold start. `render.yaml` has `autoDeploy: true`.
+
+**Vercel:** `VITE_API_URL=https://fantasy-fb-assistant.onrender.com/api/v1`
+set in Production; git push triggers the build that bakes it in. Verified the
+live bundle points at onrender.
+
+**Demo login:** Supabase has ONE user `demo@test.com` (id 1); password hash
+matches none of the documented ones — founder logged in so they know it, or
+reset via the one-liner in chat.
+
+---
+
+# Handoff (2026-09-08, session 11 start) — Render backend deploy + mobile responsive pass
 
 **Render backend is LIVE:** `https://fantasy-fb-assistant.onrender.com` (health `/`
 200, `/docs` 200, DB connected — login returns 401 not 503). Commits: `fcea809`
