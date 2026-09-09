@@ -89,8 +89,8 @@ export function PlayerComparisonChart({ data, height = 400, showLegend = true }:
   const CustomTooltip = ({ active, payload, label }: ComparisonTooltipProps) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900">{label}</p>
+        <div className="bg-surface p-3 border border-hairline rounded-lg">
+          <p className="font-semibold text-body">{label}</p>
           {payload.map((entry, index: number) => (
             <p key={`tooltip-${entry.dataKey}-${index}`} style={{ color: entry.color }} className="text-sm">
               {entry.dataKey}: {entry.value.toFixed(1)}
@@ -160,8 +160,8 @@ export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
   return (
     <div className="space-y-6">
       {metrics.map((metric) => (
-        <div key={metric.key} className="bg-gray-50 p-4 rounded-lg">
-          <h4 className="text-sm font-medium text-gray-900 mb-3">{metric.name}</h4>
+        <div key={metric.key} className="bg-surface-2 p-4 rounded-lg">
+          <h4 className="text-sm font-medium text-body mb-3">{metric.name}</h4>
           <div className="space-y-2">
             {data.map((player) => {
               let value = player[metric.key] || 0
@@ -179,7 +179,7 @@ export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
 
               return (
                 <div key={player.player} className="flex items-center space-x-3">
-                  <div className="w-24 text-sm text-gray-700 truncate">{player.player}</div>
+                  <div className="w-24 text-sm text-muted truncate">{player.player}</div>
                   <div className="flex-1 bg-gray-200 rounded-full h-4 relative">
                     <div
                       className="h-4 rounded-full transition-all duration-300"
@@ -188,7 +188,7 @@ export function PlayerComparisonBarChart({ data }: PlayerComparisonChartProps) {
                         backgroundColor: metric.color
                       }}
                     />
-                    <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900">
+                    <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-body">
                       {value.toFixed(1)}
                     </span>
                   </div>

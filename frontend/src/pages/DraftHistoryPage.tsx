@@ -20,16 +20,16 @@ import { positionColors } from '../components/players/playerDisplay'
 // follows the existing convention rather than introducing a new shared util.
 const GRADE_BADGE_COLORS: Record<string, string> = {
   A: 'bg-success-100 text-success-800',
-  B: 'bg-accent-100 text-accent-800',
+  B: 'bg-highlight text-accent-ink',
   C: 'bg-warning-100 text-warning-800',
-  D: 'bg-orange-100 text-orange-800',
+  D: 'bg-warning-100 text-warning-800',
   F: 'bg-danger-100 text-danger-800',
 }
 
 function getGradeBadgeColor(grade: string | null | undefined): string {
-  if (!grade) return 'bg-ink-100 text-ink-500'
+  if (!grade) return 'bg-surface-2 text-muted'
   const base = grade.trim().charAt(0).toUpperCase()
-  return GRADE_BADGE_COLORS[base] || 'bg-ink-100 text-ink-700'
+  return GRADE_BADGE_COLORS[base] || 'bg-surface-2 text-body'
 }
 
 // draft_settings comes back as a loosely-typed object (it's whatever the
@@ -132,8 +132,8 @@ export function DraftHistoryPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Draft History</h1>
-        <p className="text-ink-600 mt-2">Past mock drafts and how they graded out</p>
+        <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Draft History</h1>
+        <p className="text-muted mt-2">Past mock drafts and how they graded out</p>
       </div>
 
       {error && (
@@ -145,18 +145,18 @@ export function DraftHistoryPage() {
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-500"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-ink"></div>
         </div>
       ) : sortedSessions.length === 0 ? (
-        <div className="bg-white rounded-lg border border-ink-200 shadow-sm text-center py-12">
-          <div className="text-ink-400 text-6xl mb-4">🏈</div>
-          <h3 className="text-xl font-semibold text-ink-900 mb-2">No mock drafts yet</h3>
-          <p className="text-ink-500 mb-6">
+        <div className="bg-surface rounded-lg border border-hairline text-center py-12">
+          <div className="text-faint text-6xl mb-4"></div>
+          <h3 className="text-xl font-semibold text-body mb-2">No mock drafts yet</h3>
+          <p className="text-muted mb-6">
             Finish a mock draft to see your grade and roster breakdown here.
           </p>
           <Link
             to="/draft"
-            className="inline-flex items-center px-4 py-2 bg-accent-500 text-white text-sm font-medium rounded-md hover:bg-accent-600 transition-colors"
+            className="inline-flex items-center px-4 py-2 bg-volt text-volt-ink text-sm font-medium rounded-md hover:bg-volt-dark transition-colors"
           >
             Start a mock draft
           </Link>
@@ -172,12 +172,12 @@ export function DraftHistoryPage() {
             return (
               <div
                 key={session.session_id}
-                className="bg-white rounded-lg border border-ink-200 shadow-sm overflow-hidden"
+                className="bg-surface rounded-lg border border-hairline overflow-hidden"
               >
                 <button
                   type="button"
                   onClick={() => toggleSession(session.session_id)}
-                  className="w-full flex items-center justify-between gap-4 p-4 text-left hover:bg-ink-50 transition-colors"
+                  className="w-full flex items-center justify-between gap-4 p-4 text-left hover:bg-surface-2 transition-colors"
                   aria-expanded={isExpanded}
                 >
                   <div className="flex items-center gap-4 min-w-0">
@@ -187,10 +187,10 @@ export function DraftHistoryPage() {
                       {session.draft_grade || '?'}
                     </div>
                     <div className="min-w-0">
-                      <div className="font-medium text-ink-900 truncate">
+                      <div className="font-medium text-body truncate">
                         {formatSettingsSummary(session.draft_settings)}
                       </div>
-                      <div className="text-sm text-ink-500">
+                      <div className="text-sm text-muted">
                         {formatDate(session.completed_at || session.started_at)}
                         {!session.is_completed && (
                           <span className="ml-2 text-warning-700 font-medium">In progress</span>
@@ -199,18 +199,18 @@ export function DraftHistoryPage() {
                     </div>
                   </div>
                   {isExpanded ? (
-                    <ChevronUpIcon className="h-5 w-5 text-ink-400 shrink-0" />
+                    <ChevronUpIcon className="h-5 w-5 text-faint shrink-0" />
                   ) : (
-                    <ChevronDownIcon className="h-5 w-5 text-ink-400 shrink-0" />
+                    <ChevronDownIcon className="h-5 w-5 text-faint shrink-0" />
                   )}
                 </button>
 
                 {isExpanded && (
-                  <div className="border-t border-ink-200 p-4">
+                  <div className="border-t border-hairline p-4">
                     {isDetailLoading ? (
                       <div className="flex items-center gap-3 py-4">
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent-500"></div>
-                        <p className="text-sm text-ink-600">Loading draft details...</p>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-accent-ink"></div>
+                        <p className="text-sm text-muted">Loading draft details...</p>
                       </div>
                     ) : detailError ? (
                       <div className="flex items-start justify-between gap-4 flex-wrap">
@@ -228,24 +228,24 @@ export function DraftHistoryPage() {
                     ) : detail ? (
                       <div className="space-y-4">
                         {detail.final_analysis && (
-                          <p className="text-sm text-ink-700 bg-ink-50 rounded-md p-3 border border-ink-100">
+                          <p className="text-sm text-body bg-surface-2 rounded-md p-3 border border-hairline">
                             {detail.final_analysis}
                           </p>
                         )}
 
                         {typeof detail.composition_score === 'number' && (
-                          <div className="flex items-center gap-2 text-sm text-ink-600">
-                            <TrophyIcon className="h-4 w-4 text-accent-500" />
-                            Composition score: <span className="font-stat tabular-nums font-medium text-ink-900">{detail.composition_score}/100</span>
+                          <div className="flex items-center gap-2 text-sm text-muted">
+                            <TrophyIcon className="h-4 w-4 text-accent-ink" />
+                            Composition score: <span className="font-stat tabular-nums font-medium text-body">{detail.composition_score}/100</span>
                           </div>
                         )}
 
                         <div>
-                          <h4 className="text-sm font-semibold text-ink-900 mb-2">
+                          <h4 className="text-sm font-semibold text-body mb-2">
                             Your Roster ({detail.user_roster.length})
                           </h4>
                           {detail.user_roster.length === 0 ? (
-                            <p className="text-sm text-ink-500">No drafted players recorded for this session.</p>
+                            <p className="text-sm text-muted">No drafted players recorded for this session.</p>
                           ) : (
                             <div className="max-h-64 overflow-y-auto space-y-1.5">
                               {[...detail.user_roster]
@@ -253,22 +253,22 @@ export function DraftHistoryPage() {
                                 .map((player) => (
                                   <div
                                     key={`${player.sleeper_id}-${player.pick}`}
-                                    className="flex items-center justify-between gap-2 p-2 bg-ink-50 rounded text-sm"
+                                    className="flex items-center justify-between gap-2 p-2 bg-surface-2 rounded text-sm"
                                   >
                                     <div className="flex items-center gap-2 min-w-0">
-                                      <span className="text-xs text-ink-500 shrink-0 w-20">
+                                      <span className="text-xs text-muted shrink-0 w-20">
                                         Rd {player.round} &middot; #{player.pick}
                                       </span>
-                                      <span className="font-medium text-ink-900 truncate">{player.full_name}</span>
+                                      <span className="font-medium text-body truncate">{player.full_name}</span>
                                       <span
                                         className={`px-1.5 py-0.5 rounded text-xs font-medium shrink-0 ${
-                                          positionColors[player.position as keyof typeof positionColors] || 'bg-ink-100 text-ink-800'
+                                          positionColors[player.position as keyof typeof positionColors] || 'bg-surface-2 text-body'
                                         }`}
                                       >
                                         {player.position}
                                       </span>
                                     </div>
-                                    <span className="text-xs text-ink-500 shrink-0">{player.team}</span>
+                                    <span className="text-xs text-muted shrink-0">{player.team}</span>
                                   </div>
                                 ))}
                             </div>

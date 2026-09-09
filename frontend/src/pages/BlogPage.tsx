@@ -136,7 +136,7 @@ export function BlogPage() {
     // reports are the one genuine exception: injury status is real
     // categorical status elsewhere in the app too.
     if (category === 'injury_report') return 'bg-danger-100 text-danger-800'
-    return 'bg-ink-100 text-ink-700'
+    return 'bg-surface-2 text-body'
   }
 
   const getCategoryName = (category: string) => {
@@ -166,17 +166,17 @@ export function BlogPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Fantasy Football Blog</h1>
-          <p className="text-ink-600 mt-2">
-            Fantasy insights and analysis — player deep-dives and injury reports are AI-generated;
-            rankings, waiver targets, and other content are built from live data
+          <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Analysis &amp; Rankings</h1>
+          <p className="text-muted mt-2">
+            Player deep-dives and injury reports are AI-written. Rankings and waiver targets are
+            computed from live usage data. Every piece is dated.
           </p>
         </div>
 
         {user && (
           <div className="flex items-center space-x-2">
-            <SparklesIcon className="h-5 w-5 text-accent-600" />
-            <span className="text-sm text-ink-600">Content Generation Available</span>
+            <SparklesIcon className="h-5 w-5 text-accent-ink" />
+            <span className="text-sm text-muted">Generation on</span>
           </div>
         )}
       </div>
@@ -199,7 +199,7 @@ export function BlogPage() {
         <select
           value={selectedCategory}
           onChange={(e) => setSelectedCategory(e.target.value)}
-          className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+          className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
         >
           {categories.map(category => (
             <option key={category} value={category}>
@@ -209,23 +209,23 @@ export function BlogPage() {
         </select>
 
         <div className="relative flex-1">
-          <MagnifyingGlassIcon className="absolute left-3 top-3 h-4 w-4 text-ink-400" />
+          <MagnifyingGlassIcon className="absolute left-3 top-3 h-4 w-4 text-faint" />
           <input
             type="text"
             placeholder="Search articles..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-ink-300 rounded-md shadow-sm focus:border-accent-500 focus:ring-accent-500"
+            className="w-full pl-10 pr-4 py-2 border border-line rounded-md focus:border-accent-ink focus:ring-volt"
           />
         </div>
       </div>
 
       {/* Content Generation Templates */}
       {user && Object.keys(templates).length > 0 && (
-        <div className="bg-accent-50 rounded-lg p-6">
+        <div className="bg-highlight rounded-lg p-6">
           <div className="flex items-center mb-4">
-            <SparklesIcon className="h-6 w-6 text-accent-600 mr-2" />
-            <h2 className="text-lg font-semibold text-ink-900">Generate New Content</h2>
+            <SparklesIcon className="h-6 w-6 text-accent-ink mr-2" />
+            <h2 className="font-display text-lg font-bold uppercase tracking-tight text-body">Generate a piece</h2>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {Object.entries(templates).map(([key, template]) => (
@@ -233,17 +233,17 @@ export function BlogPage() {
                 key={key}
                 onClick={() => generateContent(key, template.name)}
                 disabled={generatingContent === key}
-                className="text-left p-4 bg-white rounded-lg border border-ink-200 hover:border-accent-300 hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="text-left p-4 bg-surface rounded-lg border border-hairline hover:border-accent-ink transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-medium text-ink-900">{template.name}</h3>
+                  <h3 className="font-medium text-body">{template.name}</h3>
                   {generatingContent === key ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-500"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-ink"></div>
                   ) : (
-                    <PlusIcon className="h-4 w-4 text-ink-400" />
+                    <PlusIcon className="h-4 w-4 text-faint" />
                   )}
                 </div>
-                <p className="text-sm text-ink-600">{template.description}</p>
+                <p className="text-sm text-muted">{template.description}</p>
               </button>
             ))}
           </div>
@@ -253,44 +253,44 @@ export function BlogPage() {
       {/* Blog Posts */}
       {loading ? (
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-500"></div>
-          <span className="ml-2 text-ink-600">Loading articles...</span>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-ink"></div>
+          <span className="ml-2 text-muted">Loading articles...</span>
         </div>
       ) : filteredPosts.length === 0 ? (
         <div className="text-center py-12">
-          <ChartBarIcon className="mx-auto h-12 w-12 text-ink-400" />
-          <h3 className="mt-2 text-sm font-medium text-ink-900">No articles found</h3>
-          <p className="mt-1 text-sm text-ink-500">
+          <ChartBarIcon className="mx-auto h-12 w-12 text-faint" />
+          <h3 className="mt-2 text-sm font-medium text-body">Nothing here yet</h3>
+          <p className="mt-1 text-sm text-muted">
             {searchQuery || selectedCategory !== 'all'
-              ? 'Try adjusting your search or filters.'
-              : 'Generate some content to get started!'}
+              ? 'No pieces match those filters.'
+              : 'Generate one above to get started.'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {filteredPosts.map((post) => (
-            <article key={post.id} className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 hover:shadow-md hover:border-accent-300 transition-all">
+            <article key={post.id} className="bg-surface rounded-lg border border-hairline p-6 hover:border-accent-ink transition-all">
               <div className="flex items-center justify-between mb-3">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getCategoryColor(post.category)}`}>
                   <TagIcon className="h-3 w-3 mr-1" />
                   {getCategoryName(post.category)}
                 </span>
-                <div className="flex items-center text-sm text-ink-500">
+                <div className="flex items-center text-sm text-muted">
                   <ClockIcon className="h-4 w-4 mr-1" />
                   {formatDate(post.created_at)}
                 </div>
               </div>
 
-              <h2 className="text-xl font-semibold mb-3 text-ink-900 line-clamp-2">
+              <h2 className="text-xl font-semibold mb-3 text-body line-clamp-2">
                 {post.title}
               </h2>
 
-              <p className="text-ink-600 mb-4 line-clamp-3">
+              <p className="text-muted mb-4 line-clamp-3">
                 {post.content.replace(/#{1,6}\s/g, '').substring(0, 150)}...
               </p>
 
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4 text-xs text-ink-500">
+                <div className="flex items-center space-x-4 text-xs text-muted">
                   <div className="flex items-center">
                     <UserIcon className="h-3 w-3 mr-1" />
                     {post.author}
@@ -302,7 +302,7 @@ export function BlogPage() {
                   )}
                   {post.consensus_score && (
                     <div className="flex items-center">
-                      <span className="font-stat tabular-nums text-ink-700 font-medium">
+                      <span className="font-stat tabular-nums text-body font-medium">
                         Score: {post.consensus_score.toFixed(1)}/10
                       </span>
                     </div>
@@ -311,15 +311,15 @@ export function BlogPage() {
 
                 <button
                   onClick={() => navigate(`/blog/${post.id}`)}
-                  className="text-accent-600 hover:text-accent-700 text-sm font-medium transition-colors"
+                  className="text-accent-ink hover:text-accent-ink text-sm font-medium transition-colors"
                 >
                   Read More →
                 </button>
               </div>
 
               {post.featured && (
-                <div className="mt-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
-                  ⭐ Featured
+                <div className="mt-3 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-highlight text-accent-ink">
+                  Featured
                 </div>
               )}
             </article>
@@ -328,30 +328,30 @@ export function BlogPage() {
       )}
 
       {/* Insights Sidebar */}
-      <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+      <div className="bg-surface rounded-lg border border-hairline p-6">
         <div className="flex items-center mb-4">
-          <SparklesIcon className="h-6 w-6 text-accent-600 mr-2" />
-          <h2 className="text-xl font-semibold text-ink-900">Quick Hits</h2>
+          <SparklesIcon className="h-6 w-6 text-accent-ink mr-2" />
+          <h2 className="text-xl font-semibold text-body">Quick Hits</h2>
         </div>
         <div className="space-y-4">
           <div className="border-l-4 border-success-500 pl-4">
-            <p className="text-sm text-ink-600">
+            <p className="text-sm text-muted">
               <strong className="text-success-700">Trending Up:</strong> Rookie WRs showing increased target share in recent weeks
             </p>
           </div>
           <div className="border-l-4 border-warning-500 pl-4">
-            <p className="text-sm text-ink-600">
+            <p className="text-sm text-muted">
               <strong className="text-warning-700">Injury Alert:</strong> Monitor RB depth chart changes after practice reports
             </p>
           </div>
-          <div className="border-l-4 border-accent-500 pl-4">
-            <p className="text-sm text-ink-600">
-              <strong className="text-accent-700">Value Pick:</strong> Streaming defenses against high-turnover offenses
+          <div className="border-l-4 border-accent-ink pl-4">
+            <p className="text-sm text-muted">
+              <strong className="text-accent-ink">Value Pick:</strong> Streaming defenses against high-turnover offenses
             </p>
           </div>
           <div className="border-l-4 border-ink-400 pl-4">
-            <p className="text-sm text-ink-600">
-              <strong className="text-ink-700">Data Insight:</strong> Historical performance suggests key breakout candidates
+            <p className="text-sm text-muted">
+              <strong className="text-body">Data Insight:</strong> Historical performance suggests key breakout candidates
             </p>
           </div>
         </div>

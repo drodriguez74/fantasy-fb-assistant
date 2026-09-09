@@ -37,8 +37,8 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
   }
 
   return (
-    <div className="max-w-md mx-auto bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-      <h2 className="text-2xl font-bold text-center text-ink-900 mb-6">Sign In</h2>
+    <div className="max-w-md mx-auto bg-surface rounded-lg border border-hairline p-6">
+      <h2 className="text-2xl font-bold text-center text-body mb-6">Sign In</h2>
 
       {error && (
         <div className="bg-danger-50 border border-danger-200 text-danger-700 px-4 py-3 rounded mb-4">
@@ -48,7 +48,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
 
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label htmlFor="username" className="block text-sm font-medium text-ink-700 mb-1">
+          <label htmlFor="username" className="block text-sm font-medium text-body mb-1">
             Username or Email
           </label>
           <input
@@ -56,13 +56,13 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             id="username"
             value={formData.username}
             onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-            className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
+            className="w-full px-3 py-2 border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-volt"
             required
           />
         </div>
 
         <div>
-          <label htmlFor="password" className="block text-sm font-medium text-ink-700 mb-1">
+          <label htmlFor="password" className="block text-sm font-medium text-body mb-1">
             Password
           </label>
           <input
@@ -70,7 +70,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             id="password"
             value={formData.password}
             onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-            className="w-full px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
+            className="w-full px-3 py-2 border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-volt"
             required
           />
         </div>
@@ -78,18 +78,18 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-accent-500 text-white py-2 px-4 rounded-md hover:bg-accent-600 transition-colors focus:outline-none focus:ring-2 focus:ring-accent-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-volt text-volt-ink py-2 px-4 rounded-md hover:bg-volt-dark transition-colors focus:outline-none focus:ring-2 focus:ring-volt disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {loading ? 'Signing in...' : 'Sign In'}
         </button>
       </form>
 
       <div className="mt-6 text-center">
-        <p className="text-sm text-ink-600">
+        <p className="text-sm text-muted">
           Don't have an account?{' '}
           <button
             onClick={onSwitchToRegister}
-            className="text-accent-600 hover:text-accent-800 font-medium"
+            className="text-accent-ink hover:text-accent-ink font-medium"
           >
             Sign up
           </button>
@@ -97,7 +97,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
       </div>
 
       <div className="mt-4 text-center">
-        <p className="text-xs text-ink-500">
+        <p className="text-xs text-muted">
           Demo account:<br />
           demo@test.com / Password123
         </p>

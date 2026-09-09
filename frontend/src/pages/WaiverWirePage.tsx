@@ -184,7 +184,7 @@ function getAddCount(rec: WaiverRecommendation): number | null {
 function ConfidenceBar({ value }: { value: number }) {
   const pct = Math.max(4, Math.round(value * 100))
   return (
-    <div className="w-full bg-ink-100 rounded-full h-2">
+    <div className="w-full bg-surface-2 rounded-full h-2">
       <div className="bg-accent-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
     </div>
   )
@@ -196,7 +196,7 @@ function ConfidenceBar({ value }: { value: number }) {
 function MatchupRatingBar({ rating }: { rating: number }) {
   const pct = Math.max(4, Math.min(100, Math.round((rating / 10) * 100)))
   return (
-    <div className="w-full bg-ink-100 rounded-full h-2">
+    <div className="w-full bg-surface-2 rounded-full h-2">
       <div className="bg-accent-500 h-2 rounded-full" style={{ width: `${pct}%` }} />
     </div>
   )
@@ -414,11 +414,11 @@ export function WaiverWirePage() {
     const colors: Record<string, string> = {
       urgent: 'bg-danger-100 text-danger-800',
       high: 'bg-warning-100 text-warning-800',
-      medium: 'bg-accent-100 text-accent-800',
-      low: 'bg-ink-100 text-ink-600',
-      watch: 'bg-ink-100 text-ink-500'
+      medium: 'bg-highlight text-accent-ink',
+      low: 'bg-surface-2 text-muted',
+      watch: 'bg-surface-2 text-muted'
     }
-    return colors[priority] || 'bg-ink-100 text-ink-600'
+    return colors[priority] || 'bg-surface-2 text-muted'
   }
 
   const getTrendIcon = (direction: string) => {
@@ -436,9 +436,9 @@ export function WaiverWirePage() {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="text-center">
-          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-ink-400" />
-          <h3 className="mt-2 text-sm font-medium text-ink-900">Authentication Required</h3>
-          <p className="mt-1 text-sm text-ink-500">Please sign in to access the waiver wire.</p>
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-faint" />
+          <h3 className="mt-2 text-sm font-medium text-body">Sign in required</h3>
+          <p className="mt-1 text-sm text-muted">Sign in to pull waiver targets for your league.</p>
         </div>
       </div>
     )
@@ -458,18 +458,18 @@ export function WaiverWirePage() {
       <div className="mb-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Waiver Wire</h1>
-            <p className="text-ink-600 mt-2">
+            <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Waiver Wire</h1>
+            <p className="text-muted mt-2">
               Who's available, who's trending, and who you should drop to make room.
             </p>
           </div>
           <div className="flex items-center space-x-3">
             <div className="flex items-center space-x-2">
-              <label className="text-sm font-medium text-ink-700">Week:</label>
+              <label className="text-sm font-medium text-body">Week:</label>
               <select
                 value={currentWeek}
                 onChange={(e) => setCurrentWeek(parseInt(e.target.value))}
-                className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
               >
                 {Array.from({ length: 18 }, (_, i) => i + 1).map(week => (
                   <option key={week} value={week}>Week {week}</option>
@@ -479,7 +479,7 @@ export function WaiverWirePage() {
             <button
               onClick={generateRecommendations}
               disabled={loading}
-              className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 flex items-center space-x-2"
+              className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark disabled:opacity-50 flex items-center space-x-2"
             >
               <ChartBarIcon className="h-4 w-4" />
               <span>Refresh</span>
@@ -504,7 +504,7 @@ export function WaiverWirePage() {
       )}
 
       {/* Navigation Tabs */}
-      <div className="border-b border-ink-200 mb-6">
+      <div className="border-b border-hairline mb-6">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => {
             const Icon = tab.icon
@@ -514,8 +514,8 @@ export function WaiverWirePage() {
                 onClick={() => setActiveTab(tab.id as 'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
-                    ? 'border-accent-500 text-accent-600'
-                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
+                    ? 'border-accent-ink text-accent-ink'
+                    : 'border-transparent text-muted hover:text-body hover:border-line'
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -530,15 +530,15 @@ export function WaiverWirePage() {
       {activeTab === 'recommendations' && (
         <div className="space-y-6">
           {/* Filters */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Waiver Wire Recommendations</h3>
+          <div className="bg-surface rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Recommended claims</h3>
             <div className="flex space-x-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Position</label>
+                <label className="block text-sm font-medium text-body mb-1">Position</label>
                 <select
                   value={selectedPosition}
                   onChange={(e) => setSelectedPosition(e.target.value)}
-                  className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                  className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 >
                   <option value="">All Positions</option>
                   <option value="QB">Quarterback</option>
@@ -548,11 +548,11 @@ export function WaiverWirePage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Priority</label>
+                <label className="block text-sm font-medium text-body mb-1">Priority</label>
                 <select
                   value={selectedPriority}
                   onChange={(e) => setSelectedPriority(e.target.value)}
-                  className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                  className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 >
                   <option value="">All Priorities</option>
                   <option value="urgent">Urgent</option>
@@ -563,11 +563,11 @@ export function WaiverWirePage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Personalize for</label>
+                <label className="block text-sm font-medium text-body mb-1">Personalize for</label>
                 <select
                   value={selectedLeagueId}
                   onChange={(e) => setSelectedLeagueId(e.target.value ? parseInt(e.target.value) : '')}
-                  className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                  className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 >
                   <option value="">Unweighted (no league)</option>
                   {connectedLeagues.map((league) => (
@@ -579,7 +579,7 @@ export function WaiverWirePage() {
               </div>
             </div>
             {selectedLeagueId !== '' && (
-              <p className="text-xs text-ink-500">
+              <p className="text-xs text-muted">
                 {personalized
                   ? 'Boosted/flagged using your real roster, starter requirements, and bye weeks for this league.'
                   : "Couldn't fetch your roster for this league (no team set or a live fetch error) -- showing the unweighted feed instead."}
@@ -589,15 +589,15 @@ export function WaiverWirePage() {
 
           {/* Recommendations List */}
           {loading ? (
-            <div className="bg-white rounded-lg shadow p-6 text-center">
-              <ClockIcon className="animate-spin h-8 w-8 text-accent-600 mx-auto mb-2" />
-              <p className="text-sm text-ink-500">Loading recommendations...</p>
+            <div className="bg-surface rounded-lg shadow p-6 text-center">
+              <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+              <p className="text-sm text-muted">Scoring the wire...</p>
             </div>
           ) : recommendations.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-6 text-center">
-              <MagnifyingGlassIcon className="mx-auto h-12 w-12 text-ink-400" />
-              <h3 className="mt-2 text-sm font-medium text-ink-900">No recommendations found</h3>
-              <p className="mt-1 text-sm text-ink-500">
+            <div className="bg-surface rounded-lg shadow p-6 text-center">
+              <MagnifyingGlassIcon className="mx-auto h-12 w-12 text-faint" />
+              <h3 className="mt-2 text-sm font-medium text-body">Nothing worth claiming right now</h3>
+              <p className="mt-1 text-sm text-muted">
                 Try adjusting your filters or refresh the recommendations.
               </p>
             </div>
@@ -606,15 +606,15 @@ export function WaiverWirePage() {
               {recommendations.map((rec) => {
                 const addCount = getAddCount(rec)
                 return (
-                  <div key={rec.player_id} className="bg-white rounded-lg shadow p-6">
+                  <div key={rec.player_id} className="bg-surface rounded-lg shadow p-6">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <div className="flex items-center space-x-3 mb-2">
-                          <h4 className="text-lg font-medium text-ink-900">{rec.player_name}</h4>
+                          <h4 className="text-lg font-medium text-body">{rec.player_name}</h4>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionColor(rec.position)}`}>
                             {rec.position}
                           </span>
-                          <span className="text-sm text-ink-500">{rec.team}</span>
+                          <span className="text-sm text-muted">{rec.team}</span>
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityBadgeColor(rec.priority)}`}>
                             {rec.priority.toUpperCase()}
                           </span>
@@ -624,7 +624,7 @@ export function WaiverWirePage() {
                             </span>
                           )}
                           {rec.roster_need === 'overstocked' && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-600">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-2 text-muted">
                               Position already deep
                             </span>
                           )}
@@ -634,15 +634,15 @@ export function WaiverWirePage() {
                             </span>
                           )}
                           {rec.pass_catcher_boost && (
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-highlight text-accent-ink">
                               PPR target-share edge
                             </span>
                           )}
                         </div>
 
-                        <p className="text-sm text-ink-600 mb-3">{rec.reason}</p>
+                        <p className="text-sm text-muted mb-3">{rec.reason}</p>
                         {rec.league_scoring_context?.scoring_format && (
-                          <p className="text-xs text-ink-400 mb-3">
+                          <p className="text-xs text-faint mb-3">
                             League scoring: {rec.league_scoring_context.scoring_format}
                             {rec.league_scoring_context.points_per_reception != null &&
                               ` (${rec.league_scoring_context.points_per_reception} pts/reception)`}
@@ -652,17 +652,17 @@ export function WaiverWirePage() {
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
                           <div>
-                            <span className="font-medium text-ink-700">Projected Points:</span>
+                            <span className="font-medium text-body">Projected Points:</span>
                             <span className="ml-2 font-stat tabular-nums">{rec.projected_points?.toFixed(1) || 'N/A'}</span>
                           </div>
                           <div>
-                            <span className="font-medium text-ink-700">Ownership:</span>
+                            <span className="font-medium text-body">Ownership:</span>
                             <span className="ml-2 font-stat tabular-nums">
                               {rec.ownership_percentage != null ? `${rec.ownership_percentage.toFixed(1)}%` : 'N/A'}
                             </span>
                           </div>
                           <div className="flex items-center">
-                            <span className="font-medium text-ink-700">Trend:</span>
+                            <span className="font-medium text-body">Trend:</span>
                             <span className="ml-2 flex items-center space-x-1">
                               {getTrendIcon(rec.trend_direction)}
                               <span>{rec.trend_direction}</span>
@@ -672,19 +672,19 @@ export function WaiverWirePage() {
 
                         <div className="max-w-sm">
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-ink-700">Confidence</span>
+                            <span className="text-sm font-medium text-body">Confidence</span>
                             <DataConfidenceBadge level="computed" />
                           </div>
                           <div className="flex items-center gap-2">
                             <div className="flex-1">
                               <ConfidenceBar value={rec.confidence_score} />
                             </div>
-                            <span className="text-sm font-stat tabular-nums text-ink-700 font-medium w-10 text-right">
+                            <span className="text-sm font-stat tabular-nums text-body font-medium w-10 text-right">
                               {(rec.confidence_score * 100).toFixed(0)}%
                             </span>
                           </div>
                           {addCount != null && (
-                            <p className="mt-1 text-xs font-stat tabular-nums text-ink-500">
+                            <p className="mt-1 text-xs font-stat tabular-nums text-muted">
                               {addCount.toLocaleString()} adds &middot; 24h
                             </p>
                           )}
@@ -692,7 +692,7 @@ export function WaiverWirePage() {
                       </div>
 
                       <div className="ml-4">
-                        <button className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 flex items-center space-x-2">
+                        <button className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark flex items-center space-x-2">
                           <PlusIcon className="h-4 w-4" />
                           <span>Add</span>
                         </button>
@@ -709,15 +709,15 @@ export function WaiverWirePage() {
       {activeTab === 'trending' && (
         <div className="space-y-6">
           {/* Trending Filters */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Trending Players</h3>
+          <div className="bg-surface rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Trending Players</h3>
             <div className="flex space-x-4">
               <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Trend Direction</label>
+                <label className="block text-sm font-medium text-body mb-1">Trend Direction</label>
                 <select
                   value={trendDirection}
                   onChange={(e) => setTrendDirection(e.target.value)}
-                  className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                  className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 >
                   <option value="up">Trending Up</option>
                   <option value="down">Trending Down</option>
@@ -725,11 +725,11 @@ export function WaiverWirePage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Position</label>
+                <label className="block text-sm font-medium text-body mb-1">Position</label>
                 <select
                   value={selectedPosition}
                   onChange={(e) => setSelectedPosition(e.target.value)}
-                  className="rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                  className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 >
                   <option value="">All Positions</option>
                   <option value="QB">Quarterback</option>
@@ -745,40 +745,40 @@ export function WaiverWirePage() {
               trending add/drop feed (last 24h), not a historical trend
               line. See WaiverWireService.get_live_trending_players. */}
           {loading ? (
-            <div className="bg-white rounded-lg shadow p-6 text-center">
-              <ClockIcon className="animate-spin h-8 w-8 text-accent-600 mx-auto mb-2" />
-              <p className="text-sm text-ink-500">Loading trending players...</p>
+            <div className="bg-surface rounded-lg shadow p-6 text-center">
+              <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+              <p className="text-sm text-muted">Pulling adds...</p>
             </div>
           ) : trendingPlayers.length === 0 ? (
-            <div className="bg-white rounded-lg shadow p-6 text-center py-8">
-              <FireIcon className="mx-auto h-12 w-12 text-ink-400" />
-              <h3 className="mt-2 text-sm font-medium text-ink-900">No trending players found</h3>
-              <p className="mt-1 text-sm text-ink-500">
+            <div className="bg-surface rounded-lg shadow p-6 text-center py-8">
+              <FireIcon className="mx-auto h-12 w-12 text-faint" />
+              <h3 className="mt-2 text-sm font-medium text-body">No movement on the wire</h3>
+              <p className="mt-1 text-sm text-muted">
                 Try a different direction or clear the position filter.
               </p>
             </div>
           ) : (
-            <div className="bg-white rounded-lg shadow overflow-hidden">
-              <table className="min-w-full divide-y divide-ink-200">
-                <thead className="bg-ink-50">
+            <div className="bg-surface rounded-lg shadow overflow-hidden">
+              <table className="min-w-full divide-y divide-hairline">
+                <thead className="bg-surface-2">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Player
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Direction
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Adds/Drops (24h)
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Source
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-ink-200">
+                <tbody className="bg-surface divide-y divide-hairline">
                   {trendingPlayers.map((player) => (
-                    <tr key={`${player.trend_direction}-${player.player_id}`} className="hover:bg-ink-50">
+                    <tr key={`${player.trend_direction}-${player.player_id}`} className="hover:bg-surface-2">
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <div className="flex-shrink-0">
@@ -787,8 +787,8 @@ export function WaiverWirePage() {
                             </span>
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-ink-900">{player.player_name}</div>
-                            <div className="text-sm text-ink-500">{player.team}</div>
+                            <div className="text-sm font-medium text-body">{player.player_name}</div>
+                            <div className="text-sm text-muted">{player.team}</div>
                           </div>
                         </div>
                       </td>
@@ -802,10 +802,10 @@ export function WaiverWirePage() {
                           </span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums font-medium text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums font-medium text-body">
                         {player.count_24h.toLocaleString()}
                       </td>
-                      <td className="px-6 py-4 text-sm text-ink-500">
+                      <td className="px-6 py-4 text-sm text-muted">
                         {player.reason}
                       </td>
                     </tr>
@@ -819,17 +819,17 @@ export function WaiverWirePage() {
 
       {activeTab === 'alerts' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Waiver Wire Alerts</h3>
-            <p className="text-sm text-ink-500 mb-4">
+          <div className="bg-surface rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Waiver Wire Alerts</h3>
+            <p className="text-sm text-muted mb-4">
               Real, backend-tracked notifications generated from genuine waiver-wire
               signal -- the same feed behind the bell icon in the navbar.
             </p>
             {alerts.length === 0 ? (
               <div className="text-center py-8">
-                <BellIcon className="mx-auto h-12 w-12 text-ink-400" />
-                <h3 className="mt-2 text-sm font-medium text-ink-900">No alerts</h3>
-                <p className="mt-1 text-sm text-ink-500">
+                <BellIcon className="mx-auto h-12 w-12 text-faint" />
+                <h3 className="mt-2 text-sm font-medium text-body">No alerts</h3>
+                <p className="mt-1 text-sm text-muted">
                   You'll see important waiver wire notifications here.
                 </p>
               </div>
@@ -837,21 +837,21 @@ export function WaiverWirePage() {
               <div className="space-y-4">
                 {alerts.map((alert) => (
                   <div key={alert.id} className={`border-l-4 p-4 ${
-                    alert.is_read ? 'border-ink-300 bg-ink-50' : 'border-accent-500 bg-accent-50'
+                    alert.is_read ? 'border-line bg-surface-2' : 'border-accent-ink bg-highlight'
                   }`}>
                     <div className="flex">
                       <div className="flex-shrink-0">
-                        <BellIcon className={`h-5 w-5 ${alert.is_read ? 'text-ink-400' : 'text-accent-400'}`} />
+                        <BellIcon className={`h-5 w-5 ${alert.is_read ? 'text-faint' : 'text-faint'}`} />
                       </div>
                       <div className="ml-3 flex-1">
-                        <h4 className="text-sm font-medium text-ink-900">{alert.title}</h4>
-                        <p className="mt-1 text-sm text-ink-600">{alert.body}</p>
-                        <div className="mt-2 flex items-center space-x-4 text-xs text-ink-500">
+                        <h4 className="text-sm font-medium text-body">{alert.title}</h4>
+                        <p className="mt-1 text-sm text-muted">{alert.body}</p>
+                        <div className="mt-2 flex items-center space-x-4 text-xs text-muted">
                           <span>{new Date(alert.created_at).toLocaleString()}</span>
                           {!alert.is_read && (
                             <>
                               <span>•</span>
-                              <span className="font-medium text-accent-700">Unread</span>
+                              <span className="font-medium text-accent-ink">Unread</span>
                             </>
                           )}
                         </div>
@@ -867,28 +867,28 @@ export function WaiverWirePage() {
 
       {activeTab === 'streaming' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-1">Defense Streaming Targets — Week {currentWeek}</h3>
-            <p className="text-sm text-ink-600 mb-4">
+          <div className="bg-surface rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-body mb-1">Defense Streaming Targets — Week {currentWeek}</h3>
+            <p className="text-sm text-muted mb-4">
               Ranked by how tough this week's matchup is, not by name recognition — the defenses opposing teams
               have historically struggled to move the ball against.
             </p>
             <div className="flex items-end space-x-4 mb-2">
               <div>
-                <label className="block text-sm font-medium text-ink-700 mb-1">Your current DEF (optional)</label>
+                <label className="block text-sm font-medium text-body mb-1">Your current DEF (optional)</label>
                 <input
                   type="text"
                   value={streamingCurrentDefense}
                   onChange={(e) => setStreamingCurrentDefense(e.target.value.toUpperCase())}
                   placeholder="e.g. NYJ"
                   maxLength={4}
-                  className="block w-32 rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500 uppercase"
+                  className="block w-32 rounded-md border-line focus:border-accent-ink focus:ring-volt uppercase"
                 />
               </div>
               <button
                 onClick={loadStreamingTargets}
                 disabled={streamingLoading}
-                className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 flex items-center space-x-2"
+                className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark disabled:opacity-50 flex items-center space-x-2"
               >
                 <ShieldCheckIcon className="h-4 w-4" />
                 <span>{streamingCurrentDefense ? 'Compare to my DEF' : 'Refresh'}</span>
@@ -909,15 +909,15 @@ export function WaiverWirePage() {
           )}
 
           {streamingLoading ? (
-            <div className="bg-white rounded-lg shadow p-6 text-center">
-              <ClockIcon className="animate-spin h-8 w-8 text-accent-600 mx-auto mb-2" />
-              <p className="text-sm text-ink-500">Loading matchup data...</p>
+            <div className="bg-surface rounded-lg shadow p-6 text-center">
+              <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+              <p className="text-sm text-muted">Loading matchup data...</p>
             </div>
           ) : !streamingError && (streamingData?.error || (!streamingData?.streaming_recommendations?.length && !streamingData?.defenses_to_avoid?.length)) ? (
-            <div className="bg-white rounded-lg shadow p-6 text-center">
+            <div className="bg-surface rounded-lg shadow p-6 text-center">
               <DataConfidenceBadge level="insufficient" className="mb-3" />
-              <h3 className="mt-1 text-sm font-medium text-ink-900">No defensive matchup data for Week {currentWeek} yet</h3>
-              <p className="mt-1 text-sm text-ink-500 max-w-md mx-auto">
+              <h3 className="mt-1 text-sm font-medium text-body">No defensive matchup data for Week {currentWeek} yet</h3>
+              <p className="mt-1 text-sm text-muted max-w-md mx-auto">
                 This week's defensive rankings haven't been computed yet. Check back closer to kickoff, or try
                 an earlier week that's already been played.
               </p>
@@ -927,14 +927,14 @@ export function WaiverWirePage() {
               {!!streamingData?.streaming_recommendations?.length && (
                 <div className="space-y-4">
                   {streamingData.streaming_recommendations.map((target) => (
-                    <div key={getTeamAbbr(target)} className="bg-white rounded-lg shadow p-6">
+                    <div key={getTeamAbbr(target)} className="bg-surface rounded-lg shadow p-6">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center space-x-3 mb-2 flex-wrap gap-y-1">
-                            <h4 className="text-lg font-medium text-ink-900">
+                            <h4 className="text-lg font-medium text-body">
                               {target.team_name || `${getTeamAbbr(target)} Defense`}
                             </h4>
-                            <span className="text-sm text-ink-500">
+                            <span className="text-sm text-muted">
                               {(target.is_home_game ?? target.is_home) ? 'vs' : '@'} {target.opponent || 'TBD'}
                             </span>
                             {target.waiver_priority && (
@@ -943,7 +943,7 @@ export function WaiverWirePage() {
                               </span>
                             )}
                             {target.availability_tier && (
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-600">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-2 text-muted">
                                 {target.availability_tier}
                               </span>
                             )}
@@ -952,7 +952,7 @@ export function WaiverWirePage() {
                           {!!target.key_factors?.length && (
                             <div className="flex flex-wrap gap-2 mb-3">
                               {target.key_factors.map((factor, idx) => (
-                                <span key={idx} className="text-xs bg-ink-50 text-ink-600 px-2 py-1 rounded">
+                                <span key={idx} className="text-xs bg-surface-2 text-muted px-2 py-1 rounded">
                                   {factor}
                                 </span>
                               ))}
@@ -961,19 +961,19 @@ export function WaiverWirePage() {
 
                           <div className="max-w-sm">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm font-medium text-ink-700">Matchup Rating</span>
+                              <span className="text-sm font-medium text-body">Matchup Rating</span>
                               <DataConfidenceBadge level="heuristic" label="Composite rating" />
                             </div>
                             <div className="flex items-center gap-2">
                               <div className="flex-1">
                                 <MatchupRatingBar rating={target.matchup_rating} />
                               </div>
-                              <span className="text-sm font-stat tabular-nums text-ink-700 font-medium w-12 text-right">
+                              <span className="text-sm font-stat tabular-nums text-body font-medium w-12 text-right">
                                 {target.matchup_rating.toFixed(1)}/10
                               </span>
                             </div>
                             {(target.avg_points_allowed != null || target.recent_trend != null) && (
-                              <p className="mt-1 text-xs text-ink-500">
+                              <p className="mt-1 text-xs text-muted">
                                 {target.avg_points_allowed != null && `${target.avg_points_allowed.toFixed(1)} pts allowed (season avg)`}
                                 {target.avg_points_allowed != null && target.recent_trend != null && ' · '}
                                 {target.recent_trend != null && `${target.recent_trend.toFixed(1)} last 4 wks`}
@@ -993,8 +993,8 @@ export function WaiverWirePage() {
               )}
 
               {!!streamingData?.defenses_to_avoid?.length && (
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h4 className="font-medium text-ink-900 mb-3 flex items-center space-x-2">
+                <div className="bg-surface rounded-lg shadow p-6">
+                  <h4 className="font-medium text-body mb-3 flex items-center space-x-2">
                     <NoSymbolIcon className="h-5 w-5 text-danger-500" />
                     <span>Defenses to Avoid This Week</span>
                   </h4>
@@ -1002,9 +1002,9 @@ export function WaiverWirePage() {
                     {streamingData.defenses_to_avoid.map((target) => (
                       <div key={getTeamAbbr(target)} className="border border-danger-200 bg-danger-50 rounded p-3">
                         <div className="flex items-center justify-between mb-1">
-                          <span className="font-medium text-ink-900">
+                          <span className="font-medium text-body">
                             {target.team_name || `${getTeamAbbr(target)} Defense`}
-                            <span className="ml-2 text-sm font-normal text-ink-500">
+                            <span className="ml-2 text-sm font-normal text-muted">
                               {(target.is_home_game ?? target.is_home) ? 'vs' : '@'} {target.opponent || 'TBD'}
                             </span>
                           </span>
@@ -1012,7 +1012,7 @@ export function WaiverWirePage() {
                             {target.matchup_rating.toFixed(1)}/10
                           </span>
                         </div>
-                        {target.recommendation && <p className="text-sm text-ink-600">{target.recommendation}</p>}
+                        {target.recommendation && <p className="text-sm text-muted">{target.recommendation}</p>}
                       </div>
                     ))}
                   </div>
@@ -1022,25 +1022,25 @@ export function WaiverWirePage() {
           )}
 
           {/* Kicker matchup outlook -- smaller secondary section, same data source */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h4 className="font-medium text-ink-900 mb-1">Kicker Matchup Outlook</h4>
-            <p className="text-sm text-ink-600 mb-4">Best and worst upcoming matchups for streaming a kicker.</p>
+          <div className="bg-surface rounded-lg shadow p-6">
+            <h4 className="font-medium text-body mb-1">Kicker Matchup Outlook</h4>
+            <p className="text-sm text-muted mb-4">Best and worst upcoming matchups for streaming a kicker.</p>
             {!kickerOutlook || kickerOutlook.error || !Object.keys(kickerOutlook.weekly_outlook || {}).length ? (
               <div className="text-center py-4">
                 <DataConfidenceBadge level="insufficient" />
-                <p className="mt-2 text-sm text-ink-500">No kicker matchup data available yet for the upcoming weeks.</p>
+                <p className="mt-2 text-sm text-muted">No kicker matchup data available yet for the upcoming weeks.</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {Object.entries(kickerOutlook.weekly_outlook).map(([week, outlook]) => (
-                  <div key={week} className="border border-ink-200 rounded p-3">
-                    <div className="text-sm font-medium text-ink-700 mb-2">Week {week}</div>
+                  <div key={week} className="border border-hairline rounded p-3">
+                    <div className="text-sm font-medium text-body mb-2">Week {week}</div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                       <div>
-                        <span className="text-xs uppercase text-ink-500">Best matchups</span>
+                        <span className="text-xs uppercase text-muted">Best matchups</span>
                         <ul className="mt-1 space-y-1">
                           {outlook.best_matchups.map((m) => (
-                            <li key={m.team} className="flex justify-between text-ink-700">
+                            <li key={m.team} className="flex justify-between text-body">
                               <span>{m.team}</span>
                               <span className="font-stat tabular-nums text-success-700">{m.rating.toFixed(1)}/10</span>
                             </li>
@@ -1048,10 +1048,10 @@ export function WaiverWirePage() {
                         </ul>
                       </div>
                       <div>
-                        <span className="text-xs uppercase text-ink-500">Worst matchups</span>
+                        <span className="text-xs uppercase text-muted">Worst matchups</span>
                         <ul className="mt-1 space-y-1">
                           {outlook.worst_matchups.map((m) => (
-                            <li key={m.team} className="flex justify-between text-ink-700">
+                            <li key={m.team} className="flex justify-between text-body">
                               <span>{m.team}</span>
                               <span className="font-stat tabular-nums text-danger-700">{m.rating.toFixed(1)}/10</span>
                             </li>
@@ -1069,15 +1069,15 @@ export function WaiverWirePage() {
 
       {activeTab === 'analyzer' && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Roster Add/Drop Analyzer</h3>
-            <p className="text-sm text-ink-600 mb-4">
+          <div className="bg-surface rounded-lg shadow p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Roster Add/Drop Analyzer</h3>
+            <p className="text-sm text-muted mb-4">
               Enter your current roster player IDs to get personalized add/drop recommendations.
             </p>
 
             <div className="flex space-x-4 mb-4">
               <div className="flex-1">
-                <label className="block text-sm font-medium text-ink-700 mb-1">
+                <label className="block text-sm font-medium text-body mb-1">
                   Player IDs (comma-separated)
                 </label>
                 <input
@@ -1085,9 +1085,9 @@ export function WaiverWirePage() {
                   value={rosterPlayerIds}
                   onChange={(e) => setRosterPlayerIds(e.target.value)}
                   placeholder="1, 2, 3, 4..."
-                  className="block w-full rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500"
+                  className="block w-full rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 />
-                <p className="mt-1 text-xs text-ink-500">
+                <p className="mt-1 text-xs text-muted">
                   Example: 1, 2, 3, 4 (Josh Allen, Christian McCaffrey, Tyreek Hill, Travis Kelce)
                 </p>
               </div>
@@ -1095,7 +1095,7 @@ export function WaiverWirePage() {
                 <button
                   onClick={analyzeRoster}
                   disabled={loading}
-                  className="bg-accent-500 text-white px-4 py-2 rounded-lg hover:bg-accent-600 disabled:opacity-50 flex items-center space-x-2"
+                  className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark disabled:opacity-50 flex items-center space-x-2"
                 >
                   <ChartBarIcon className="h-4 w-4" />
                   <span>Analyze</span>
@@ -1107,18 +1107,18 @@ export function WaiverWirePage() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
                 {/* Add Candidates */}
                 <div>
-                  <h4 className="font-medium text-ink-900 mb-3">Top Add Candidates</h4>
+                  <h4 className="font-medium text-body mb-3">Top Add Candidates</h4>
                   <div className="space-y-3">
                     {addDropAnalysis.add_candidates?.slice(0, 5).map((player) => (
-                      <div key={player.player_id} className="border border-ink-200 rounded p-3">
+                      <div key={player.player_id} className="border border-hairline rounded p-3">
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-medium">{player.player_name}</span>
                           <span className={`px-2 py-1 rounded text-xs ${getPriorityBadgeColor(player.priority || '')}`}>
                             {player.priority}
                           </span>
                         </div>
-                        <p className="text-sm text-ink-600">{player.reason}</p>
-                        <div className="mt-2 text-xs text-ink-500">
+                        <p className="text-sm text-muted">{player.reason}</p>
+                        <div className="mt-2 text-xs text-muted">
                           Confidence: <span className="font-stat tabular-nums">{((player.confidence ?? 0) * 100).toFixed(0)}%</span> •
                           Projected: <span className="font-stat tabular-nums">{player.projected_points?.toFixed(1) || 'N/A'}</span> pts
                         </div>
@@ -1129,7 +1129,7 @@ export function WaiverWirePage() {
 
                 {/* Drop Candidates */}
                 <div>
-                  <h4 className="font-medium text-ink-900 mb-3">Drop Candidates</h4>
+                  <h4 className="font-medium text-body mb-3">Drop Candidates</h4>
                   <div className="space-y-3">
                     {addDropAnalysis.drop_candidates?.map((player) => (
                       <div key={player.player_id} className="border border-danger-200 rounded p-3 bg-danger-50">
@@ -1139,11 +1139,11 @@ export function WaiverWirePage() {
                             Drop Score: <span className="font-stat tabular-nums">{((player.drop_score ?? 0) * 100).toFixed(0)}%</span>
                           </span>
                         </div>
-                        <p className="text-sm text-ink-600">{player.reason}</p>
+                        <p className="text-sm text-muted">{player.reason}</p>
                       </div>
                     ))}
                     {(!addDropAnalysis.drop_candidates || addDropAnalysis.drop_candidates.length === 0) && (
-                      <div className="text-center py-4 text-ink-500">
+                      <div className="text-center py-4 text-muted">
                         <CheckCircleIcon className="mx-auto h-8 w-8 text-success-500 mb-2" />
                         <p className="text-sm">Your roster looks solid! No obvious drop candidates.</p>
                       </div>

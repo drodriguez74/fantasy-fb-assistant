@@ -236,3 +236,38 @@ class TestYahooLeagueSettingsUsedWhenAvailable:
         assert "error" not in result
         assert result["position_breakdown"]["RB"]["needs_attention"] is False
         assert result["position_breakdown"]["RB"]["recommended_minimum"] == 1
+
+
+class TestWaiverPriorityMapping:
+    """_WAIVER_PRIORITY_SCORES must cover all 5 real Priority tiers the live
+    waiver engine emits (urgent/high/medium/low/watch -- see
+    WaiverWireService._priority_from_rank), not just 3. It used to omit
+    "urgent" and "watch", so both silently fell through to the dict's
+    `.get(..., 1)` default -- meaning the single best candidate in the
+    entire trending pool (urgent, top 10%) rendered the exact same
+    "Priority: 1/3" on the League Detail waiver card as the single worst
+    (watch, bottom 15%), while "high" candidates ranked below it showed
+    3/3. Confirmed live: half the visible list showed 1/3, half showed
+    3/3, with the ordering backwards relative to real rank.
+    """
+
+    def test_urgent_and_watch_are_not_conflated(self):
+        service = LeagueManagementService.__new__(LeagueManagementService)
+        candidates = [
+            {"player_name": "Urgent Guy", "position": "RB", "priority": "urgent"},
+            {"player_name": "High Guy", "position": "RB", "priority": "high"},
+            {"player_name": "Medium Guy", "position": "RB", "priority": "medium"},
+            {"player_name": "Low Guy", "position": "RB", "priority": "low"},
+            {"player_name": "Watch Guy", "position": "RB", "priority": "watch"},
+        ]
+
+        adapted = service._live_waiver_candidates_to_league_view(candidates)
+        priorities = {a["player"]["name"]: a["priority"] for a in adapted}
+
+        # urgent must rank at least as high as high (both real buy signals),
+        # never collapse to the same tier as low/watch.
+        assert priorities["Urgent Guy"] >= priorities["High Guy"]
+        assert priorities["Urgent Guy"] > priorities["Low Guy"]
+        assert priorities["Urgent Guy"] > priorities["Watch Guy"]
+        # watch (weakest real signal) must not outrank medium/high.
+        assert priorities["Watch Guy"] <= priorities["Medium Guy"]

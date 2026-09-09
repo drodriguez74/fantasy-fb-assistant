@@ -171,10 +171,10 @@ export function ContentPage() {
     
     return (
       <div key={paramName} className="space-y-1">
-        <label className="block text-sm font-medium text-ink-700">
+        <label className="block text-sm font-medium text-body">
           {paramName.charAt(0).toUpperCase() + paramName.slice(1).replace('_', ' ')}
         </label>
-        <p className="text-xs text-ink-500">{paramConfig.description}</p>
+        <p className="text-xs text-muted">{paramConfig.description}</p>
         <input
           type={paramConfig.type === 'integer' ? 'number' : 'text'}
           value={value}
@@ -182,7 +182,7 @@ export function ContentPage() {
             ...prev,
             [paramName]: paramConfig.type === 'integer' ? parseInt(e.target.value) || 0 : e.target.value
           }))}
-          className="block w-full rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500 sm:text-sm"
+          className="block w-full rounded-md border-line focus:border-accent-ink focus:ring-volt sm:text-sm"
           placeholder={paramConfig.default?.toString() || ''}
         />
       </div>
@@ -193,9 +193,9 @@ export function ContentPage() {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="text-center">
-          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-ink-400" />
-          <h3 className="mt-2 text-sm font-medium text-ink-900">Authentication Required</h3>
-          <p className="mt-1 text-sm text-ink-500">Please sign in to access content generation features.</p>
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-faint" />
+          <h3 className="mt-2 text-sm font-medium text-body">Authentication Required</h3>
+          <p className="mt-1 text-sm text-muted">Please sign in to access content generation features.</p>
         </div>
       </div>
     )
@@ -204,14 +204,21 @@ export function ContentPage() {
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       <div className="px-4 py-6 sm:px-0">
-        <div className="border-b border-ink-200 mb-6">
+        <div className="mb-6">
+          <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Content Studio</h1>
+          <p className="text-muted mt-2">
+            Draft rankings, waiver columns, and injury reports on demand. Player analysis and injury
+            reports are AI-written; the rest are structured from live data.
+          </p>
+        </div>
+        <div className="border-b border-hairline mb-6">
           <nav className="-mb-px flex space-x-8">
             <button
               onClick={() => setActiveTab('generate')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'generate'
-                  ? 'border-accent-500 text-accent-600'
-                  : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
+                  ? 'border-accent-ink text-accent-ink'
+                  : 'border-transparent text-muted hover:text-body hover:border-line'
               }`}
             >
               Generate Content
@@ -220,8 +227,8 @@ export function ContentPage() {
               onClick={() => setActiveTab('manage')}
               className={`py-2 px-1 border-b-2 font-medium text-sm ${
                 activeTab === 'manage'
-                  ? 'border-accent-500 text-accent-600'
-                  : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
+                  ? 'border-accent-ink text-accent-ink'
+                  : 'border-transparent text-muted hover:text-body hover:border-line'
               }`}
             >
               Manage Content
@@ -256,48 +263,48 @@ export function ContentPage() {
         {activeTab === 'generate' && (
           <div className="space-y-8">
             {/* Quick Generation Section */}
-            <div className="bg-white shadow-sm border border-ink-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-ink-900 mb-4">Quick Generation</h3>
+            <div className="bg-surface border border-hairline rounded-lg p-6">
+              <h3 className="text-lg font-medium text-body mb-4">Quick Generation</h3>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <button
                   onClick={() => handleQuickGenerate('weekly_rankings', { week: 1, position: 'ALL' })}
                   disabled={isGenerating}
-                  className="p-4 border-2 border-dashed border-ink-300 rounded-lg hover:border-accent-500 hover:bg-accent-50 transition-colors disabled:opacity-50"
+                  className="p-4 border border-line rounded-md hover:border-accent-ink hover:bg-highlight transition-colors disabled:opacity-50"
                 >
-                  <DocumentTextIcon className="h-8 w-8 text-accent-600 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-ink-900">Weekly Rankings</div>
-                  <div className="text-xs text-ink-500">Generate current week rankings</div>
+                  <DocumentTextIcon className="h-8 w-8 text-accent-ink mx-auto mb-2" />
+                  <div className="text-sm font-medium text-body">Weekly Rankings</div>
+                  <div className="text-xs text-muted">Generate current week rankings</div>
                 </button>
 
                 <button
                   onClick={() => handleQuickGenerate('waiver_wire', { week: 1 })}
                   disabled={isGenerating}
-                  className="p-4 border-2 border-dashed border-ink-300 rounded-lg hover:border-accent-500 hover:bg-accent-50 transition-colors disabled:opacity-50"
+                  className="p-4 border border-line rounded-md hover:border-accent-ink hover:bg-highlight transition-colors disabled:opacity-50"
                 >
-                  <PlusIcon className="h-8 w-8 text-accent-600 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-ink-900">Waiver Wire</div>
-                  <div className="text-xs text-ink-500">Generate waiver targets</div>
+                  <PlusIcon className="h-8 w-8 text-accent-ink mx-auto mb-2" />
+                  <div className="text-sm font-medium text-body">Waiver Wire</div>
+                  <div className="text-xs text-muted">Generate waiver targets</div>
                 </button>
 
                 <button
                   onClick={() => handleQuickGenerate('injury_report')}
                   disabled={isGenerating}
-                  className="p-4 border-2 border-dashed border-ink-300 rounded-lg hover:border-accent-500 hover:bg-accent-50 transition-colors disabled:opacity-50"
+                  className="p-4 border border-line rounded-md hover:border-accent-ink hover:bg-highlight transition-colors disabled:opacity-50"
                 >
-                  <ExclamationTriangleIcon className="h-8 w-8 text-accent-600 mx-auto mb-2" />
-                  <div className="text-sm font-medium text-ink-900">Injury Report</div>
-                  <div className="text-xs text-ink-500">Generate injury analysis</div>
+                  <ExclamationTriangleIcon className="h-8 w-8 text-accent-ink mx-auto mb-2" />
+                  <div className="text-sm font-medium text-body">Injury Report</div>
+                  <div className="text-xs text-muted">Generate injury analysis</div>
                 </button>
               </div>
             </div>
 
             {/* Custom Generation Section */}
-            <div className="bg-white shadow-sm border border-ink-200 rounded-lg p-6">
-              <h3 className="text-lg font-medium text-ink-900 mb-4">Custom Content Generation</h3>
+            <div className="bg-surface border border-hairline rounded-lg p-6">
+              <h3 className="text-lg font-medium text-body mb-4">Custom Content Generation</h3>
 
               <div className="space-y-6">
                 <div>
-                  <label className="block text-sm font-medium text-ink-700 mb-2">
+                  <label className="block text-sm font-medium text-body mb-2">
                     Content Template
                   </label>
                   <select
@@ -306,7 +313,7 @@ export function ContentPage() {
                       setSelectedTemplate(e.target.value)
                       setGenerationParams({})
                     }}
-                    className="block w-full rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500 sm:text-sm"
+                    className="block w-full rounded-md border-line focus:border-accent-ink focus:ring-volt sm:text-sm"
                   >
                     <option value="">Select a template...</option>
                     {Object.entries(templates).map(([key, template]) => (
@@ -316,28 +323,28 @@ export function ContentPage() {
                     ))}
                   </select>
                   {selectedTemplate && templates[selectedTemplate] && (
-                    <p className="mt-1 text-sm text-ink-500">
+                    <p className="mt-1 text-sm text-muted">
                       {templates[selectedTemplate].description}
                     </p>
                   )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-ink-700 mb-2">
+                  <label className="block text-sm font-medium text-body mb-2">
                     Topic
                   </label>
                   <input
                     type="text"
                     value={customTopic}
                     onChange={(e) => setCustomTopic(e.target.value)}
-                    className="block w-full rounded-md border-ink-300 shadow-sm focus:border-accent-500 focus:ring-accent-500 sm:text-sm"
+                    className="block w-full rounded-md border-line focus:border-accent-ink focus:ring-volt sm:text-sm"
                     placeholder="Enter content topic..."
                   />
                 </div>
 
                 {selectedTemplate && templates[selectedTemplate] && (
                   <div className="space-y-4">
-                    <h4 className="text-sm font-medium text-ink-900">Parameters</h4>
+                    <h4 className="text-sm font-medium text-body">Parameters</h4>
                     {Object.entries(templates[selectedTemplate].parameters).map(([paramName, paramConfig]) =>
                       renderParameterInput(paramName, paramConfig)
                     )}
@@ -347,7 +354,7 @@ export function ContentPage() {
                 <button
                   onClick={handleGenerate}
                   disabled={isGenerating || !selectedTemplate || !customTopic}
-                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-accent-500 hover:bg-accent-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-accent-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md text-sm font-medium bg-volt text-volt-ink hover:bg-volt-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-volt disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isGenerating ? (
                     <>
@@ -364,37 +371,37 @@ export function ContentPage() {
         )}
 
         {activeTab === 'manage' && (
-          <div className="bg-white shadow-sm border border-ink-200 rounded-lg">
-            <div className="px-6 py-4 border-b border-ink-200">
-              <h3 className="text-lg font-medium text-ink-900">Generated Content</h3>
+          <div className="bg-surface border border-hairline rounded-lg">
+            <div className="px-6 py-4 border-b border-hairline">
+              <h3 className="text-lg font-medium text-body">Generated Content</h3>
             </div>
 
             {loading ? (
               <div className="p-6 text-center">
-                <ClockIcon className="animate-spin h-8 w-8 text-ink-400 mx-auto mb-2" />
-                <p className="text-sm text-ink-500">Loading blog posts...</p>
+                <ClockIcon className="animate-spin h-8 w-8 text-faint mx-auto mb-2" />
+                <p className="text-sm text-muted">Loading blog posts...</p>
               </div>
             ) : blogPosts.length === 0 ? (
               <div className="p-6 text-center">
-                <DocumentTextIcon className="h-12 w-12 text-ink-400 mx-auto mb-4" />
-                <h3 className="text-sm font-medium text-ink-900">No content generated yet</h3>
-                <p className="text-sm text-ink-500">Generate some content to see it listed here.</p>
+                <DocumentTextIcon className="h-12 w-12 text-faint mx-auto mb-4" />
+                <h3 className="text-sm font-medium text-body">No content generated yet</h3>
+                <p className="text-sm text-muted">Generate some content to see it listed here.</p>
               </div>
             ) : (
-              <div className="divide-y divide-ink-200">
+              <div className="divide-y divide-hairline">
                 {blogPosts.map((post) => (
                   <div key={post.id} className="p-6">
                     <div className="flex items-center justify-between">
                       <div className="flex-1">
-                        <h4 className="text-lg font-medium text-ink-900">{post.title}</h4>
-                        <div className="mt-1 flex items-center space-x-4 text-sm text-ink-500">
+                        <h4 className="text-lg font-medium text-body">{post.title}</h4>
+                        <div className="mt-1 flex items-center space-x-4 text-sm text-muted">
                           <span>By {post.author}</span>
                           <span>•</span>
                           <span>{post.category}</span>
                           <span>•</span>
                           <span>{new Date(post.created_at).toLocaleDateString()}</span>
                         </div>
-                        <p className="mt-2 text-sm text-ink-600 line-clamp-2">
+                        <p className="mt-2 text-sm text-muted line-clamp-2">
                           {post.content.substring(0, 200)}...
                         </p>
                       </div>
@@ -410,7 +417,7 @@ export function ContentPage() {
 
                         <button
                           onClick={() => handlePublishToggle(post.id, post.is_published)}
-                          className="p-2 text-ink-400 hover:text-ink-600"
+                          className="p-2 text-faint hover:text-muted"
                           title={post.is_published ? 'Unpublish' : 'Publish'}
                         >
                           <EyeIcon className="h-5 w-5" />
@@ -418,7 +425,7 @@ export function ContentPage() {
 
                         <button
                           onClick={() => handleDelete(post.id)}
-                          className="p-2 text-ink-400 hover:text-danger-600"
+                          className="p-2 text-faint hover:text-danger-600"
                           title="Delete"
                         >
                           <TrashIcon className="h-5 w-5" />

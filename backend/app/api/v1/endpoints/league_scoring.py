@@ -201,11 +201,51 @@ async def get_league_scoring(
         
         if not user_league:
             raise HTTPException(status_code=404, detail="League not found")
-        
+
         scoring_config = db.query(LeagueScoring).filter(
             LeagueScoring.user_league_id == league_id
         ).first()
-        
+
+        # Real, live-detected roster construction (starters/bench/roster
+        # size) for this league -- independent of whether a manual scoring
+        # override exists below, since LeagueScoring only ever covers point
+        # values, never roster slot counts. Best-effort: a platform without
+        # real detection support yet (or a live API hiccup) just omits this
+        # rather than failing the whole endpoint or fabricating numbers.
+        roster_settings = None
+        try:
+            platform = user_league.platform.value.upper()
+            if platform == "ESPN":
+                settings_result = await espn_service_enhanced.get_scoring_and_roster_settings(
+                    league_id=user_league.league_id,
+                    season=user_league.season,
+                    swid=user_league.espn_swid,
+                    espn_s2=user_league.espn_s2
+                )
+                if "error" not in settings_result:
+                    roster_settings = {
+                        "starters": settings_result.get("starters"),
+                        "bench": settings_result.get("bench"),
+                        "roster_size": settings_result.get("roster_size"),
+                        "points_per_reception": settings_result.get("points_per_reception"),
+                        "scoring_type": settings_result.get("scoring_type"),
+                        "source": settings_result.get("source"),
+                    }
+            elif platform == "SLEEPER":
+                league_info = await sleeper_service.get_league_info(user_league.league_id)
+                parsed = sleeper_service.parse_league_settings(league_info)
+                if "error" not in parsed:
+                    roster_settings = {
+                        "starters": parsed.get("starters"),
+                        "bench": parsed.get("bench"),
+                        "roster_size": parsed.get("roster_size"),
+                        "points_per_reception": parsed.get("points_per_reception"),
+                        "scoring_type": None,
+                        "source": "sleeper",
+                    }
+        except Exception as roster_err:
+            logger.warning(f"Roster-settings auto-detection failed for league {league_id}: {roster_err}")
+
         if not scoring_config:
             # No manual override -- try to surface this league's real,
             # auto-detected scoring rules (the same extraction
@@ -239,12 +279,14 @@ async def get_league_scoring(
                 "league_id": league_id,
                 "default_scoring": user_league.scoring_format or "PPR",
                 "detected_scoring": detected_scoring,
-                "detected_scoring_description": describe_scoring_rules(detected_scoring) if detected_scoring else None
+                "detected_scoring_description": describe_scoring_rules(detected_scoring) if detected_scoring else None,
+                "roster_settings": roster_settings,
             }
-        
+
         return {
             "has_custom_scoring": True,
             "league_id": league_id,
+            "roster_settings": roster_settings,
             "scoring_config": {
                 "id": scoring_config.id,
                 "scoring_type": scoring_config.scoring_type.value,

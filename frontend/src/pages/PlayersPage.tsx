@@ -25,7 +25,7 @@ export function PlayersPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [selectedPosition, setSelectedPosition] = useState<Position | ''>('')
-  const [sort, setSort] = useState<'rank' | 'bye_week' | 'consensus' | ''>('')
+  const [sort, setSort] = useState<'rank' | 'bye_week' | 'consensus' | ''>('consensus')
   const [searchQuery, setSearchQuery] = useState('')
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('cards')
   const [currentPage, setCurrentPage] = useState(1)
@@ -74,7 +74,7 @@ export function PlayersPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-64">
-        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-500"></div>
+        <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-accent-ink"></div>
       </div>
     )
   }
@@ -82,9 +82,9 @@ export function PlayersPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">Player Rankings</h1>
-        <p className="text-ink-600 mt-2">
-          Comprehensive player analysis and PPR rankings
+        <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Player Rankings</h1>
+        <p className="text-muted mt-2">
+          Every fantasy-relevant player, ranked. Blended from Sleeper, ESPN, and FantasyPros where available.
         </p>
       </div>
 
@@ -98,7 +98,7 @@ export function PlayersPage() {
         <select
           value={selectedPosition}
           onChange={(e) => setSelectedPosition(e.target.value as Position | '')}
-          className="px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
+          className="px-3 py-2 border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-volt"
         >
           <option value="">All Positions</option>
           <option value="QB">QB</option>
@@ -112,7 +112,7 @@ export function PlayersPage() {
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as 'rank' | 'bye_week' | 'consensus' | '')}
-          className="px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
+          className="px-3 py-2 border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-volt"
         >
           <option value="">Sort: Relevance</option>
           <option value="rank">Rank (ADP)</option>
@@ -125,16 +125,16 @@ export function PlayersPage() {
           placeholder="Search players..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
-          className="flex-1 px-3 py-2 border border-ink-300 rounded-md focus:outline-none focus:ring-2 focus:ring-accent-500"
+          className="flex-1 px-3 py-2 border border-line rounded-md focus:outline-none focus:ring-2 focus:ring-volt"
         />
 
-        <div className="flex rounded-md border border-ink-300">
+        <div className="flex rounded-md border border-line">
           <button
             onClick={() => setViewMode('cards')}
             className={`px-3 py-2 text-sm font-medium rounded-l-md ${
               viewMode === 'cards'
-                ? 'bg-accent-500 text-white'
-                : 'bg-white text-ink-700 hover:bg-ink-50'
+                ? 'bg-volt text-volt-ink'
+                : 'bg-surface text-body hover:bg-surface-2'
             }`}
           >
             Cards
@@ -143,8 +143,8 @@ export function PlayersPage() {
             onClick={() => setViewMode('table')}
             className={`px-3 py-2 text-sm font-medium rounded-r-md border-l ${
               viewMode === 'table'
-                ? 'bg-accent-500 text-white'
-                : 'bg-white text-ink-700 hover:bg-ink-50'
+                ? 'bg-volt text-volt-ink'
+                : 'bg-surface text-body hover:bg-surface-2'
             }`}
           >
             Table
@@ -164,47 +164,47 @@ export function PlayersPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow-sm border border-ink-200 overflow-hidden">
+        <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-ink-200">
-              <thead className="bg-ink-50">
+            <table className="min-w-full divide-y divide-hairline">
+              <thead className="bg-surface-2">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Player
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Position
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Team
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Projected Points
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     ADP
                   </th>
                   {sort === 'consensus' && (
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Consensus
                     </th>
                   )}
-                  <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                     Bye Week
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-ink-200">
+              <tbody className="bg-surface divide-y divide-hairline">
                 {filteredPlayers.map((player) => (
                   <tr
                     key={player.id}
-                    className="hover:bg-ink-50 cursor-pointer"
+                    className="hover:bg-surface-2 cursor-pointer"
                     onClick={() => openPlayer(player)}
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div>
-                          <div className="text-sm font-medium text-ink-900">{player.name}</div>
+                          <div className="text-sm font-medium text-body">{player.name}</div>
                           {player.injury_status && player.injury_status.toUpperCase() !== 'HEALTHY' && (
                             <span className={`inline-flex mt-1 px-1.5 py-0.5 rounded text-xs font-medium ${injuryStatusClasses(player.injury_status)}`}>
                               {player.injury_status}
@@ -214,24 +214,24 @@ export function PlayersPage() {
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-2 py-1 text-xs font-medium bg-ink-100 text-ink-800 rounded-full">
+                      <span className="px-2 py-1 text-xs font-medium bg-surface-2 text-body rounded-full">
                         {player.position}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
                       {player.team}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-ink-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-body">
                       {player.projected_points ? player.projected_points.toFixed(1) : '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-ink-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-stat tabular-nums text-muted">
                       {player.adp ? player.adp.toFixed(1) : '-'}
                     </td>
                     {sort === 'consensus' && (
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
                         {player.consensus ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-ink-900 font-stat tabular-nums font-medium">#{player.consensus.consensus_rank}</span>
+                            <span className="text-body font-stat tabular-nums font-medium">#{player.consensus.consensus_rank}</span>
                             <DataConfidenceBadge
                               level="computed"
                               label={`${player.consensus.source_count} source${player.consensus.source_count === 1 ? '' : 's'}`}
@@ -240,7 +240,7 @@ export function PlayersPage() {
                         ) : '-'}
                       </td>
                     )}
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-muted">
                       {player.bye_week ? `Week ${player.bye_week}` : '-'}
                     </td>
                   </tr>
@@ -253,15 +253,15 @@ export function PlayersPage() {
 
       {filteredPlayers.length === 0 && !loading && (
         <div className="text-center py-12">
-          <p className="text-ink-500">No players found matching your criteria.</p>
+          <p className="text-muted">No players match those filters.</p>
         </div>
       )}
 
       {/* Pagination Controls */}
       {pagination && pagination.total_pages > 1 && (
-        <div className="bg-white px-4 py-3 flex items-center justify-between border-t border-ink-200 sm:px-6">
+        <div className="bg-surface px-4 py-3 flex items-center justify-between border-t border-hairline sm:px-6">
           <div className="flex-1 flex justify-between items-center">
-            <div className="flex items-center text-sm text-ink-700">
+            <div className="flex items-center text-sm text-body">
               <span>
                 Showing page {pagination.current_page} of {pagination.total_pages}
                 ({pagination.total_count} total players)
@@ -272,7 +272,7 @@ export function PlayersPage() {
                   setPageSize(Number(e.target.value))
                   setCurrentPage(1)
                 }}
-                className="ml-4 border-ink-300 rounded-md text-sm"
+                className="ml-4 border-line rounded-md text-sm"
               >
                 <option value={25}>25 per page</option>
                 <option value={50}>50 per page</option>
@@ -286,8 +286,8 @@ export function PlayersPage() {
                 disabled={!pagination.has_previous}
                 className={`relative inline-flex items-center px-2 py-2 rounded-l-md border text-sm font-medium ${
                   pagination.has_previous
-                    ? 'border-ink-300 bg-white text-ink-500 hover:bg-ink-50'
-                    : 'border-ink-300 bg-ink-100 text-ink-300 cursor-not-allowed'
+                    ? 'border-line bg-surface text-muted hover:bg-surface-2'
+                    : 'border-line bg-surface-2 text-faint cursor-not-allowed'
                 }`}
               >
                 <ChevronLeftIcon className="h-5 w-5" />
@@ -313,8 +313,8 @@ export function PlayersPage() {
                       onClick={() => setCurrentPage(pageNum)}
                       className={`relative inline-flex items-center px-4 py-2 border text-sm font-medium ${
                         pageNum === pagination.current_page
-                          ? 'z-10 bg-accent-50 border-accent-500 text-accent-600'
-                          : 'bg-white border-ink-300 text-ink-500 hover:bg-ink-50'
+                          ? 'z-10 bg-highlight border-accent-ink text-accent-ink'
+                          : 'bg-surface border-line text-muted hover:bg-surface-2'
                       }`}
                     >
                       {pageNum}
@@ -328,8 +328,8 @@ export function PlayersPage() {
                 disabled={!pagination.has_next}
                 className={`relative inline-flex items-center px-2 py-2 rounded-r-md border text-sm font-medium ${
                   pagination.has_next
-                    ? 'border-ink-300 bg-white text-ink-500 hover:bg-ink-50'
-                    : 'border-ink-300 bg-ink-100 text-ink-300 cursor-not-allowed'
+                    ? 'border-line bg-surface text-muted hover:bg-surface-2'
+                    : 'border-line bg-surface-2 text-faint cursor-not-allowed'
                 }`}
               >
                 <ChevronRightIcon className="h-5 w-5" />

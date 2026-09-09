@@ -46,13 +46,13 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
             <div className="mt-6 flex items-center justify-center space-x-3">
               <button
                 onClick={this.handleReset}
-                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark"
               >
                 Try again
               </button>
               <a
                 href="/"
-                className="text-sm font-medium text-gray-600 hover:text-gray-900"
+                className="text-sm font-medium text-muted hover:text-body"
               >
                 Back to Home
               </a>

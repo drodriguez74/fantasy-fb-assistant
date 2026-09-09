@@ -34,15 +34,19 @@ export function AuthPage() {
   }
 
   return (
-    <div className="min-h-screen bg-ink-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-page flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h1 className="text-center font-display font-black uppercase tracking-tight text-3xl text-ink-900 mb-8">
-          Fantasy Football Assistant
-        </h1>
+        <div className="text-center mb-8">
+          <span className="inline-flex h-8 w-8 items-center justify-center bg-volt font-display text-lg font-bold text-volt-ink">FF</span>
+          <h1 className="mt-3 font-display font-bold uppercase tracking-tight text-3xl text-body">
+            FF Assistant
+          </h1>
+          <p className="mt-2 font-stat text-xs text-faint">Sign in to grade your roster and set your lineup.</p>
+        </div>
 
         {showSuccess && (
-          <div className="bg-success-50 border border-success-200 text-success-700 px-4 py-3 rounded mb-4">
-            Account created successfully! Please sign in.
+          <div className="bg-success-50 border border-success-100 text-success-700 px-4 py-3 rounded mb-4 text-sm">
+            Account created. Sign in below.
           </div>
         )}
         

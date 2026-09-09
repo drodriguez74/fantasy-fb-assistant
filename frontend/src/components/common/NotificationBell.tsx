@@ -90,7 +90,7 @@ export function NotificationBell() {
           <Menu.Button
             onClick={() => loadNotifications()}
             aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : 'Notifications'}
-            className="relative inline-flex items-center justify-center rounded-full p-2 text-ink-500 transition-colors hover:bg-ink-100 hover:text-ink-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2"
+            className="relative inline-flex items-center justify-center rounded-full p-2 text-muted transition-colors hover:bg-surface-2 hover:text-body focus:outline-none focus-visible:ring-2 focus-visible:ring-volt focus-visible:ring-offset-2"
           >
             <BellIcon className="h-5 w-5" aria-hidden="true" />
             {unreadCount > 0 && (
@@ -108,14 +108,14 @@ export function NotificationBell() {
               leaveFrom="transform opacity-100 scale-100"
               leaveTo="transform opacity-0 scale-95"
             >
-              <Menu.Items className="absolute right-0 top-full z-20 mt-1 w-80 origin-top-right rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none">
-                <div className="flex items-center justify-between border-b border-ink-100 px-4 py-2">
-                  <span className="text-sm font-semibold text-ink-900">Notifications</span>
+              <Menu.Items className="absolute right-0 top-full z-20 mt-1 w-80 origin-top-right rounded-md bg-surface ring-1 ring-black ring-opacity-5 focus:outline-none">
+                <div className="flex items-center justify-between border-b border-hairline px-4 py-2">
+                  <span className="text-sm font-semibold text-body">Notifications</span>
                   {items.some((n) => !n.is_read) && (
                     <button
                       type="button"
                       onClick={handleMarkAllRead}
-                      className="text-xs font-medium text-accent-600 hover:text-accent-700"
+                      className="text-xs font-medium text-accent-ink hover:text-accent-ink"
                     >
                       Mark all as read
                     </button>
@@ -123,9 +123,9 @@ export function NotificationBell() {
                 </div>
                 <div className="max-h-96 overflow-y-auto">
                   {loading ? (
-                    <p className="px-4 py-6 text-center text-sm text-ink-500">Loading...</p>
+                    <p className="px-4 py-6 text-center text-sm text-muted">Loading...</p>
                   ) : items.length === 0 ? (
-                    <p className="px-4 py-6 text-center text-sm text-ink-500">
+                    <p className="px-4 py-6 text-center text-sm text-muted">
                       No notifications yet. Check the Waiver Wire tab to pick up new trending-add alerts.
                     </p>
                   ) : (
@@ -135,8 +135,8 @@ export function NotificationBell() {
                         type="button"
                         onClick={() => !notification.is_read && handleMarkRead(notification.id)}
                         className={clsx(
-                          'block w-full border-b border-ink-50 px-4 py-3 text-left last:border-b-0 hover:bg-ink-50',
-                          !notification.is_read && 'bg-accent-50/50'
+                          'block w-full border-b border-ink-50 px-4 py-3 text-left last:border-b-0 hover:bg-surface-2',
+                          !notification.is_read && 'bg-highlight/50'
                         )}
                       >
                         <div className="flex items-start gap-2">
@@ -151,17 +151,17 @@ export function NotificationBell() {
                               <p
                                 className={clsx(
                                   'truncate text-sm',
-                                  !notification.is_read ? 'font-semibold text-ink-900' : 'font-medium text-ink-700'
+                                  !notification.is_read ? 'font-semibold text-body' : 'font-medium text-body'
                                 )}
                               >
                                 {notification.title}
                               </p>
-                              <span className="flex-shrink-0 text-xs text-ink-400">
+                              <span className="flex-shrink-0 text-xs text-faint">
                                 {formatRelativeTime(notification.created_at)}
                               </span>
                             </div>
-                            <p className="mt-0.5 line-clamp-2 text-xs text-ink-500">{notification.body}</p>
-                            <span className="mt-1 inline-block rounded-full bg-ink-100 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-ink-500">
+                            <p className="mt-0.5 line-clamp-2 text-xs text-muted">{notification.body}</p>
+                            <span className="mt-1 inline-block rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted">
                               {TYPE_LABEL[notification.type] ?? notification.type}
                             </span>
                           </div>

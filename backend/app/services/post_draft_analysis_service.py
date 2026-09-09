@@ -5,6 +5,7 @@ Provides comprehensive roster evaluation and personalized waiver wire recommenda
 after completing a fantasy football draft.
 """
 
+import re
 import numpy as np
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
@@ -29,6 +30,7 @@ from app.services.grading import (
     combined_grade,
     value_and_bye_strengths_weaknesses,
     bench_depth_notes,
+    NFL_SEASON_GAMES,
 )
 from app.services.draft_assistant_service import draft_assistant
 
@@ -491,10 +493,27 @@ class PostDraftAnalysisService:
         
         strengths = []
         weaknesses = []
-        
+
+        # Real per-league starter counts when available -- see
+        # roster_grading.py::_identify_strengths_weaknesses's docstring for
+        # why quality is computed from only the top `requirements[position]`
+        # players (this league's real starter count), not the whole
+        # rostered group: averaging in committee/backup-grade depth either
+        # hides a genuinely strong top end or falsely inflates a mediocre
+        # one, which is exactly the "Excellent RB depth" bug a user reported
+        # against a real 5-RB roster (2 real starters + 3 committee backs).
+        effective_requirements = (composition_analysis or {}).get("position_requirements") or {}
+
         # Analyze each position group
         for position, players in position_groups.items():
-            avg_projection = np.mean([p.projected_points or 0 for p in players])
+            starter_count = max(effective_requirements.get(position, 1), 1)
+            sorted_players = sorted(players, key=lambda p: p.projected_points or 0, reverse=True)
+            starters = sorted_players[:starter_count]
+            # `projected_points` (ESPN-sourced today) is a real season-long
+            # total, not a per-game rate -- see NFL_SEASON_GAMES's docstring
+            # in grading.py. Divide before comparing against the
+            # weekly-shaped thresholds below.
+            avg_projection = np.mean([(p.projected_points or 0) / NFL_SEASON_GAMES for p in starters]) if starters else 0.0
             player_count = len(players)
             
             # Position-specific analysis
@@ -553,6 +572,29 @@ class PostDraftAnalysisService:
         real_position_breakdown = (composition_analysis or {}).get("position_breakdown", {})
         bye_week_collisions = (composition_analysis or {}).get("bye_week_collisions", [])
         requirements = (composition_analysis or {}).get("position_requirements", {})
+
+        # The per-position rules above only look at headcount/avg-projection
+        # and have no idea what this league actually requires, so they can
+        # call a position "solid"/"deep" while the real required-depth check
+        # below flags it as needing attention (or vice versa) -- e.g. "Solid
+        # TE situation" alongside "TE is below your league's required depth
+        # (1/3)". Let the real, league-aware signal win: drop the legacy
+        # per-position entry whenever it contradicts it.
+        needs_attention_positions = {
+            pos for pos, info in real_position_breakdown.items() if info.get("needs_attention")
+        }
+        overstocked_positions = {
+            pos for pos, info in real_position_breakdown.items() if info.get("overstocked")
+        }
+        strengths = [
+            s for s in strengths
+            if not any(re.search(rf"\b{re.escape(pos)}\b", s) for pos in needs_attention_positions)
+        ]
+        weaknesses = [
+            w for w in weaknesses
+            if not any(re.search(rf"\b{re.escape(pos)}\b", w) for pos in overstocked_positions)
+        ]
+
         value_sw = value_and_bye_strengths_weaknesses(
             real_position_breakdown,
             bye_collisions=bye_week_collisions,

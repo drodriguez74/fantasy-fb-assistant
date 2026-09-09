@@ -1,0 +1,301 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin:0; background:#0A0A0B; color:#ECECEE; font-family:"Space Grotesk", system-ui, sans-serif; -webkit-font-smoothing:antialiased; }
+    a { color:#CDF03A; text-decoration:none; }
+    a:hover { color:#b6d92f; }
+    .mono { font-family:"JetBrains Mono", ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+    .cond { font-family:"Barlow Condensed", "Arial Narrow", system-ui, sans-serif; }
+    .tag { font-family:"JetBrains Mono", monospace; font-size:10px; font-weight:500; letter-spacing:0.04em; padding:3px 6px; color:#0A0A0B; display:inline-block; min-width:22px; text-align:center; }
+    .row { display:grid; grid-template-columns:50px 1fr 108px 78px 72px 68px; align-items:center; border-bottom:1px solid #1A1A1D; }
+    .row > div { padding:12px 10px; }
+    .h { font-family:"JetBrains Mono", monospace; font-size:10px; letter-spacing:0.08em; color:#5E5E64; }
+  </style>
+</helmet>
+
+<svg width="0" height="0" style="position:absolute;">
+  <defs>
+    <pattern id="hashdiv" width="18" height="16" patternUnits="userSpaceOnUse">
+      <line x1="0.5" y1="6" x2="0.5" y2="16" stroke="#242428" stroke-width="1"/>
+      <line x1="9.5" y1="10" x2="9.5" y2="16" stroke="#17171A" stroke-width="1"/>
+    </pattern>
+    <pattern id="mhash" width="9" height="34" patternUnits="userSpaceOnUse" patternTransform="translate(0 8)">
+      <line x1="0" y1="4" x2="0" y2="8" stroke="#2C2C31" stroke-width="1"/>
+      <line x1="0" y1="26" x2="0" y2="30" stroke="#2C2C31" stroke-width="1"/>
+    </pattern>
+  </defs>
+</svg>
+
+<div style="width:1440px; min-height:1220px; background:#0A0A0B; box-sizing:border-box; position:relative; overflow:hidden;">
+
+  <!-- APP BAR -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:15px 40px; border-bottom:1px solid #1E1E21;">
+    <div style="display:flex; align-items:center; gap:11px;">
+      <div style="width:20px; height:20px; background:#CDF03A; display:flex; align-items:center; justify-content:center;">
+        <span class="cond" style="font-size:15px; font-weight:700; color:#0A0A0B;">A</span>
+      </div>
+      <span class="cond" style="font-size:20px; font-weight:700; letter-spacing:0.04em;">AXIS</span>
+      <span class="mono" style="font-size:11px; color:#5E5E64; margin-left:8px;">/ OPTIS TITANS</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:30px;">
+      <span class="mono" style="font-size:12px; color:#CDF03A;">This Week</span>
+      <span class="mono" style="font-size:12px; color:#86868C;">Waivers</span>
+      <span class="mono" style="font-size:12px; color:#86868C;">Trades</span>
+      <span class="mono" style="font-size:12px; color:#86868C;">Season</span>
+    </div>
+  </div>
+
+  <!-- MATCHUP HEADER -->
+  <div style="padding:22px 40px 0;">
+    <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:end; gap:32px;">
+      <div>
+        <div class="mono" style="font-size:11px; color:#86868C;">MY TEAM · 3–1 · 2ND</div>
+        <div class="cond" style="font-size:30px; font-weight:700; margin-top:4px;">Optis Titans</div>
+      </div>
+      <div class="cond" style="font-size:13px; font-weight:600; letter-spacing:0.16em; color:#5E5E64; padding-bottom:6px;">WK 5</div>
+      <div style="text-align:right;">
+        <div class="mono" style="font-size:11px; color:#86868C;">2–2 · 6TH · SEA OTTERS</div>
+        <div class="cond" style="font-size:30px; font-weight:700; margin-top:4px; color:#A6A6AD;">Sea Otters</div>
+      </div>
+    </div>
+
+    <!-- FIELD MATCHUP SLIDER -->
+    <div style="display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:32px; margin-top:14px;">
+      <div class="cond" style="font-size:56px; font-weight:700; line-height:0.9;">118.4</div>
+      <div style="text-align:center;">
+        <div class="cond" style="font-size:12px; font-weight:600; letter-spacing:0.14em; color:#86868C;">WIN PROB</div>
+        <div class="cond" style="font-size:30px; font-weight:700; line-height:1; color:#CDF03A;">58<span style="font-size:15px;">%</span></div>
+      </div>
+      <div class="cond" style="font-size:56px; font-weight:700; line-height:0.9; text-align:right; color:#A6A6AD;">111.2</div>
+    </div>
+
+    <svg width="100%" height="52" viewBox="0 0 1360 52" preserveAspectRatio="none" style="display:block; margin-top:10px;">
+      <rect x="0" y="10" width="1360" height="32" fill="#0B0B0C" stroke="#26262A"/>
+      <rect x="0" y="10" width="90" height="32" fill="#15160A"/>
+      <rect x="1270" y="10" width="90" height="32" fill="#17171A"/>
+      <rect x="90" y="10" width="1180" height="32" fill="url(#mhash)"/>
+      <g stroke="#232327" stroke-width="1">
+        <line x1="248" y1="10" x2="248" y2="42"/><line x1="406" y1="10" x2="406" y2="42"/>
+        <line x1="564" y1="10" x2="564" y2="42"/><line x1="796" y1="10" x2="796" y2="42"/>
+        <line x1="954" y1="10" x2="954" y2="42"/><line x1="1112" y1="10" x2="1112" y2="42"/>
+      </g>
+      <line x1="680" y1="4" x2="680" y2="48" stroke="#3A3A40" stroke-width="1.5"/>
+      <line x1="836" y1="2" x2="836" y2="50" stroke="#CDF03A" stroke-width="1.5"/>
+      <ellipse cx="836" cy="26" rx="7" ry="4.2" fill="#CDF03A"/>
+    </svg>
+    <div style="display:flex; justify-content:space-between; padding-bottom:20px; border-bottom:1px solid #1E1E21;">
+      <span class="mono" style="font-size:10px; color:#CDF03A;">◄ TITANS FAVORED BY 7.2</span>
+      <span class="mono" style="font-size:10px; color:#5E5E64;">50</span>
+      <span class="mono" style="font-size:10px; color:#5E5E64;">OTTERS ►</span>
+    </div>
+  </div>
+
+  <!-- OPTIMIZE ACTION -->
+  <div style="display:flex; align-items:center; justify-content:space-between; padding:16px 40px; border-bottom:1px solid #1E1E21; background:#111112;">
+    <div style="display:flex; align-items:center; gap:14px;">
+      <div style="background:#CDF03A; padding:11px 20px;">
+        <span class="mono" style="font-size:12px; color:#0A0A0B; font-weight:600;">Optimize lineup</span>
+      </div>
+      <span class="mono" style="font-size:12px; color:#A6A6AD;">AXIS found <span style="color:#CDF03A;">1 upgrade</span> &mdash; projected <span style="color:#CDF03A;">+2.5 pts</span>, win prob 58% &rarr; 63%</span>
+    </div>
+    <span class="mono" style="font-size:11px; color:#5E5E64;">updated 3 min ago</span>
+  </div>
+
+  <!-- BODY -->
+  <div style="display:grid; grid-template-columns:1fr 380px;">
+
+    <!-- LINEUP -->
+    <div style="padding:0 0 36px; border-right:1px solid #1E1E21;">
+      <div style="display:flex; gap:26px; padding:14px 40px 0; border-bottom:1px solid #1E1E21;">
+        <div style="padding-bottom:12px; border-bottom:2px solid #CDF03A;"><span class="mono" style="font-size:12px; color:#CDF03A;">STARTERS</span></div>
+        <div style="padding-bottom:12px;"><span class="mono" style="font-size:12px; color:#86868C;">BENCH</span></div>
+        <div style="padding-bottom:12px;"><span class="mono" style="font-size:12px; color:#86868C;">MATCHUP</span></div>
+      </div>
+
+      <div style="padding:0 30px;">
+        <div class="row h">
+          <div>SLOT</div><div>PLAYER</div><div>MATCHUP</div><div style="text-align:right;">PROJ</div><div style="text-align:right;">RANGE</div><div style="text-align:right;">EDGE</div>
+        </div>
+
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">QB</div>
+          <div><span class="tag" style="background:#E86A5B;">QB</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">J. Allen</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">BUF vs NYJ</div>
+          <div class="mono" style="font-size:13px; text-align:right;">22.1</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">17–29</div>
+          <div style="text-align:right;"><span class="mono" style="font-size:11px; color:#5E5E64;">—</span></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">RB</div>
+          <div><span class="tag" style="background:#46C88A;">RB</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">B. Robinson</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">WSH @ NO</div>
+          <div class="mono" style="font-size:13px; text-align:right;">15.8 <span style="color:#46C88A;">▲</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">9–24</div>
+          <div style="text-align:right;"><svg width="56" height="13" viewBox="0 0 56 13" style="vertical-align:middle;"><rect x="0" y="4" width="56" height="5" fill="#0B0B0C" stroke="#242428"/><line x1="28" y1="1" x2="28" y2="12" stroke="#3A3A40"/><rect x="28" y="5" width="9" height="3" fill="#CDF03A"/></svg></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">RB</div>
+          <div>
+            <span class="tag" style="background:#46C88A;">RB</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">K. Walker</span> <span class="mono" style="font-size:10px; color:#E0A94A; margin-left:6px;">Q</span>
+            <div class="mono" style="font-size:10px; color:#5E5E64; margin-top:4px;">Limited Wed (knee) — trending toward active</div>
+          </div>
+          <div class="mono" style="font-size:11px; color:#86868C;">SEA @ LAR</div>
+          <div class="mono" style="font-size:13px; text-align:right;">12.4 <span style="color:#F26D6D;">▼</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">6–20</div>
+          <div style="text-align:right;"><svg width="56" height="13" viewBox="0 0 56 13" style="vertical-align:middle;"><rect x="0" y="4" width="56" height="5" fill="#0B0B0C" stroke="#242428"/><line x1="28" y1="1" x2="28" y2="12" stroke="#3A3A40"/><rect x="21" y="5" width="7" height="3" fill="#F26D6D"/></svg></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">WR</div>
+          <div><span class="tag" style="background:#4FA8E8;">WR</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">A. St. Brown</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">DET vs MIN</div>
+          <div class="mono" style="font-size:13px; text-align:right;">16.9</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">12–25</div>
+          <div style="text-align:right;"><span class="mono" style="font-size:11px; color:#5E5E64;">—</span></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">WR</div>
+          <div><span class="tag" style="background:#4FA8E8;">WR</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">D. London</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">ATL vs TB</div>
+          <div class="mono" style="font-size:13px; text-align:right;">13.1 <span style="color:#46C88A;">▲</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">7–21</div>
+          <div style="text-align:right;"><svg width="56" height="13" viewBox="0 0 56 13" style="vertical-align:middle;"><rect x="0" y="4" width="56" height="5" fill="#0B0B0C" stroke="#242428"/><line x1="28" y1="1" x2="28" y2="12" stroke="#3A3A40"/><rect x="28" y="5" width="4" height="3" fill="#CDF03A"/></svg></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">TE</div>
+          <div><span class="tag" style="background:#E0A94A;">TE</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">T. McBride</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">ARI vs SF</div>
+          <div class="mono" style="font-size:13px; text-align:right;">11.2</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">6–18</div>
+          <div style="text-align:right;"><svg width="56" height="13" viewBox="0 0 56 13" style="vertical-align:middle;"><rect x="0" y="4" width="56" height="5" fill="#0B0B0C" stroke="#242428"/><line x1="28" y1="1" x2="28" y2="12" stroke="#3A3A40"/><rect x="28" y="5" width="5" height="3" fill="#CDF03A"/></svg></div>
+        </div>
+
+        <!-- FLAGGED FLEX ROW -->
+        <div class="row" style="background:#161608; border-left:2px solid #CDF03A; border-bottom:1px solid #26262A;">
+          <div class="mono" style="font-size:11px; color:#CDF03A;">FLEX</div>
+          <div>
+            <span class="tag" style="background:#4FA8E8;">WR</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">J. Waddle</span>
+            <div class="mono" style="font-size:10px; color:#86868C; margin-top:4px;">Managers starting: 58% &nbsp;·&nbsp; <span style="color:#CDF03A;">AXIS: bench for Nacua</span></div>
+          </div>
+          <div class="mono" style="font-size:11px; color:#86868C;">MIA @ NE</div>
+          <div class="mono" style="font-size:13px; text-align:right;">14.9</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">8–23</div>
+          <div style="text-align:right;"><span class="mono" style="font-size:11px; color:#CDF03A;">swap ▸</span></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">K</div>
+          <div><span class="tag" style="background:#8A8F98;">K</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">C. Boswell</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">PIT vs CLE</div>
+          <div class="mono" style="font-size:13px; text-align:right;">8.0</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">4–13</div>
+          <div style="text-align:right;"><span class="mono" style="font-size:11px; color:#5E5E64;">—</span></div>
+        </div>
+        <div class="row" style="border-bottom:1px solid #26262A;">
+          <div class="mono" style="font-size:11px; color:#86868C;">D/ST</div>
+          <div><span class="tag" style="background:#8A8F98;">DEF</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">Broncos</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">DEN vs LV</div>
+          <div class="mono" style="font-size:13px; text-align:right;">7.2</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">2–15</div>
+          <div style="text-align:right;"><svg width="56" height="13" viewBox="0 0 56 13" style="vertical-align:middle;"><rect x="0" y="4" width="56" height="5" fill="#0B0B0C" stroke="#242428"/><line x1="28" y1="1" x2="28" y2="12" stroke="#3A3A40"/><rect x="28" y="5" width="6" height="3" fill="#CDF03A"/></svg></div>
+        </div>
+
+        <div class="mono" style="font-size:11px; color:#5E5E64; padding:14px 10px 6px;">BENCH</div>
+        <div class="row" style="background:#121214; border-left:2px solid #CDF03A;">
+          <div class="mono" style="font-size:11px; color:#86868C;">BN</div>
+          <div>
+            <span class="tag" style="background:#4FA8E8;">WR</span> <span style="font-size:14px; font-weight:600; margin-left:8px;">P. Nacua</span>
+            <span class="mono" style="font-size:10px; color:#CDF03A; margin-left:8px;">▸ START AT FLEX</span>
+          </div>
+          <div class="mono" style="font-size:11px; color:#86868C;">LAR vs SEA</div>
+          <div class="mono" style="font-size:13px; text-align:right; color:#CDF03A;">17.4 <span>▲</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">11–27</div>
+          <div style="text-align:right;"><svg width="56" height="13" viewBox="0 0 56 13" style="vertical-align:middle;"><rect x="0" y="4" width="56" height="5" fill="#0B0B0C" stroke="#242428"/><line x1="28" y1="1" x2="28" y2="12" stroke="#3A3A40"/><rect x="28" y="5" width="17" height="3" fill="#CDF03A"/><circle cx="45" cy="6.5" r="2.4" fill="#CDF03A"/></svg></div>
+        </div>
+        <div class="row">
+          <div class="mono" style="font-size:11px; color:#86868C;">BN</div>
+          <div><span class="tag" style="background:#46C88A;">RB</span> <span style="font-size:14px; font-weight:500; margin-left:8px;">T. Spears</span></div>
+          <div class="mono" style="font-size:11px; color:#86868C;">TEN vs IND</div>
+          <div class="mono" style="font-size:13px; text-align:right;">9.6</div>
+          <div class="mono" style="font-size:11px; color:#86868C; text-align:right;">4–17</div>
+          <div style="text-align:right;"><span class="mono" style="font-size:11px; color:#5E5E64;">—</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AXIS SAYS RAIL -->
+    <div style="padding:18px 26px 40px;">
+      <div class="cond" style="font-size:16px; font-weight:700; letter-spacing:0.1em; color:#CDF03A;">AXIS SAYS</div>
+      <svg width="100%" height="8" viewBox="0 0 330 8" preserveAspectRatio="none" style="display:block; margin-top:10px;"><rect width="330" height="8" fill="url(#hashdiv)"/></svg>
+
+      <div style="border:1px solid #26262A; background:#121214; margin-top:14px;">
+        <div style="padding:12px 14px; border-bottom:1px solid #26262A; display:flex; justify-content:space-between; align-items:center;">
+          <span class="mono" style="font-size:10px; letter-spacing:0.1em; color:#86868C;">LINEUP UPGRADE</span>
+          <span class="mono" style="font-size:10px; color:#CDF03A;">71% CONF</span>
+        </div>
+        <div style="padding:14px;">
+          <div style="font-size:14px; font-weight:600; line-height:1.4;">Start <span style="color:#CDF03A;">Nacua</span> at FLEX over Waddle.</div>
+          <div class="mono" style="font-size:11px; color:#A6A6AD; margin-top:8px; line-height:1.5;">SEA allows the 6th-most WR points. Nacua&#39;s 29% target share &gt; Waddle&#39;s 22% on the road at NE. 58% of managers still have Waddle in.</div>
+          <svg width="100%" height="36" viewBox="0 0 320 36" preserveAspectRatio="none" style="margin-top:12px;">
+            <rect x="0" y="7" width="320" height="22" fill="#0B0B0C" stroke="#26262A"/>
+            <rect x="0" y="7" width="28" height="22" fill="#17171A"/>
+            <rect x="292" y="7" width="28" height="22" fill="#15160A"/>
+            <rect x="28" y="7" width="264" height="22" fill="url(#mhash)"/>
+            <line x1="160" y1="3" x2="160" y2="33" stroke="#3A3A40"/>
+            <line x1="196" y1="1" x2="196" y2="35" stroke="#CDF03A"/>
+            <ellipse cx="196" cy="18" rx="5.5" ry="3.4" fill="#CDF03A"/>
+          </svg>
+          <div style="display:flex; justify-content:space-between; margin-top:3px;">
+            <span class="mono" style="font-size:9px; color:#5E5E64;">WADDLE</span>
+            <span class="mono" style="font-size:9px; color:#CDF03A;">NACUA +2.5</span>
+          </div>
+          <div style="display:flex; gap:8px; margin-top:14px;">
+            <div style="background:#CDF03A; padding:8px 14px;"><span class="mono" style="font-size:11px; color:#0A0A0B; font-weight:500;">Apply swap</span></div>
+            <div style="border:1px solid #26262A; padding:8px 14px;"><span class="mono" style="font-size:11px; color:#86868C;">Dismiss</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #26262A; background:#121214; margin-top:12px;">
+        <div style="padding:12px 14px; border-bottom:1px solid #26262A;">
+          <span class="mono" style="font-size:10px; letter-spacing:0.1em; color:#86868C;">WAIVER · CLAIM BY WED 2AM</span>
+        </div>
+        <div style="padding:14px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span class="tag" style="background:#46C88A;">RB</span>
+            <span style="font-size:14px; font-weight:600;">J. Mason</span>
+            <span class="mono" style="font-size:10px; color:#86868C;">LV · 41% rost. <span style="color:#46C88A;">▲ 12%</span></span>
+          </div>
+          <div class="mono" style="font-size:11px; color:#A6A6AD; margin-top:8px; line-height:1.5;">Projects as an RB2 rest-of-season if the LV backfield stays his. Direct insurance for Walker (Q).</div>
+          <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px;">
+            <span class="cond" style="font-size:12px; color:#CDF03A; letter-spacing:0.08em;">SUGGESTED BID · 18% FAAB</span>
+            <div style="border:1px solid #CDF03A; padding:6px 12px;"><span class="mono" style="font-size:10px; color:#CDF03A;">Queue claim</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div style="border:1px solid #26262A; background:#121214; margin-top:12px;">
+        <div style="padding:12px 14px; border-bottom:1px solid #26262A;">
+          <span class="mono" style="font-size:10px; letter-spacing:0.1em; color:#E0A94A;">GAME-TIME WATCH</span>
+        </div>
+        <div style="padding:14px;">
+          <div class="mono" style="font-size:11px; color:#A6A6AD; line-height:1.5;">K. Walker (knee) is a 1:00 ET call. If he&#39;s inactive, AXIS auto-promotes Spears and re-runs your projection &mdash; you&#39;ll get a push.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="padding:16px 40px; border-top:1px solid #1E1E21;">
+    <span class="mono" style="font-size:10px; color:#5E5E64;">IN-APP · THIS WEEK — GRIDIRON TERMINAL / ALL TEAMS, PLAYERS &amp; NUMBERS ILLUSTRATIVE</span>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

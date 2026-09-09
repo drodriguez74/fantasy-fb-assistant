@@ -735,6 +735,25 @@ async def get_roster_analysis(
         starting_lineup = [p for p in players if p.get("lineup_slot") not in ("BE", "IR")]
         bench_players = [p for p in players if p.get("lineup_slot") in ("BE", "IR")]
 
+        # Real injury/availability alerts -- ESPN's own roster fetch already
+        # carries each player's real injuryStatus (see
+        # espn_service_enhanced._format_player); this previously went
+        # entirely unused by this endpoint, so the frontend's "Injuries"
+        # stat tile always read 0 regardless of the real roster. No local
+        # DB lookup needed (that pattern is stale/empty in this deployment
+        # anyway) -- the platform already tells us this directly.
+        _HEALTHY_STATUSES = {"ACTIVE", "NORMAL", "HEALTHY", ""}
+        injury_concerns = [
+            {
+                "player": p.get("name"),
+                "position": p.get("position"),
+                "team": p.get("team"),
+                "status": p.get("injury_status"),
+            }
+            for p in players
+            if (p.get("injury_status") or "").upper() not in _HEALTHY_STATUSES
+        ]
+
         # Real, deterministic grading (roster_grading.py) -- no AI call,
         # reuses this league's own real roster-slot requirements. Falls
         # back to a standard lineup internally if settings can't be read.
@@ -770,6 +789,7 @@ async def get_roster_analysis(
                     "strengths": grading["strengths"],
                     "weaknesses": grading["weaknesses"]
                 },
+                "injury_concerns": injury_concerns,
                 "players": players
             }
         }

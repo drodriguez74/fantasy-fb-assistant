@@ -1,0 +1,18 @@
+{
+  "pages": [
+    { "id": "dark", "name": "Dark" },
+    { "id": "light", "name": "Light" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Landing — dark", "page": "dark", "x": 0, "y": 0, "w": 1440, "h": 1380 },
+    { "file": "InApp.dc.html", "title": "This Week — dark", "page": "dark", "x": 1560, "y": 0, "w": 1440, "h": 1280 },
+    { "file": "MainLight.dc.html", "title": "Landing — light", "page": "light", "x": 0, "y": 0, "w": 1440, "h": 1380 },
+    { "file": "InAppLight.dc.html", "title": "This Week — light", "page": "light", "x": 1560, "y": 0, "w": 1440, "h": 1280 }
+  ],
+  "annotations": [
+    { "id": "b2-landing", "page": "dark", "x": 0, "y": -250, "w": 600, "text": "GRIDIRON TERMINAL — hash marks as the structural motif\n• faint yard-line + double-hash-row field behind the hero\n• section eyebrows are yard markers (10 / 20 / 30) on a hash rule\n• card headers + stat rows on a hash baseline\n• EDGE METER is a real field — tinted end zones, two hash rows in from the sidelines, 50 at center, the ball spotted at +2.5 toward the player to start\nType: Barlow Condensed + Space Grotesk + JetBrains Mono. Volt-lime accent <5%." },
+    { "id": "b2-app", "page": "dark", "x": 1560, "y": -250, "w": 600, "text": "THIS WEEK — cues from ESPN / Yahoo / CBS / NFL\n• field-styled matchup slider — ball shows Titans favored by 7.2\n• 'Optimize lineup' with projected gain + win-prob delta\n• 'Managers starting 58% · AXIS: bench' — model vs the crowd\n• trending arrows, news line, position tags, per-player EDGE micro-field-bars\n• right rail: swap + field meter, waiver + FAAB, game-time watch" },
+    { "id": "light-note", "page": "light", "x": 0, "y": -190, "w": 640, "text": "LIGHT MODE — same structure, same layout, remapped palette\nPage #F5F5F2, cards #FFFFFF, hairlines #E4E4DE. The top scoreboard bar and the AXIS mark stay BLACK in both modes — the broadcast anchor.\nAccent splits: volt-lime #CDF03A stays the fill color (with near-black text); a deep turf green #4C7A00 does the work as accent INK — links, active tab, edge numbers, the ball — because pure lime is unreadable as text on white.\nEnd-zone tint on the light field is a pale grass green #EDF3D6." }
+  ],
+  "launch": { "view": "canvas", "page": "light" }
+}

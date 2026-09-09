@@ -20,76 +20,67 @@ export function PlayerCard({ player, onClick, showDetails = false, isDraftMode =
   return (
     <div
       className={clsx(
-        'bg-white rounded-lg shadow-sm border p-4 transition-shadow',
-        onClick && 'cursor-pointer hover:shadow-md hover:border-accent-300',
-        isRecommended && 'border-accent-500 bg-accent-50',
-        !isRecommended && 'border-ink-200',
-        isDraftMode && 'hover:bg-ink-50'
+        'bg-surface rounded-lg border p-4 transition-colors',
+        onClick && 'cursor-pointer hover:border-accent-ink',
+        isRecommended && 'border-accent-ink bg-highlight',
+        !isRecommended && 'border-hairline',
+        isDraftMode && 'hover:bg-surface-2'
       )}
       onClick={handleClick}
     >
-      <div className="flex items-start justify-between">
-        <div className="flex-1">
-          <div className="flex items-center space-x-2 mb-2">
-            <h3 className="text-lg font-semibold text-ink-900">{player.name}</h3>
-            <span className={clsx('px-2 py-1 text-xs font-medium rounded-full', positionColors[player.position])}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1.5">
+            <h3 className="text-base font-semibold text-body truncate">{player.name}</h3>
+            <span className={clsx('px-1.5 py-0.5 text-[10px] font-medium rounded', positionColors[player.position])}>
               {player.position}
             </span>
             {isRecommended && (
-              <span className="px-2 py-1 text-xs font-medium rounded-full bg-accent-100 text-accent-800">
-                Recommended
+              <span className="px-1.5 py-0.5 text-[10px] font-medium rounded bg-highlight text-accent-ink">
+                Rec
               </span>
             )}
           </div>
 
-          <p className="text-sm text-ink-600 mb-2 flex items-center gap-2">
+          <p className="text-xs font-stat text-muted flex items-center gap-2">
             <span>{player.team}</span>
-            {player.bye_week && (
-              <span className="px-1.5 py-0.5 text-xs font-medium bg-ink-100 text-ink-600 rounded">
-                Bye: {player.bye_week}
+            {player.bye_week && <span className="text-faint">&middot; BYE {player.bye_week}</span>}
+            {!isHealthy && player.injury_status && (
+              <span className={clsx('inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium', injuryStatusClasses(player.injury_status))}>
+                {player.injury_status}
               </span>
             )}
           </p>
 
-          {showDetails && (
-            <div className="space-y-2">
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                {player.projected_points && (
-                  <div>
-                    <span className="text-ink-500">Projected:</span>
-                    <span className="ml-1 font-medium">{player.projected_points.toFixed(1)} pts</span>
-                  </div>
-                )}
-                {player.adp && (
-                  <div>
-                    <span className="text-ink-500">ADP:</span>
-                    <span className="ml-1 font-medium">{player.adp.toFixed(1)}</span>
-                  </div>
-                )}
-                {player.risk_level && (
-                  <div>
-                    <span className="text-ink-500">Risk:</span>
-                    <span className={clsx('ml-1 font-medium', riskColors[player.risk_level])}>
-                      {player.risk_level}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              {!isHealthy && player.injury_status && (
-                <div>
-                  <span className={clsx('inline-flex items-center px-2 py-1 rounded-full text-xs font-medium', injuryStatusClasses(player.injury_status))}>
-                    {player.injury_status}
-                  </span>
-                </div>
+          {showDetails && (player.projected_points || player.adp || player.consensus || player.risk_level) && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-stat">
+              {player.consensus && (
+                <span className="text-muted">
+                  RANK <span className="text-body font-medium">#{player.consensus.consensus_rank}</span>
+                </span>
               )}
-
-              {onClick && (
-                <p className="text-xs text-accent-600 font-medium">
-                  View player &rarr; get AI insights
-                </p>
+              {player.projected_points != null && (
+                <span className="text-muted">
+                  PROJ <span className="text-body font-medium">{player.projected_points.toFixed(1)}</span>
+                </span>
+              )}
+              {player.adp != null && (
+                <span className="text-muted">
+                  ADP <span className="text-body font-medium">{player.adp.toFixed(1)}</span>
+                </span>
+              )}
+              {player.risk_level && (
+                <span className="text-muted">
+                  RISK <span className={clsx('font-medium', riskColors[player.risk_level])}>{player.risk_level}</span>
+                </span>
               )}
             </div>
+          )}
+
+          {showDetails && onClick && (
+            <p className="mt-3 text-xs font-stat text-accent-ink">
+              View player &rarr;
+            </p>
           )}
         </div>
 
@@ -99,7 +90,7 @@ export function PlayerCard({ player, onClick, showDetails = false, isDraftMode =
               e.stopPropagation()
               handleClick()
             }}
-            className="ml-4 bg-accent-500 text-white px-3 py-1 rounded text-sm hover:bg-accent-600 transition-colors"
+            className="ml-4 bg-volt text-volt-ink px-3 py-1 rounded text-sm hover:bg-volt-dark transition-colors"
           >
             Draft
           </button>

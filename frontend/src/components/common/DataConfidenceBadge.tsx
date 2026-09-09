@@ -9,9 +9,9 @@ interface DataConfidenceBadgeProps {
 }
 
 const LEVEL_STYLES: Record<DataConfidenceLevel, string> = {
-  computed: 'bg-ink-100 text-ink-600',
+  computed: 'bg-surface-2 text-muted',
   heuristic: 'bg-warning-100 text-warning-800',
-  insufficient: 'bg-ink-50 text-ink-400 border border-dashed border-ink-200',
+  insufficient: 'bg-surface-2 text-faint border  border-hairline',
 }
 
 const DEFAULT_LABEL: Record<DataConfidenceLevel, string> = {

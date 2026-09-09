@@ -1,106 +1,211 @@
 @import "tailwindcss";
 
 /*
- * Design tokens -- "Friday Night Lights" palette.
+ * ============================================================================
+ * GRIDIRON TERMINAL — design system
+ * ============================================================================
+ * Dark-first sports-analytics identity. The football field is the structural
+ * motif (hash-mark dividers, field-position meters), not decoration.
  *
- * The app previously had zero visual identity: stock Tailwind gray-50 +
- * blue-600 used identically for every accent, link, and active state. This
- * introduces a real, deliberate palette instead of another generic
- * SaaS-blue-on-white theme:
+ *   Type    Barlow Condensed (display / scoreboard numerals)
+ *           Space Grotesk    (UI / body)
+ *           JetBrains Mono   (data, stats, tabular figures)
  *
- *   - `ink`: a cool, near-navy neutral ramp (deep charcoal-blue rather than
- *     flat gray) for text, borders, and surfaces -- evokes stadium lights
- *     at dusk rather than an admin dashboard.
- *   - `accent`: ONE saturated brand color, a burnt rust-orange
- *     (#C2560B) -- the color of a well-worn football and turf end-zone
- *     paint, paired with the navy `ink` ramp the way a lot of real NFL
- *     franchises pair navy with burnt orange. Used for every primary
- *     CTA, link, and active state so the brand reads as one system.
- *   - `success` / `warning` / `danger`: a semantic traffic-light scale,
- *     used ONLY for status meaning (injury status, risk level, confidence)
- *     -- never as decoration -- so color always means the same thing.
+ *   Fixed palette (does NOT flip with theme):
+ *     ink-*     warm-neutral near-black ramp — text, surfaces, borders
+ *     accent-*  turf green — primary CTA/link/active-state (readable on white)
+ *     volt      #CDF03A lime — the signal accent, dark text on it, <5% coverage
  *
- * This lives in the CSS `@theme` block (not tailwind.config.js) because
- * this project runs Tailwind v4 via `@tailwindcss/postcss` with no
- * `@config` directive pulling tailwind.config.js in -- that file's `theme`
- * key is inert today. tailwind.config.js still mirrors these values for
- * discoverability, but this block is the source of truth that Tailwind
- * actually compiles against.
+ *   Semantic surface tokens (DO flip: light <-> dark):
+ *     bg-page / bg-surface / bg-surface-2 / border-hairline / border-line
+ *     text-body / text-muted / text-faint / text-accent
+ *   These are wired through `@theme inline` so the utilities emit `var(--x)`
+ *   and respond to `[data-theme]` / `prefers-color-scheme` at runtime.
+ *
+ * Tailwind v4, CSS-first: this @theme block is the source of truth (there is
+ * no tailwind.config.js / @config).
+ * ============================================================================
  */
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* ---- semantic surface variables: light defaults ---- */
+:root,
+[data-theme="light"] {
+  --page: #f5f5f2;
+  --surface: #ffffff;
+  --surface-2: #ececE7;
+  --hairline: #e4e4de;
+  --line: #d6d6cf;
+  --text: #16160f;
+  --text-muted: #6c6c64;
+  --text-faint: #9c9c93;
+  --accent-ink: #4f7a0c;
+  --highlight: #f3f7e2;
+  --highlight-line: #d9e6a8;
+  --success-softer: #eaf7ef;
+  --success-soft: #d3efdd;
+  --success-text: #1e6a3e;
+  --warning-softer: #fdf5e7;
+  --warning-soft: #f9e6c2;
+  --warning-text: #935a13;
+  --danger-softer: #fbeceb;
+  --danger-soft: #f5d3d0;
+  --danger-text: #8f2e26;
+  --field: #fbfbf7;
+  --field-line: #dcdcd4;
+  --field-endzone: #edf3d6;
+  --field-endzone-alt: #efefea;
+  color-scheme: light;
+}
+
+/* ---- dark: via system preference (unless explicitly set to light) ---- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --page: #0a0a0b;
+    --surface: #121214;
+    --surface-2: #1a1a1d;
+    --hairline: #1e1e21;
+    --line: #26262a;
+    --text: #ececee;
+    --text-muted: #86868c;
+    --text-faint: #5e5e64;
+    --accent-ink: #cdf03a;
+    --highlight: #161608;
+    --highlight-line: #3a3a10;
+    --success-softer: #10251a;
+    --success-soft: #16351f;
+    --success-text: #6cd493;
+    --warning-softer: #241a0c;
+    --warning-soft: #34260f;
+    --warning-text: #e0b25e;
+    --danger-softer: #2a1512;
+    --danger-soft: #3a1a16;
+    --danger-text: #f0938a;
+    --field: #0b0b0c;
+    --field-line: #242428;
+    --field-endzone: #15160a;
+    --field-endzone-alt: #17171a;
+    color-scheme: dark;
+  }
+}
+
+/* ---- dark: via explicit toggle (wins in both directions) ---- */
+[data-theme="dark"] {
+  --page: #0a0a0b;
+  --surface: #121214;
+  --surface-2: #1a1a1d;
+  --hairline: #1e1e21;
+  --line: #26262a;
+  --text: #ececee;
+  --text-muted: #86868c;
+  --text-faint: #5e5e64;
+  --accent-ink: #cdf03a;
+  --highlight: #161608;
+  --highlight-line: #3a3a10;
+  --success-softer: #10251a;
+  --success-soft: #16351f;
+  --success-text: #6cd493;
+  --warning-softer: #241a0c;
+  --warning-soft: #34260f;
+  --warning-text: #e0b25e;
+  --danger-softer: #2a1512;
+  --danger-soft: #3a1a16;
+  --danger-text: #f0938a;
+  --field: #0b0b0c;
+  --field-line: #242428;
+  --field-endzone: #15160a;
+  --field-endzone-alt: #17171a;
+  color-scheme: dark;
+}
+
 @theme {
-  --color-ink-50: #f4f5f7;
-  --color-ink-100: #e4e6eb;
-  --color-ink-200: #cbced8;
-  --color-ink-300: #a3a9b8;
-  --color-ink-400: #7d8598;
-  --color-ink-500: #5b6478;
-  --color-ink-600: #3d4557;
-  --color-ink-700: #29303f;
-  --color-ink-800: #1b212d;
-  --color-ink-900: #12161f;
-  --color-ink-950: #0a0d14;
+  /* warm-neutral near-black ramp */
+  --color-ink-50: #f5f5f2;
+  --color-ink-100: #ececE7;
+  --color-ink-200: #e4e4de;
+  --color-ink-300: #d6d6cf;
+  --color-ink-400: #9c9c93;
+  --color-ink-500: #6c6c64;
+  --color-ink-600: #4a4a44;
+  --color-ink-700: #2c2c31;
+  --color-ink-800: #1a1a1d;
+  --color-ink-900: #121214;
+  --color-ink-950: #0a0a0b;
 
-  --color-accent-50: #fdf3ed;
-  --color-accent-100: #fbe1d0;
-  --color-accent-200: #f5be9c;
-  --color-accent-300: #ec9764;
-  --color-accent-400: #dd7638;
-  --color-accent-500: #c2560b;
-  --color-accent-600: #a0470a;
-  --color-accent-700: #7a3708;
-  --color-accent-800: #562705;
-  --color-accent-900: #351803;
+  /* turf green — primary accent, readable as text on white and as a fill */
+  --color-accent-50: #eef4dd;
+  --color-accent-100: #dcebbb;
+  --color-accent-200: #c0d98a;
+  --color-accent-300: #9fc356;
+  --color-accent-400: #7ba023;
+  --color-accent-500: #4f7a0c;
+  --color-accent-600: #446300;
+  --color-accent-700: #344b00;
+  --color-accent-800: #263800;
+  --color-accent-900: #1a2600;
 
-  --color-success-50: #f0fdf4;
-  --color-success-100: #dcfce7;
-  --color-success-500: #22c55e;
-  --color-success-600: #16a34a;
-  --color-success-700: #15803d;
-  --color-success-800: #166534;
-
-  --color-warning-50: #fffbeb;
-  --color-warning-100: #fef3c7;
-  --color-warning-500: #f59e0b;
-  --color-warning-600: #d97706;
-  --color-warning-700: #b45309;
-  --color-warning-800: #92400e;
-
-  --color-danger-50: #fef2f2;
-  --color-danger-100: #fee2e2;
-  --color-danger-500: #ef4444;
-  --color-danger-600: #dc2626;
-  --color-danger-700: #b91c1c;
-  --color-danger-800: #991b1b;
+  /* volt — the signal accent (dark text ON it only) */
+  --color-volt: #cdf03a;
+  --color-volt-dark: #b6d92f;
+  --color-volt-ink: #14140f;
 
   /*
-   * Type system.
-   *
-   * The app previously only *referenced* "Inter" in CSS without ever loading
-   * it -- everything has silently been rendering in the OS default sans this
-   * whole time, which is a big part of why the app reads as visually flat.
-   *
-   *   - `--font-sans`: Inter, now actually loaded, for body copy and UI chrome.
-   *   - `--font-display`: Big Shoulders Display -- a real condensed athletic
-   *     face (built for varsity/stadium signage) for headlines, the wordmark,
-   *     and section labels. Deliberately NOT Bebas/Anton, which read as the
-   *     generic "sporty AI template" choice at this point. Used with
-   *     restraint -- headlines and labels only, never body copy.
-   *   - `--font-stat`: IBM Plex Mono for scoreboard-style numbers (records,
-   *     stat-tile values) -- tabular digits read as "real data," matching
-   *     the box-score/scoreboard vernacular of the subject.
+   * status — meaning only, never decoration.
+   * -500/-600 are fixed (icon + border + solid fill).
+   * -50/-100 (soft tint bg) and -700/-800 (tint-safe text) are theme-aware
+   *  via @theme inline below, so a status chip reads correctly on a dark
+   *  page instead of a pale light chip with invisible text.
    */
-  --font-sans: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  --font-display: "Big Shoulders Display", "Arial Narrow", sans-serif;
-  --font-stat: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --color-success-500: #2e9e5e;
+  --color-success-600: #26814c;
+
+  --color-warning-500: #d98c1f;
+  --color-warning-600: #b87218;
+
+  --color-danger-500: #d14a3f;
+  --color-danger-600: #b23a30;
+
+  --font-sans: "Space Grotesk", system-ui, Avenir, Helvetica, Arial, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --font-stat: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* semantic surface utilities — emit var() so they flip at runtime */
+@theme inline {
+  --color-page: var(--page);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-hairline: var(--hairline);
+  --color-line: var(--line);
+  --color-body: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-accent-ink: var(--accent-ink);
+  --color-highlight: var(--highlight);
+  --color-highlight-line: var(--highlight-line);
+
+  /* theme-aware status tints — soft bg + tint-safe text */
+  --color-success-50: var(--success-softer);
+  --color-success-100: var(--success-soft);
+  --color-success-700: var(--success-text);
+  --color-success-800: var(--success-text);
+  --color-warning-50: var(--warning-softer);
+  --color-warning-100: var(--warning-soft);
+  --color-warning-700: var(--warning-text);
+  --color-warning-800: var(--warning-text);
+  --color-danger-50: var(--danger-softer);
+  --color-danger-100: var(--danger-soft);
+  --color-danger-700: var(--danger-text);
+  --color-danger-800: var(--danger-text);
 }
 
 body {
   font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
-  color-scheme: light;
-  color: var(--color-ink-900);
-  background-color: var(--color-ink-50);
+  color: var(--text);
+  background-color: var(--page);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -108,32 +213,70 @@ body {
 }
 
 /*
- * Signature element: a "yard-marker" divider -- a hairline with small
- * perpendicular ticks at regular intervals, standing in for the chalked
- * yard lines on a football field. Used in place of a plain border wherever
- * a page needs to mark a real section break (nav/page boundary, hero/body
- * boundary) -- not decoration, a structural device borrowed from the
- * subject's own vernacular.
+ * Signature: the yard-marker divider — a hash-mark rule standing in for the
+ * chalked yard lines on a football field. Two offset tick rows, themed via
+ * the surface vars so it reads in light and dark. Use it wherever a page
+ * needs to mark a real section break, in place of a plain border.
  */
 .yard-divider {
-  height: 7px;
+  height: 14px;
   background:
     repeating-linear-gradient(
         to right,
-        var(--color-ink-300) 0,
-        var(--color-ink-300) 2px,
-        transparent 2px,
-        transparent 44px
+        var(--line) 0,
+        var(--line) 1px,
+        transparent 1px,
+        transparent 18px
       )
-      top / 100% 6px no-repeat,
-    linear-gradient(var(--color-ink-200), var(--color-ink-200)) bottom / 100% 1px no-repeat;
+      left bottom / 100% 9px no-repeat,
+    repeating-linear-gradient(
+        to right,
+        var(--hairline) 0,
+        var(--hairline) 1px,
+        transparent 1px,
+        transparent 18px
+      )
+      9px bottom / 100% 5px no-repeat;
 }
 
 /*
- * Hero entrance -- the one orchestrated motion moment on the page (per
- * frontend-design guidance: one deliberate sequence beats scattered
- * hover/scroll effects everywhere). Lines rise and settle in sequence,
- * like a broadcast lower-third building itself in.
+ * Faint full-field backdrop — yard lines + two hash rows, at very low
+ * contrast. For sitting behind a hero. Pointer-events:none; place absolutely.
+ */
+.field-backdrop {
+  background-image:
+    repeating-linear-gradient(
+      to right,
+      var(--hairline) 0,
+      var(--hairline) 1px,
+      transparent 1px,
+      transparent 112px
+    ),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 64px,
+      var(--hairline) 64px,
+      var(--hairline) 65px,
+      transparent 65px,
+      transparent 96px,
+      var(--hairline) 96px,
+      var(--hairline) 97px,
+      transparent 97px,
+      transparent 240px
+    );
+  opacity: 0.5;
+}
+
+/* scoreboard-style tabular numerals */
+.stat-nums {
+  font-family: var(--font-stat);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Hero entrance — one orchestrated motion moment, like a broadcast
+ * lower-third building itself in.
  */
 @keyframes rise-in {
   from {
@@ -148,18 +291,10 @@ body {
 .animate-rise-in {
   animation: rise-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
-.animate-rise-in-1 {
-  animation-delay: 0.04s;
-}
-.animate-rise-in-2 {
-  animation-delay: 0.12s;
-}
-.animate-rise-in-3 {
-  animation-delay: 0.22s;
-}
-.animate-rise-in-4 {
-  animation-delay: 0.32s;
-}
+.animate-rise-in-1 { animation-delay: 0.04s; }
+.animate-rise-in-2 { animation-delay: 0.12s; }
+.animate-rise-in-3 { animation-delay: 0.22s; }
+.animate-rise-in-4 { animation-delay: 0.32s; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-rise-in {

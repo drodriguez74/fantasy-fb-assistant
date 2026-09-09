@@ -37,8 +37,8 @@ export function SituationalAnalysisChart({
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900 mb-2">{data.player}</p>
+        <div className="bg-surface p-3 border border-hairline rounded-lg">
+          <p className="font-semibold text-body mb-2">{data.player}</p>
           <p className="text-sm">Situation: <span className="font-medium">{label}</span></p>
           <p className="text-sm">Home: <span className="font-medium">{data.home.toFixed(1)} pts</span></p>
           <p className="text-sm">Away: <span className="font-medium">{data.away.toFixed(1)} pts</span></p>
@@ -89,20 +89,20 @@ export function SituationalAnalysisChart({
     return (
       <div className="w-full space-y-4">
         {chartData.map((player) => (
-          <div key={player.player} className="bg-gray-50 p-4 rounded-lg">
-            <h4 className="text-sm font-medium text-gray-900 mb-3">{player.player}</h4>
+          <div key={player.player} className="bg-surface-2 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-body mb-3">{player.player}</h4>
             <div className="space-y-2">
               {/* Home performance */}
               <div className="flex items-center space-x-3">
-                <div className="w-12 text-xs text-gray-600">Home</div>
+                <div className="w-12 text-xs text-muted">Home</div>
                 <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
                   <div
-                    className="h-6 bg-blue-500 rounded-full transition-all duration-300"
+                    className="h-6 bg-accent-500 rounded-full transition-all duration-300"
                     style={{
                       width: `${Math.min((player.home / Math.max(player.home, player.away)) * 100, 100)}%`
                     }}
                   />
-                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900">
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-body">
                     {player.home.toFixed(1)} pts
                   </span>
                 </div>
@@ -110,7 +110,7 @@ export function SituationalAnalysisChart({
               
               {/* Away performance */}
               <div className="flex items-center space-x-3">
-                <div className="w-12 text-xs text-gray-600">Away</div>
+                <div className="w-12 text-xs text-muted">Away</div>
                 <div className="flex-1 bg-gray-200 rounded-full h-6 relative">
                   <div
                     className="h-6 bg-gray-500 rounded-full transition-all duration-300"
@@ -118,7 +118,7 @@ export function SituationalAnalysisChart({
                       width: `${Math.min((player.away / Math.max(player.home, player.away)) * 100, 100)}%`
                     }}
                   />
-                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-gray-900">
+                  <span className="absolute inset-0 flex items-center justify-center text-xs font-medium text-body">
                     {player.away.toFixed(1)} pts
                   </span>
                 </div>
@@ -126,8 +126,8 @@ export function SituationalAnalysisChart({
               
               {/* Difference indicator */}
               <div className="flex items-center justify-between text-xs mt-2">
-                <span className="text-gray-600">Preference:</span>
-                <span className={`font-medium ${player.homeAdvantage ? 'text-blue-600' : 'text-gray-600'}`}>
+                <span className="text-muted">Preference:</span>
+                <span className={`font-medium ${player.homeAdvantage ? 'text-accent-ink' : 'text-muted'}`}>
                   {player.homeAdvantage ? 'Home' : 'Away'} ({Math.abs(player.difference).toFixed(1)} pts)
                 </span>
               </div>
@@ -218,8 +218,8 @@ export function WeatherImpactChart({
               if (active && payload && payload.length) {
                 const data = payload[0].payload
                 return (
-                  <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-                    <p className="font-semibold text-gray-900 mb-2">{label}</p>
+                  <div className="bg-surface p-3 border border-hairline rounded-lg">
+                    <p className="font-semibold text-body mb-2">{label}</p>
                     <p className="text-sm">Outdoor: <span className="font-medium">{data.outdoor.toFixed(1)} pts</span></p>
                     <p className="text-sm">Dome: <span className="font-medium">{data.dome.toFixed(1)} pts</span></p>
                     <p className="text-sm">Weather Sensitivity: <span 
@@ -261,7 +261,7 @@ export function GameScriptChart({
 
   return (
     <div className="w-full">
-      <h4 className="text-sm font-medium text-gray-900 mb-2 text-center">{player.player} - Game Script Performance</h4>
+      <h4 className="text-sm font-medium text-body mb-2 text-center">{player.player} - Game Script Performance</h4>
       <ResponsiveContainer width="100%" height={height}>
         <PieChart>
           <Pie

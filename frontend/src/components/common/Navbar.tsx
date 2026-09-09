@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { Menu, Transition } from '@headlessui/react'
 import { useAuth } from '../../hooks/useAuth'
 import { NotificationBell } from './NotificationBell'
+import { ThemeToggle } from './ThemeToggle'
 import {
   UserIcon,
   ArrowRightOnRectangleIcon,
@@ -34,6 +35,10 @@ const moreNavigation = [
 
 const allNavigation = [...primaryNavigation, ...moreNavigation]
 
+/**
+ * The navbar is the "broadcast bug" — it stays dark (ink-950) in both light
+ * and dark mode, the fixed anchor the rest of the theme moves around.
+ */
 export function Navbar() {
   const location = useLocation()
   const { user, logout } = useAuth()
@@ -42,28 +47,30 @@ export function Navbar() {
   const isMoreActive = moreNavigation.some((item) => item.href === location.pathname)
 
   return (
-    <nav className="bg-white shadow-sm">
+    <nav className="bg-ink-950 text-ink-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           <div className="flex min-w-0">
             <div className="flex-shrink-0 flex items-center">
-              <Link
-                to="/"
-                className="font-display font-black uppercase tracking-wide text-2xl leading-none text-ink-900"
-              >
-                FF <span className="text-accent-500">Assistant</span>
+              <Link to="/" className="flex items-center gap-2.5">
+                <span className="flex h-6 w-6 items-center justify-center bg-volt font-display text-base font-bold leading-none text-volt-ink">
+                  FF
+                </span>
+                <span className="font-display text-xl font-bold uppercase tracking-[0.06em] text-ink-50">
+                  Assistant
+                </span>
               </Link>
             </div>
-            <div className="hidden md:ml-6 md:flex md:items-center md:space-x-6">
+            <div className="hidden md:ml-8 md:flex md:items-center md:space-x-6">
               {primaryNavigation.map((item) => (
                 <Link
                   key={item.name}
                   to={item.href}
                   className={clsx(
-                    'inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors',
+                    'inline-flex items-center px-1 pt-1 border-b-2 font-stat text-xs tracking-wide transition-colors',
                     location.pathname === item.href
-                      ? 'border-accent-500 text-ink-900'
-                      : 'border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-700'
+                      ? 'border-volt text-ink-50'
+                      : 'border-transparent text-ink-400 hover:border-ink-600 hover:text-ink-100'
                   )}
                 >
                   {item.name}
@@ -75,10 +82,10 @@ export function Navbar() {
                   <>
                     <Menu.Button
                       className={clsx(
-                        'inline-flex items-center gap-1 px-1 pt-1 border-b-2 text-sm font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500 focus-visible:ring-offset-2 rounded-sm',
+                        'inline-flex items-center gap-1 px-1 pt-1 border-b-2 font-stat text-xs tracking-wide transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-volt rounded-sm',
                         open || isMoreActive
-                          ? 'border-accent-500 text-ink-900'
-                          : 'border-transparent text-ink-500 hover:border-ink-300 hover:text-ink-700'
+                          ? 'border-volt text-ink-50'
+                          : 'border-transparent text-ink-400 hover:border-ink-600 hover:text-ink-100'
                       )}
                     >
                       More
@@ -96,18 +103,18 @@ export function Navbar() {
                       leaveFrom="transform opacity-100 scale-100"
                       leaveTo="transform opacity-0 scale-95"
                     >
-                      <Menu.Items className="absolute left-0 top-full z-20 mt-1 w-56 origin-top-left rounded-md bg-white shadow-lg ring-1 ring-black ring-opacity-5 focus:outline-none py-1">
+                      <Menu.Items className="absolute left-0 top-full z-20 mt-1 w-56 origin-top-left border border-ink-700 bg-ink-900 shadow-lg focus:outline-none py-1">
                         {moreNavigation.map((item) => (
                           <Menu.Item key={item.name}>
                             {({ active }) => (
                               <Link
                                 to={item.href}
                                 className={clsx(
-                                  'block px-4 py-2 text-sm transition-colors',
+                                  'block px-4 py-2 font-stat text-xs transition-colors',
                                   location.pathname === item.href
-                                    ? 'text-accent-600 font-medium'
-                                    : 'text-ink-700',
-                                  active && 'bg-ink-100'
+                                    ? 'text-volt'
+                                    : 'text-ink-300',
+                                  active && 'bg-ink-800 text-ink-50'
                                 )}
                               >
                                 {item.name}
@@ -124,18 +131,19 @@ export function Navbar() {
           </div>
 
           <div className="hidden md:flex items-center space-x-4">
+            <ThemeToggle />
             {user ? (
               <>
                 <NotificationBell />
                 <div className="flex items-center space-x-2 min-w-0">
-                  <UserIcon className="h-5 w-5 text-ink-400 flex-shrink-0" />
-                  <span className="text-sm font-medium text-ink-700 truncate max-w-[10rem]">
+                  <UserIcon className="h-5 w-5 text-ink-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-ink-200 truncate max-w-[10rem]">
                     {user.full_name || user.username}
                   </span>
                 </div>
                 <button
                   onClick={logout}
-                  className="flex items-center space-x-1 text-sm text-ink-500 hover:text-ink-700 flex-shrink-0"
+                  className="flex items-center space-x-1 text-sm text-ink-400 hover:text-ink-100 flex-shrink-0"
                 >
                   <ArrowRightOnRectangleIcon className="h-4 w-4" />
                   <span>Sign Out</span>
@@ -144,7 +152,7 @@ export function Navbar() {
             ) : (
               <Link
                 to="/auth"
-                className="bg-accent-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-accent-600 transition-colors flex-shrink-0"
+                className="bg-volt text-volt-ink px-4 py-2 font-stat text-xs font-medium hover:bg-volt-dark transition-colors flex-shrink-0"
               >
                 Sign In
               </Link>
@@ -152,6 +160,7 @@ export function Navbar() {
           </div>
 
           <div className="flex items-center gap-1 md:hidden">
+            <ThemeToggle />
             {user && <NotificationBell />}
             <button
               type="button"
@@ -159,7 +168,7 @@ export function Navbar() {
               aria-expanded={mobileMenuOpen}
               aria-controls="mobile-nav-panel"
               aria-label={mobileMenuOpen ? 'Close main menu' : 'Open main menu'}
-              className="inline-flex items-center justify-center p-2 rounded-md text-ink-500 hover:text-ink-700 hover:bg-ink-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-500"
+              className="inline-flex items-center justify-center p-2 rounded-sm text-ink-400 hover:text-ink-100 hover:bg-ink-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-volt"
             >
               {mobileMenuOpen ? (
                 <XMarkIcon className="h-6 w-6" aria-hidden="true" />
@@ -174,7 +183,7 @@ export function Navbar() {
       <div className="yard-divider" aria-hidden="true" />
 
       {mobileMenuOpen && (
-        <div id="mobile-nav-panel" className="md:hidden border-t border-ink-200">
+        <div id="mobile-nav-panel" className="md:hidden bg-ink-950 border-t border-ink-800">
           <div className="px-2 pt-2 pb-3 space-y-1">
             {allNavigation.map((item) => (
               <Link
@@ -182,22 +191,22 @@ export function Navbar() {
                 to={item.href}
                 onClick={() => setMobileMenuOpen(false)}
                 className={clsx(
-                  'block rounded-md px-3 py-2 text-base font-medium transition-colors',
+                  'block px-3 py-2 font-stat text-sm transition-colors',
                   location.pathname === item.href
-                    ? 'bg-accent-50 text-accent-700'
-                    : 'text-ink-600 hover:bg-ink-100 hover:text-ink-900'
+                    ? 'bg-ink-800 text-volt'
+                    : 'text-ink-300 hover:bg-ink-800 hover:text-ink-50'
                 )}
               >
                 {item.name}
               </Link>
             ))}
           </div>
-          <div className="border-t border-ink-200 px-4 py-3">
+          <div className="border-t border-ink-800 px-4 py-3">
             {user ? (
               <div className="flex items-center justify-between gap-2">
                 <div className="flex items-center space-x-2 min-w-0">
-                  <UserIcon className="h-5 w-5 text-ink-400 flex-shrink-0" />
-                  <span className="text-sm font-medium text-ink-700 truncate">
+                  <UserIcon className="h-5 w-5 text-ink-500 flex-shrink-0" />
+                  <span className="text-sm font-medium text-ink-200 truncate">
                     {user.full_name || user.username}
                   </span>
                 </div>
@@ -206,7 +215,7 @@ export function Navbar() {
                     setMobileMenuOpen(false)
                     logout()
                   }}
-                  className="flex items-center space-x-1 text-sm text-ink-500 hover:text-ink-700 flex-shrink-0"
+                  className="flex items-center space-x-1 text-sm text-ink-400 hover:text-ink-100 flex-shrink-0"
                 >
                   <ArrowRightOnRectangleIcon className="h-4 w-4" />
                   <span>Sign Out</span>
@@ -216,7 +225,7 @@ export function Navbar() {
               <Link
                 to="/auth"
                 onClick={() => setMobileMenuOpen(false)}
-                className="block w-full text-center bg-accent-500 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-accent-600 transition-colors"
+                className="block w-full text-center bg-volt text-volt-ink px-4 py-2 font-stat text-sm font-medium hover:bg-volt-dark transition-colors"
               >
                 Sign In
               </Link>

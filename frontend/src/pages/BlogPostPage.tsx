@@ -65,7 +65,7 @@ export function BlogPostPage() {
     // borrow the success/warning/danger ramp (reserved for real status
     // meaning per STYLE_GUIDE.md §1) except for the one genuine exception.
     if (category === 'injury_report') return 'bg-danger-100 text-danger-800'
-    return 'bg-ink-100 text-ink-700'
+    return 'bg-surface-2 text-body'
   }
 
   const getCategoryName = (category: string) => {
@@ -85,8 +85,8 @@ export function BlogPostPage() {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-500"></div>
-        <span className="ml-2 text-ink-600">Loading article...</span>
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-accent-ink"></div>
+        <span className="ml-2 text-muted">Loading article...</span>
       </div>
     )
   }
@@ -107,7 +107,7 @@ export function BlogPostPage() {
         </div>
         <button
           onClick={() => navigate('/blog')}
-          className="mt-4 flex items-center text-accent-600 hover:text-accent-700"
+          className="mt-4 flex items-center text-accent-ink hover:text-accent-ink"
         >
           <ArrowLeftIcon className="h-4 w-4 mr-1" />
           Back to Blog
@@ -121,14 +121,14 @@ export function BlogPostPage() {
       {/* Back Button */}
       <button
         onClick={() => navigate('/blog')}
-        className="mb-6 flex items-center text-accent-600 hover:text-accent-700 transition-colors"
+        className="mb-6 flex items-center text-accent-ink hover:text-accent-ink transition-colors"
       >
         <ArrowLeftIcon className="h-4 w-4 mr-1" />
         Back to Blog
       </button>
 
       {/* Article Header */}
-      <article className="bg-white rounded-lg shadow-md border border-ink-200 overflow-hidden">
+      <article className="bg-surface rounded-lg border border-hairline overflow-hidden">
         <div className="p-8">
           {/* Category and Status */}
           <div className="flex items-center justify-between mb-4">
@@ -139,12 +139,12 @@ export function BlogPostPage() {
             
             <div className="flex items-center space-x-4">
               {blogPost.featured && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
-                  ⭐ Featured
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-highlight text-accent-ink">
+                  Featured
                 </span>
               )}
               {!blogPost.is_published && (
-                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-700">
+                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-2 text-body">
                   Draft
                 </span>
               )}
@@ -152,12 +152,12 @@ export function BlogPostPage() {
           </div>
 
           {/* Title */}
-          <h1 className="font-display font-black uppercase tracking-tight text-4xl text-ink-900 mb-6 leading-tight">
+          <h1 className="font-display font-bold uppercase tracking-tight text-4xl text-body mb-6 leading-tight">
             {blogPost.title}
           </h1>
 
           {/* Meta Information */}
-          <div className="flex items-center space-x-6 text-sm text-ink-500 mb-8 border-b border-ink-200 pb-6">
+          <div className="flex items-center space-x-6 text-sm text-muted mb-8 border-b border-hairline pb-6">
             <div className="flex items-center">
               <UserIcon className="h-4 w-4 mr-1" />
               <span>{blogPost.author}</span>
@@ -177,7 +177,7 @@ export function BlogPostPage() {
           {/* Content */}
           <div className="prose prose-lg max-w-none">
             <div
-              className="text-ink-700 leading-relaxed whitespace-pre-wrap"
+              className="text-body leading-relaxed whitespace-pre-wrap"
               style={{ lineHeight: '1.8' }}
             >
               {blogPost.content}
@@ -186,13 +186,13 @@ export function BlogPostPage() {
 
           {/* Tags */}
           {blogPost.tags && typeof blogPost.tags === 'object' && Object.keys(blogPost.tags).length > 0 && (
-            <div className="mt-8 pt-6 border-t border-ink-200">
-              <h3 className="text-sm font-medium text-ink-900 mb-3">Tags & Metadata</h3>
+            <div className="mt-8 pt-6 border-t border-hairline">
+              <h3 className="text-sm font-medium text-body mb-3">Tags & Metadata</h3>
               <div className="flex flex-wrap gap-2">
                 {Object.entries(blogPost.tags).map(([key, value]) => (
                   <span
                     key={key}
-                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-ink-100 text-ink-700"
+                    className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-surface-2 text-body"
                   >
                     {key}: {String(value)}
                   </span>
@@ -207,7 +207,7 @@ export function BlogPostPage() {
       <div className="mt-8 text-center">
         <button
           onClick={() => navigate('/blog')}
-          className="bg-accent-500 text-white px-6 py-2 rounded-md hover:bg-accent-600 transition-colors"
+          className="bg-volt text-volt-ink px-6 py-2 rounded-md hover:bg-volt-dark transition-colors"
         >
           Back to All Articles
         </button>

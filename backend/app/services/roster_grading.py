@@ -31,6 +31,7 @@ just leaves `bye_week` absent for that player, exactly like real platform
 data lacking it, rather than raising or guessing.
 """
 
+import re
 from typing import Any, Dict, List, Optional
 
 from app.services.grading import (
@@ -39,6 +40,7 @@ from app.services.grading import (
     bye_week_score,
     value_and_bye_strengths_weaknesses,
     bench_depth_notes,
+    NFL_SEASON_GAMES,
 )
 from app.services.draft_assistant_service import draft_assistant
 
@@ -158,11 +160,32 @@ def _score_composition(
     }
 
 
-def _identify_strengths_weaknesses(players: List[Dict[str, Any]]) -> Dict[str, List[str]]:
+def _identify_strengths_weaknesses(
+    players: List[Dict[str, Any]], requirements: Optional[Dict[str, int]] = None
+) -> Dict[str, List[str]]:
     """Adapted from PostDraftAnalysisService._identify_strengths_weaknesses --
     same real, quality-aware per-position rules (count + avg projected_points),
     ported from ORM Player attribute access to plain dict access so it works
     on any platform's roster dicts without a local DB Player match.
+
+    Quality (`avg_projection`) is computed from only the top
+    `requirements[position]` players by projected_points -- i.e. this
+    league's real starter count for that position -- not the whole rostered
+    group. A user-reported bug (2026-09-05, a real 5-RB roster: two
+    legitimate starters + three committee/backup-grade backs) showed why:
+    averaging the entire group lets replacement-level depth drag down a
+    genuinely strong top end, or (just as often) lets a strong top end paper
+    over mediocre depth -- "Excellent RB depth" told the user nothing about
+    whether their actual starters were any good. `player_count` (used for
+    the headcount-only checks below) still reflects the whole group --
+    that's a real, separate "do you have bodies" signal, already
+    intentionally distinct from the quality question. Falls back to
+    `_FALLBACK_STARTERS` when no real per-league requirements are supplied.
+
+    `projected_points`, when real (ESPN only today -- see NFL_SEASON_GAMES's
+    docstring in grading.py), is a season-long total; divided by
+    NFL_SEASON_GAMES before comparing against these weekly-shaped
+    thresholds.
     """
     position_groups: Dict[str, List[Dict[str, Any]]] = {}
     for player in players:
@@ -170,11 +193,16 @@ def _identify_strengths_weaknesses(players: List[Dict[str, Any]]) -> Dict[str, L
         position = _POSITION_ALIASES.get(position, position)
         position_groups.setdefault(position, []).append(player)
 
+    effective_requirements = requirements or _FALLBACK_STARTERS
+
     strengths: List[str] = []
     weaknesses: List[str] = []
 
     for position, group in position_groups.items():
-        projections = [p.get("projected_points") or 0 for p in group]
+        starter_count = max(effective_requirements.get(position, 1), 1)
+        sorted_group = sorted(group, key=lambda p: p.get("projected_points") or 0, reverse=True)
+        starters = sorted_group[:starter_count]
+        projections = [(p.get("projected_points") or 0) / NFL_SEASON_GAMES for p in starters]
         avg_projection = sum(projections) / len(projections) if projections else 0.0
         player_count = len(group)
 
@@ -268,7 +296,11 @@ def grade_roster(
     # position regardless of actual roster quality -- a fabricated-looking
     # signal from missing data, not a real one. Skip it honestly instead.
     has_real_projections = any((p.get("projected_points") or 0) > 0 for p in players)
-    sw = _identify_strengths_weaknesses(players) if has_real_projections else {"strengths": [], "weaknesses": []}
+    sw = (
+        _identify_strengths_weaknesses(players, requirements)
+        if has_real_projections
+        else {"strengths": [], "weaknesses": []}
+    )
 
     # Requirement- and bye-week-based signals: real per-league starter
     # requirements (needs_attention/overstocked, already computed above) and
@@ -276,11 +308,34 @@ def grade_roster(
     # rules above ever look at. Merged in rather than replacing `sw` --
     # both are real, independent signals (a position can meet its starter
     # count and still be low-quality, or vice versa).
+    position_breakdown = composition["position_breakdown"]
+    needs_attention_positions = {pos for pos, info in position_breakdown.items() if info.get("needs_attention")}
+    overstocked_positions = {pos for pos, info in position_breakdown.items() if info.get("overstocked")}
+
+    # sw's per-position rules only look at headcount/avg-projection and have
+    # no idea what this league actually requires, so they can call a position
+    # "solid"/"deep" while the real required-depth check above flags it as
+    # needing attention (or vice versa) -- e.g. "Solid TE situation" alongside
+    # "TE is below your league's required depth (1/3)". Let the real,
+    # league-aware signal win: drop the legacy per-position entry whenever it
+    # contradicts it.
+    def _mentions_position(text: str, position: str) -> bool:
+        return re.search(rf"\b{re.escape(position)}\b", text) is not None
+
+    sw_strengths = [
+        s for s in sw["strengths"]
+        if not any(_mentions_position(s, pos) for pos in needs_attention_positions)
+    ]
+    sw_weaknesses = [
+        w for w in sw["weaknesses"]
+        if not any(_mentions_position(w, pos) for pos in overstocked_positions)
+    ]
+
     value_sw = value_and_bye_strengths_weaknesses(
-        composition["position_breakdown"], bye_collisions=collisions
+        position_breakdown, bye_collisions=collisions
     )
-    strengths = sw["strengths"] + [s for s in value_sw["strengths"] if s not in sw["strengths"]]
-    weaknesses = sw["weaknesses"] + [w for w in value_sw["weaknesses"] if w not in sw["weaknesses"]]
+    strengths = sw_strengths + [s for s in value_sw["strengths"] if s not in sw_strengths]
+    weaknesses = sw_weaknesses + [w for w in value_sw["weaknesses"] if w not in sw_weaknesses]
 
     # Catches a "stud, stud, then a cliff" position -- headcount and even
     # the plain average above can both look fine while your actual bench

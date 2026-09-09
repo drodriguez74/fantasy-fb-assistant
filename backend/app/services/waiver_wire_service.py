@@ -36,6 +36,16 @@ def _is_rosterable_player(player_data: Dict[str, Any]) -> bool:
     return bool(player_data.get("team")) and player_data.get("status") == "Active"
 
 
+def _player_full_name(player_data: Dict[str, Any]) -> str:
+    """Same full-name derivation used throughout this module -- extracted
+    so the real-availability filter below can check a name before the
+    per-recommendation loop computes its own copy.
+    """
+    return player_data.get("full_name") or " ".join(
+        filter(None, [player_data.get("first_name"), player_data.get("last_name")])
+    ) or "Unknown Player"
+
+
 # Fantasy-relevant positions we're willing to recommend off the waiver wire.
 _WAIVER_ELIGIBLE_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
 
@@ -113,6 +123,7 @@ class WaiverWireService:
         limit: int = 20,
         user_roster: Optional[List[Dict[str, Any]]] = None,
         league_settings: Optional[Dict[str, Any]] = None,
+        available_player_names: Optional[set] = None,
     ) -> List[Dict[str, Any]]:
         """Real waiver-add recommendations sourced from Sleeper's live
         trending-add feed (players actually being added across real fantasy
@@ -135,6 +146,20 @@ class WaiverWireService:
         the same FLEX-aware helper roster_grading.py/post_draft_analysis_service.py
         already use) are used to boost/penalize candidates at a position the
         user's real roster actually needs/is overstocked at.
+
+        `available_player_names`: real, lower-cased free-agent names for
+        this specific connected league (from the platform's own free-agent
+        API -- e.g. espn_service_enhanced.get_available_players,
+        yahoo_service.get_available_players, or "not on any of this
+        league's real rosters" for Sleeper), optional. Sleeper's global
+        trending-add feed has no idea which players are actually free
+        agents in any one specific league -- a player trending across
+        Sleeper broadly can easily already be rostered by someone else in
+        THIS league (confirmed live: MarShawn Lloyd was recommended for a
+        real ESPN league despite being rostered by another team in it, not
+        a free agent at all). When omitted, behavior is unchanged
+        (unfiltered by real per-league availability) -- callers with real
+        league context should pass this whenever they have it.
         """
         try:
             # Over-fetch: some trending adds will be filtered out by the
@@ -184,6 +209,7 @@ class WaiverWireService:
             # it drove the whole ranking.
             league_scoring_context = None
             is_high_ppr = False
+            team_count = league_settings.get("team_count") if league_settings else None
             if league_settings:
                 scoring_format = league_settings.get("scoring_format")
                 ppr_value = league_settings.get("points_per_reception")
@@ -212,6 +238,15 @@ class WaiverWireService:
                 if target_position and player_position != target_position:
                     continue
 
+                # Real per-league availability check -- see this method's
+                # docstring. Skip (not just deprioritize) a Sleeper-trending
+                # player who isn't actually a free agent in this specific
+                # league; recommending an already-rostered player is a real
+                # correctness bug, not a ranking nuance.
+                if available_player_names is not None:
+                    if _player_full_name(player_data).lower() not in available_player_names:
+                        continue
+
                 candidates.append((sleeper_id, player_data, add_count))
 
             if not candidates:
@@ -227,6 +262,15 @@ class WaiverWireService:
 
             recommendations = []
             for rank, (sleeper_id, player_data, add_count) in enumerate(candidates):
+                # Real per-candidate position -- Python for-loop variables
+                # aren't scoped, so without reassigning this here, the
+                # roster-need weighting below silently used whatever
+                # position the LAST entry in the candidate-building loop
+                # above happened to have, for every single recommendation
+                # in this loop. That's a real, confirmed bug: every
+                # candidate regardless of actual position was getting the
+                # same "Your roster is already deep at WR" reason text.
+                player_position = player_data.get("position")
                 rec_priority = self._priority_from_rank(rank, total)
 
                 if priority and rec_priority != priority.lower():
@@ -251,7 +295,15 @@ class WaiverWireService:
                     f"leagues in the last 24 hours."
                 ]
 
-                # Real roster-need weighting.
+                # Real roster-need weighting. league_label mentions the
+                # league's real, connected team count (UserLeague.league_size,
+                # threaded through via league_settings["team_count"]) when
+                # known -- roster depth reads very differently in a 12-team
+                # league (thin free-agent pool, holding bench depth matters
+                # more) than an 8-team league (deep pool, less reason to
+                # hoard), so the reason text should say which one this is
+                # rather than talking about "your roster" in the abstract.
+                league_label = f"your {team_count}-team league" if team_count else "your league"
                 roster_need = None
                 if position_requirements is not None:
                     required = position_requirements.get(player_position, 0)
@@ -260,13 +312,13 @@ class WaiverWireService:
                         roster_need = "needs_attention"
                         confidence *= 1.3
                         reason_parts.append(
-                            f"Your roster currently has {actual}/{required} required {player_position}s."
+                            f"In {league_label}, your roster currently has {actual}/{required} required {player_position}s."
                         )
                     elif actual > required + 1:
                         roster_need = "overstocked"
                         confidence *= 0.7
                         reason_parts.append(
-                            f"Your roster is already deep at {player_position} ({actual} rostered)."
+                            f"In {league_label}, your roster is already deep at {player_position} ({actual} rostered)."
                         )
 
                 # Real bye-week awareness: try to find a local Player row for

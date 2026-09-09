@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import { api, getErrorMessage } from '../services/api'
 import { LeagueScoringSettings } from '../components/leagues/LeagueScoringSettings'
@@ -33,6 +33,7 @@ interface RosterPlayer {
   team?: string
   total_points?: number
   projected_points?: number
+  injury_status?: string
 }
 
 interface PositionAnalysisEntry {
@@ -66,7 +67,7 @@ interface RosterAnalysis {
   strengths?: string[]
   weaknesses?: string[]
   players?: RosterPlayer[]
-  injury_concerns?: unknown[]
+  injury_concerns?: { player: string; position?: string; team?: string; status?: string }[]
   last_updated?: string
 }
 
@@ -141,8 +142,14 @@ export function LeagueDetailPage() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
-  
-  const [activeTab, setActiveTab] = useState<'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'>('overview')
+  const [searchParams] = useSearchParams()
+
+  type LeagueTab = 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
+  const TABS: LeagueTab[] = ['overview', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
+  const tabParam = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<LeagueTab>(
+    TABS.includes(tabParam as LeagueTab) ? (tabParam as LeagueTab) : 'overview'
+  )
   const [leagueInfo, setLeagueInfo] = useState<LeagueInfo | null>(null)
   const [rosterAnalysis, setRosterAnalysis] = useState<RosterAnalysis | null>(null)
   const [waiverRecs, setWaiverRecs] = useState<WaiverRecommendation | null>(null)
@@ -162,8 +169,8 @@ export function LeagueDetailPage() {
     setTradeError('')
 
     // Fetched independently (not one Promise.all) because waiver/trade
-    // recommendations are, today, only really implemented for Yahoo leagues
-    // (league_management_service.py honestly 400s for ESPN/Sleeper instead
+    // recommendations are, today, only really implemented for Yahoo and ESPN
+    // leagues (league_management_service.py honestly 400s for Sleeper instead
     // of faking data) -- that known, documented gap must not take down
     // roster/standings/insights, which work for every connected platform.
     const [rosterResult, standingsResult, insightsResult, waiverResult, tradeResult] = await Promise.allSettled([
@@ -257,9 +264,9 @@ export function LeagueDetailPage() {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="text-center">
-          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-ink-400" />
-          <h3 className="mt-2 text-sm font-medium text-ink-900">Authentication Required</h3>
-          <p className="mt-1 text-sm text-ink-500">Please sign in to view league details.</p>
+          <ExclamationTriangleIcon className="mx-auto h-12 w-12 text-faint" />
+          <h3 className="mt-2 text-sm font-medium text-body">Authentication Required</h3>
+          <p className="mt-1 text-sm text-muted">Please sign in to view league details.</p>
         </div>
       </div>
     )
@@ -269,10 +276,10 @@ export function LeagueDetailPage() {
     return (
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         <div className="flex items-center justify-center py-12">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-500 mr-4"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-ink mr-4"></div>
           <div>
-            <h3 className="text-lg font-medium text-ink-900">Loading league analysis</h3>
-            <p className="text-sm text-ink-500">Pulling your roster, standings, and matchups.</p>
+            <h3 className="text-lg font-medium text-body">Loading league analysis</h3>
+            <p className="text-sm text-muted">Pulling your roster, standings, and matchups.</p>
           </div>
         </div>
       </div>
@@ -316,13 +323,37 @@ export function LeagueDetailPage() {
   const getGradeColor = (grade: string) => {
     switch (grade) {
       case 'A': return 'bg-success-100 text-success-800'
-      case 'B': return 'bg-accent-100 text-accent-800'
+      case 'B': return 'bg-highlight text-accent-ink'
       case 'C': return 'bg-warning-100 text-warning-800'
       case 'D': return 'bg-warning-200 text-warning-900'
       case 'F': return 'bg-danger-100 text-danger-800'
-      default: return 'bg-ink-100 text-ink-800'
+      default: return 'bg-surface-2 text-body'
     }
   }
+
+  // Real per-player status straight from the connected platform (ESPN's
+  // injuryStatus) -- "Out"/"Injury Reserve" etc. are genuine alerts worth
+  // surfacing; a merely active/normal player is not.
+  const formatStatusLabel = (status?: string) =>
+    (status || '').replace(/_/g, ' ').toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+
+  const getStatusColor = (status?: string) => {
+    const s = (status || '').toUpperCase()
+    if (s === 'OUT' || s === 'INJURY_RESERVE' || s === 'IR' || s === 'SUSPENDED') return 'bg-danger-100 text-danger-800'
+    if (s === 'DOUBTFUL') return 'bg-danger-50 text-danger-700'
+    if (s === 'QUESTIONABLE') return 'bg-warning-100 text-warning-800'
+    return 'bg-surface-2 text-body'
+  }
+
+  const POSITION_COLORS: Record<string, string> = {
+    QB: 'bg-ink-800 text-white',
+    RB: 'bg-success-100 text-success-800',
+    WR: 'bg-highlight text-accent-ink',
+    TE: 'bg-warning-100 text-warning-800',
+    K: 'bg-surface-2 text-body',
+    DEF: 'bg-ink-200 text-body',
+  }
+  const getPositionColor = (position?: string) => POSITION_COLORS[position || ''] || 'bg-surface-2 text-body'
 
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -332,13 +363,13 @@ export function LeagueDetailPage() {
           <div className="flex items-center space-x-4">
             <button
               onClick={() => navigate('/leagues')}
-              className="p-2 text-ink-400 hover:text-ink-600"
+              className="p-2 text-faint hover:text-muted"
             >
               <ArrowLeftIcon className="h-5 w-5" />
             </button>
             <div>
-              <h1 className="font-display font-black uppercase tracking-tight text-3xl text-ink-900">{leagueInfo?.name}</h1>
-              <p className="text-ink-600">
+              <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">{leagueInfo?.name}</h1>
+              <p className="text-muted">
                 {leagueInfo?.platform} • {leagueInfo?.season} • {leagueInfo?.league_size} Teams • {leagueInfo?.scoring_format}
               </p>
             </div>
@@ -354,7 +385,7 @@ export function LeagueDetailPage() {
             )}
             <button
               onClick={refreshData}
-              className="bg-accent-500 text-white px-4 py-2 rounded-md hover:bg-accent-600 transition-colors flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-accent-500"
+              className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors flex items-center space-x-2 focus:outline-none focus:ring-2 focus:ring-volt"
             >
               <ClockIcon className="h-4 w-4" />
               <span>Refresh</span>
@@ -364,7 +395,7 @@ export function LeagueDetailPage() {
       </div>
 
       {/* Navigation Tabs */}
-      <div className="border-b border-ink-200 mb-6">
+      <div className="border-b border-hairline mb-6">
         <nav className="-mb-px flex space-x-8">
           {tabs.map((tab) => {
             const Icon = tab.icon
@@ -374,8 +405,8 @@ export function LeagueDetailPage() {
                 onClick={() => setActiveTab(tab.id as 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring')}
                 className={`py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
-                    ? 'border-accent-500 text-accent-600'
-                    : 'border-transparent text-ink-500 hover:text-ink-700 hover:border-ink-300'
+                    ? 'border-accent-ink text-accent-ink'
+                    : 'border-transparent text-muted hover:text-body hover:border-line'
                 }`}
               >
                 <Icon className="h-4 w-4" />
@@ -391,48 +422,48 @@ export function LeagueDetailPage() {
         <div className="space-y-6">
           {/* Quick Stats */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-6">
               <div className="flex items-center">
-                <TrophyIcon className="h-8 w-8 text-accent-500" />
+                <TrophyIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-ink-500">Team Rank</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
+                  <p className="text-sm font-medium text-muted">Team Rank</p>
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
                     {standingsData?.user_team_rank || 'N/A'}
                   </p>
                 </div>
               </div>
             </div>
             
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-6">
               <div className="flex items-center">
-                <UserGroupIcon className="h-8 w-8 text-accent-600" />
+                <UserGroupIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-ink-500">Roster Grade</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
+                  <p className="text-sm font-medium text-muted">Roster Grade</p>
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
                     {rosterAnalysis?.overall_grade?.grade || 'N/A'}
                   </p>
                 </div>
               </div>
             </div>
             
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-6">
               <div className="flex items-center">
                 <ExclamationTriangleIcon className="h-8 w-8 text-danger-600" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-ink-500">Injuries</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
+                  <p className="text-sm font-medium text-muted">Injuries</p>
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
                     {rosterAnalysis?.injury_concerns?.length || 0}
                   </p>
                 </div>
               </div>
             </div>
             
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+            <div className="bg-surface rounded-lg border border-hairline p-6">
               <div className="flex items-center">
-                <FireIcon className="h-8 w-8 text-accent-500" />
+                <FireIcon className="h-8 w-8 text-accent-ink" />
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-ink-500">Waiver Targets</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-ink-900">
+                  <p className="text-sm font-medium text-muted">Waiver Targets</p>
+                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
                     {waiverRecs?.recommendations?.length || 0}
                   </p>
                 </div>
@@ -440,29 +471,100 @@ export function LeagueDetailPage() {
             </div>
           </div>
 
+          {/* Player Alerts -- real injury/availability status pulled directly
+              from the connected platform for every rostered player. This app
+              has no real per-player news source (a prior attempt at one
+              turned out to fabricate canned text, so it was deliberately
+              disabled) -- this is the honest substitute: real status
+              changes, not invented headlines. */}
+          {rosterAnalysis?.injury_concerns && rosterAnalysis.injury_concerns.length > 0 && (
+            <div className="bg-surface rounded-lg border border-hairline p-6">
+              <h3 className="text-lg font-medium text-body mb-1 flex items-center gap-2">
+                <ExclamationTriangleIcon className="h-5 w-5 text-danger-500" />
+                Player Alerts
+              </h3>
+              <p className="text-sm text-muted mb-4">
+                Real status changes for your rostered players, from {leagueInfo?.platform || 'your platform'}.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {rosterAnalysis.injury_concerns.map((concern, index) => (
+                  <div
+                    key={`alert-${concern.player}-${index}`}
+                    className="flex items-center justify-between p-3 border border-danger-100 bg-danger-50/40 rounded-lg"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-body">{concern.player}</p>
+                      <p className="text-xs text-muted">{concern.position} • {concern.team}</p>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getStatusColor(concern.status)}`}>
+                      {formatStatusLabel(concern.status)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Your Roster -- condensed starting lineup, so the Overview tab
+              actually shows who's on the team instead of only aggregate
+              numbers. Full roster + bench detail still lives on the Roster
+              Analysis tab. */}
+          {rosterAnalysis?.composition?.starting_lineup && rosterAnalysis.composition.starting_lineup.length > 0 && (
+            <div className="bg-surface rounded-lg border border-hairline p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-medium text-body">Your Roster</h3>
+                <span className="text-sm text-muted">{rosterAnalysis.team_name}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {rosterAnalysis.composition.starting_lineup.map((player, index) => {
+                  const alert = rosterAnalysis.injury_concerns?.find((c) => c.player === player.name)
+                  return (
+                    <div
+                      key={`overview-starter-${player.name}-${index}`}
+                      className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg"
+                    >
+                      <span className={`shrink-0 inline-flex items-center justify-center w-10 h-8 rounded text-xs font-semibold ${getPositionColor(player.position)}`}>
+                        {player.position || '—'}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-body truncate">{player.name}</p>
+                        <p className="text-xs text-muted">{player.team || 'FA'}</p>
+                      </div>
+                      {alert && (
+                        <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${getStatusColor(alert.status)}`}>
+                          {formatStatusLabel(alert.status)}
+                        </span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Weekly Insights */}
           {insights && (
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-              <h3 className="text-lg font-medium text-ink-900 mb-4">Weekly Insights</h3>
+            <div className="bg-surface rounded-lg border border-hairline p-6">
+              <h3 className="text-lg font-medium text-body mb-4">Weekly Insights</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h4 className="font-medium text-ink-700 mb-2">Weekly Outlook</h4>
+                  <h4 className="font-medium text-body mb-2">Weekly Outlook</h4>
                   <div className="space-y-2">
                     {insights.weekly_outlook?.key_points?.map((point: string, index: number) => (
                       <div key={`weekly-point-${index}-${point.slice(0, 20)}`} className="flex items-start space-x-2">
                         <CheckCircleIcon className="h-4 w-4 text-success-500 mt-0.5" />
-                        <span className="text-sm text-ink-600">{point}</span>
+                        <span className="text-sm text-muted">{point}</span>
                       </div>
                     ))}
                   </div>
                 </div>
                 <div>
-                  <h4 className="font-medium text-ink-700 mb-2">Top Pickup Targets</h4>
+                  <h4 className="font-medium text-body mb-2">Top Pickup Targets</h4>
                   <div className="space-y-2">
                     {insights.pickup_targets?.slice(0, 3).map((target, index: number) => (
                       <div key={`pickup-${target.player}-${index}`} className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-ink-900">{target.player}</span>
-                        <span className="text-xs text-ink-500">{target.position}</span>
+                        <span className="text-sm font-medium text-body">{target.player}</span>
+                        <span className="text-xs text-muted">{target.position}</span>
                       </div>
                     ))}
                   </div>
@@ -473,18 +575,18 @@ export function LeagueDetailPage() {
 
           {/* Current Matchup Preview */}
           {matchupData && (
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-              <h3 className="text-lg font-medium text-ink-900 mb-4">Week {matchupData.week} Matchup</h3>
+            <div className="bg-surface rounded-lg border border-hairline p-6">
+              <h3 className="text-lg font-medium text-body mb-4">Week {matchupData.week} Matchup</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="text-center">
-                  <h4 className="font-medium text-accent-600">Your Team</h4>
+                  <h4 className="font-medium text-accent-ink">Your Team</h4>
                   <p className="text-lg font-bold">{matchupData.user_team?.name || 'Your Team'}</p>
-                  <p className="text-sm text-ink-500">{matchupData.user_team?.points || 0} points</p>
+                  <p className="text-sm text-muted">{matchupData.user_team?.points || 0} points</p>
                 </div>
                 <div className="text-center">
                   <h4 className="font-medium text-danger-600">Opponent</h4>
                   <p className="text-lg font-bold">{matchupData.opponent_team?.name || 'Opponent'}</p>
-                  <p className="text-sm text-ink-500">{matchupData.opponent_team?.points || 0} points</p>
+                  <p className="text-sm text-muted">{matchupData.opponent_team?.points || 0} points</p>
                 </div>
               </div>
             </div>
@@ -495,11 +597,11 @@ export function LeagueDetailPage() {
       {activeTab === 'roster' && rosterAnalysis && (
         <div className="space-y-6">
           {/* Roster Summary */}
-          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+          <div className="bg-surface rounded-lg border border-hairline p-6">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-medium text-ink-900">Roster Analysis</h3>
-                <p className="text-sm text-ink-600">
+                <h3 className="text-lg font-medium text-body">Roster Analysis</h3>
+                <p className="text-sm text-muted">
                   {rosterAnalysis.team_name} • {rosterAnalysis.total_players} players
                 </p>
               </div>
@@ -516,7 +618,7 @@ export function LeagueDetailPage() {
                 <h4 className="font-medium text-success-700 mb-2">Strengths</h4>
                 <ul className="space-y-1">
                   {(rosterAnalysis.strengths_weaknesses?.strengths || rosterAnalysis.strengths || []).map((strength: string, index: number) => (
-                    <li key={`strength-${index}-${strength.slice(0, 20)}`} className="text-sm text-ink-600 flex items-start space-x-2">
+                    <li key={`strength-${index}-${strength.slice(0, 20)}`} className="text-sm text-muted flex items-start space-x-2">
                       <CheckCircleIcon className="h-4 w-4 text-success-500 mt-0.5" />
                       <span>{strength}</span>
                     </li>
@@ -527,7 +629,7 @@ export function LeagueDetailPage() {
                 <h4 className="font-medium text-danger-700 mb-2">Weaknesses</h4>
                 <ul className="space-y-1">
                   {(rosterAnalysis.strengths_weaknesses?.weaknesses || rosterAnalysis.weaknesses || []).map((weakness: string, index: number) => (
-                    <li key={`weakness-${index}-${weakness.slice(0, 20)}`} className="text-sm text-ink-600 flex items-start space-x-2">
+                    <li key={`weakness-${index}-${weakness.slice(0, 20)}`} className="text-sm text-muted flex items-start space-x-2">
                       <ExclamationTriangleIcon className="h-4 w-4 text-danger-500 mt-0.5" />
                       <span>{weakness}</span>
                     </li>
@@ -538,33 +640,33 @@ export function LeagueDetailPage() {
           </div>
 
           {/* Current Roster */}
-          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Current Roster</h3>
+          <div className="bg-surface rounded-lg border border-hairline p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Current Roster</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <h4 className="font-medium text-accent-700 mb-2">Starting Lineup</h4>
+                <h4 className="font-medium text-accent-ink mb-2">Starting Lineup</h4>
                 <div className="space-y-2">
                   {(rosterAnalysis.composition?.starting_lineup || []).map((player, index: number) => (
-                    <div key={`starter-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-accent-50 rounded">
+                    <div key={`starter-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-highlight rounded">
                       <div>
-                        <p className="text-sm font-medium text-ink-900">{player.name}</p>
-                        <p className="text-xs text-ink-500">{player.position} • {player.team}</p>
+                        <p className="text-sm font-medium text-body">{player.name}</p>
+                        <p className="text-xs text-muted">{player.position} • {player.team}</p>
                       </div>
-                      <span className="text-xs text-accent-600">{player.total_points || 0} pts</span>
+                      <span className="text-xs text-accent-ink">{player.total_points || 0} pts</span>
                     </div>
                   ))}
                 </div>
               </div>
               <div>
-                <h4 className="font-medium text-ink-700 mb-2">Bench Players</h4>
+                <h4 className="font-medium text-body mb-2">Bench Players</h4>
                 <div className="space-y-2">
                   {(rosterAnalysis.composition?.bench_players || rosterAnalysis.players || []).slice(0, 6).map((player, index: number) => (
-                    <div key={`bench-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-ink-50 rounded">
+                    <div key={`bench-${player.name}-${index}`} className="flex items-center justify-between p-2 bg-surface-2 rounded">
                       <div>
-                        <p className="text-sm font-medium text-ink-900">{player.name}</p>
-                        <p className="text-xs text-ink-500">{player.position} • {player.team}</p>
+                        <p className="text-sm font-medium text-body">{player.name}</p>
+                        <p className="text-xs text-muted">{player.position} • {player.team}</p>
                       </div>
-                      <span className="text-xs text-ink-600">{player.total_points || 0} pts</span>
+                      <span className="text-xs text-muted">{player.total_points || 0} pts</span>
                     </div>
                   ))}
                 </div>
@@ -574,20 +676,20 @@ export function LeagueDetailPage() {
 
           {/* Position Analysis (if available) */}
           {rosterAnalysis.position_analysis && Object.keys(rosterAnalysis.position_analysis).length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-              <h3 className="text-lg font-medium text-ink-900 mb-4">Position-by-Position Analysis</h3>
+            <div className="bg-surface rounded-lg border border-hairline p-6">
+              <h3 className="text-lg font-medium text-body mb-4">Position-by-Position Analysis</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {Object.entries(rosterAnalysis.position_analysis).map(([position, analysis]) => (
                   <div key={position} className="border rounded-lg p-4">
                     <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-ink-900">{position}</h4>
+                      <h4 className="font-medium text-body">{position}</h4>
                       <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getGradeColor(analysis.grade)}`}>
                         {analysis.grade}
                       </span>
                     </div>
-                    <p className="text-sm text-ink-600 mb-2">{analysis.summary}</p>
+                    <p className="text-sm text-muted mb-2">{analysis.summary}</p>
                     {analysis.recommendations && (
-                      <div className="text-xs text-accent-600">
+                      <div className="text-xs text-accent-ink">
                         {analysis.recommendations.slice(0, 2).join(', ')}
                       </div>
                     )}
@@ -600,9 +702,9 @@ export function LeagueDetailPage() {
       )}
 
       {activeTab === 'waiver' && !waiverRecs && (
-        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 text-center">
-          <FireIcon className="mx-auto h-8 w-8 text-ink-300 mb-2" />
-          <p className="text-sm text-ink-600">
+        <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
+          <FireIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+          <p className="text-sm text-muted">
             {waiverError || 'Loading waiver recommendations…'}
           </p>
         </div>
@@ -610,27 +712,27 @@ export function LeagueDetailPage() {
 
       {activeTab === 'waiver' && waiverRecs && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Waiver Wire Recommendations</h3>
-            <p className="text-sm text-ink-600 mb-6">
+          <div className="bg-surface rounded-lg border border-hairline p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Waiver Wire Recommendations</h3>
+            <p className="text-sm text-muted mb-6">
               Based on your roster needs and available players. {waiverRecs.total_available} targets identified.
             </p>
             
             <div className="space-y-4">
               {waiverRecs.recommendations.slice(0, 10).map((rec, index: number) => (
-                <div key={`waiver-${rec.player.name}-${index}`} className="border rounded-lg p-4 hover:bg-ink-50">
+                <div key={`waiver-${rec.player.name}-${index}`} className="border rounded-lg p-4 hover:bg-surface-2">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h4 className="font-medium text-ink-900">{rec.player.name}</h4>
-                      <p className="text-sm text-ink-500">{rec.player.position?.value || 'UNKNOWN'}</p>
-                      <p className="text-sm text-accent-600">{rec.reason}</p>
+                      <h4 className="font-medium text-body">{rec.player.name}</h4>
+                      <p className="text-sm text-muted">{rec.player.position?.value || 'UNKNOWN'}</p>
+                      <p className="text-sm text-accent-ink">{rec.reason}</p>
                     </div>
                     <div className="text-right">
-                      <div className="text-sm font-medium text-ink-900">
+                      <div className="text-sm font-medium text-body">
                         Priority: {rec.priority}/3
                       </div>
                       {rec.player.projected_points && (
-                        <div className="text-xs text-ink-500">
+                        <div className="text-xs text-muted">
                           {rec.player.projected_points.toFixed(1)} proj pts
                         </div>
                       )}
@@ -644,9 +746,9 @@ export function LeagueDetailPage() {
       )}
 
       {activeTab === 'trades' && !tradeRecs && (
-        <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6 text-center">
-          <ArrowsRightLeftIcon className="mx-auto h-8 w-8 text-ink-300 mb-2" />
-          <p className="text-sm text-ink-600">
+        <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
+          <ArrowsRightLeftIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+          <p className="text-sm text-muted">
             {tradeError || 'Loading trade suggestions…'}
           </p>
         </div>
@@ -654,9 +756,9 @@ export function LeagueDetailPage() {
 
       {activeTab === 'trades' && tradeRecs && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Trade Suggestions</h3>
-            <p className="text-sm text-ink-600 mb-6">
+          <div className="bg-surface rounded-lg border border-hairline p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Trade Suggestions</h3>
+            <p className="text-sm text-muted mb-6">
               Trade recommendations based on roster analysis. Trade deadline: {tradeRecs.trade_deadline}
             </p>
             
@@ -666,19 +768,19 @@ export function LeagueDetailPage() {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
                       <h4 className="font-medium text-success-700">Target</h4>
-                      <p className="text-ink-900">{suggestion.target_player}</p>
+                      <p className="text-body">{suggestion.target_player}</p>
                     </div>
                     <div>
-                      <h4 className="font-medium text-accent-700">Offer</h4>
-                      <p className="text-ink-900">{suggestion.offer_players.join(', ')}</p>
+                      <h4 className="font-medium text-accent-ink">Offer</h4>
+                      <p className="text-body">{suggestion.offer_players.join(', ')}</p>
                     </div>
                     <div>
-                      <h4 className="font-medium text-ink-700">Likelihood</h4>
-                      <p className="text-ink-900">{suggestion.likelihood}</p>
+                      <h4 className="font-medium text-body">Likelihood</h4>
+                      <p className="text-body">{suggestion.likelihood}</p>
                     </div>
                   </div>
                   <div className="mt-3 pt-3 border-t">
-                    <p className="text-sm text-ink-600">{suggestion.reasoning}</p>
+                    <p className="text-sm text-muted">{suggestion.reasoning}</p>
                   </div>
                 </div>
               ))}
@@ -689,50 +791,50 @@ export function LeagueDetailPage() {
 
       {activeTab === 'standings' && standingsData && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">League Standings</h3>
+          <div className="bg-surface rounded-lg border border-hairline p-6">
+            <h3 className="text-lg font-medium text-body mb-4">League Standings</h3>
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-ink-200">
-                <thead className="bg-ink-50">
+              <table className="min-w-full divide-y divide-hairline">
+                <thead className="bg-surface-2">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Rank
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Team
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Record
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Points For
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-ink-500 uppercase tracking-wider">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-muted uppercase tracking-wider">
                       Points Against
                     </th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-ink-200">
+                <tbody className="bg-surface divide-y divide-hairline">
                   {standingsData.teams.map((team) => (
                     <tr key={`team-${team.name || team.team_name}-${team.rank}`} className={team.rank <= standingsData.playoff_teams ? 'bg-success-50' : ''}>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-body">
                         {team.rank}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
                         {team.team_name || team.name}
                         {team.team_name === rosterAnalysis?.team_name && (
-                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-accent-100 text-accent-800">
+                          <span className="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-highlight text-accent-ink">
                             You
                           </span>
                         )}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
                         {team.wins}-{team.losses}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
                         {team.points_for}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-ink-900">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
                         {team.points_against}
                       </td>
                     </tr>
@@ -746,26 +848,26 @@ export function LeagueDetailPage() {
 
       {activeTab === 'matchups' && matchupData && (
         <div className="space-y-6">
-          <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
-            <h3 className="text-lg font-medium text-ink-900 mb-4">Week {matchupData.week} Matchup Analysis</h3>
+          <div className="bg-surface rounded-lg border border-hairline p-6">
+            <h3 className="text-lg font-medium text-body mb-4">Week {matchupData.week} Matchup Analysis</h3>
             
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className="text-center p-4 border-2 border-accent-200 rounded-lg">
-                <h4 className="font-medium text-accent-600 mb-2">Your Team</h4>
-                <p className="text-xl font-bold text-ink-900">{matchupData.user_team?.name || 'Your Team'}</p>
-                <p className="text-lg text-ink-600">{matchupData.user_team?.points || 0} points</p>
+              <div className="text-center p-4 border-2 border-highlight-line rounded-lg">
+                <h4 className="font-medium text-accent-ink mb-2">Your Team</h4>
+                <p className="text-xl font-bold text-body">{matchupData.user_team?.name || 'Your Team'}</p>
+                <p className="text-lg text-muted">{matchupData.user_team?.points || 0} points</p>
               </div>
               
               <div className="text-center p-4 border-2 border-danger-200 rounded-lg">
                 <h4 className="font-medium text-danger-600 mb-2">Opponent</h4>
-                <p className="text-xl font-bold text-ink-900">{matchupData.opponent_team?.name || 'Opponent'}</p>
-                <p className="text-lg text-ink-600">{matchupData.opponent_team?.points || 0} points</p>
+                <p className="text-xl font-bold text-body">{matchupData.opponent_team?.name || 'Opponent'}</p>
+                <p className="text-lg text-muted">{matchupData.opponent_team?.points || 0} points</p>
               </div>
             </div>
             
-            <div className="bg-ink-50 rounded-lg p-4">
-              <h4 className="font-medium text-ink-900 mb-2">AI Matchup Analysis</h4>
-              <p className="text-sm text-ink-700 whitespace-pre-wrap">{matchupData.ai_analysis}</p>
+            <div className="bg-surface-2 rounded-lg p-4">
+              <h4 className="font-medium text-body mb-2">AI Matchup Analysis</h4>
+              <p className="text-sm text-body whitespace-pre-wrap">{matchupData.ai_analysis}</p>
             </div>
           </div>
         </div>

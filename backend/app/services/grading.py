@@ -15,6 +15,20 @@ letter grades with value/bye analysis as decorative text.
 
 from typing import Any, Dict, List, Optional
 
+# ESPN's roster fetch (espn_service_enhanced.py::_format_player) is the only
+# real source of per-player `projected_points` this app has today -- Yahoo
+# and Sleeper's roster methods supply none at all (see roster_grading.py's
+# has_real_projections guard). ESPN's value is `projected_total_points`, a
+# real SEASON-LONG total, not a per-game rate. Every per-game-shaped
+# threshold below (and in roster_grading.py/post_draft_analysis_service.py)
+# was written assuming a weekly number (a QB scoring ~18/game, an RB
+# ~12/game are normal "good starter" weekly benchmarks) and never updated
+# when ESPN's season-total field got wired in -- off by roughly this
+# constant, which silently made every ESPN quality check trivially pass
+# regardless of real per-game quality. Divide a season-total projection by
+# this constant before comparing it against a weekly threshold.
+NFL_SEASON_GAMES = 17
+
 
 def grade_from_score(score: float) -> str:
     """Convert a 0-100 numeric score into a letter grade.
@@ -244,7 +258,13 @@ def bench_depth_notes(
     by_position: Dict[str, List[float]] = {}
     for player in players:
         position = (player.get("position") or "UNKNOWN").upper()
-        by_position.setdefault(position, []).append(player.get("projected_points") or 0)
+        # Normalize to a per-game rate -- see NFL_SEASON_GAMES docstring
+        # above. thin_floor/thin_ratio are weekly-shaped, and ESPN's real
+        # projected_points is a season total; without this, backup_avg
+        # never dips under thin_floor for any real ESPN roster, and this
+        # check silently never fires.
+        raw = (player.get("projected_points") or 0) / NFL_SEASON_GAMES
+        by_position.setdefault(position, []).append(raw)
 
     notes: List[str] = []
     for position, required in requirements.items():

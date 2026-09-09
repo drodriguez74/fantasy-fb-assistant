@@ -111,6 +111,60 @@ class TestRosterNeedWeighting:
         assert needy_recs[0]["confidence_score"] > overstocked_recs[0]["confidence_score"]
 
     @pytest.mark.asyncio
+    async def test_each_candidate_weighted_against_its_own_position_not_the_last_ones(
+        self, test_db_session
+    ):
+        """Regression test for a real bug (2026-09-05): the roster-need
+        weighting loop read `player_position` from a variable left over from
+        an earlier, unrelated loop over the candidate list, rather than
+        reassigning it per candidate. Python for-loop variables aren't
+        scoped, so every recommendation in a batch silently got whichever
+        position the LAST candidate in the first loop happened to have --
+        e.g. a real live batch showed every single recommendation (RB, WR,
+        TE, K candidates alike) saying "Your roster is already deep at WR",
+        regardless of the candidate's real position. With 3+ distinct
+        positions in one batch, each recommendation's `position` and
+        `roster_need`/`reason` must be consistent with each other.
+        """
+        service = WaiverWireService(test_db_session)
+
+        trending = [
+            {"player_id": "1001", "count": 500},  # RB, roster needs RB
+            {"player_id": "1002", "count": 400},  # WR, roster overstocked at WR
+            {"player_id": "1003", "count": 300},  # TE, roster needs TE
+        ]
+        all_players = {
+            "1001": sleeper_player_data(position="RB", full_name="Runner One"),
+            "1002": sleeper_player_data(position="WR", full_name="Catcher Two"),
+            "1003": sleeper_player_data(position="TE", full_name="End Three"),
+        }
+        patch_sleeper(service, trending, all_players)
+
+        user_roster = (
+            [{"position": "WR"} for _ in range(6)]
+            + [{"position": "QB"}]
+            + [{"position": "K"}]
+            + [{"position": "DEF"}]
+        )
+        league_settings = {"starters": {"QB": 1, "RB": 2, "WR": 2, "TE": 1, "K": 1, "DEF": 1}}
+
+        recs = await service.get_live_trending_recommendations(
+            user_roster=user_roster, league_settings=league_settings
+        )
+        by_position = {r["position"]: r for r in recs}
+
+        assert by_position["RB"]["roster_need"] == "needs_attention"
+        assert "RB" in by_position["RB"]["reason"]
+        assert "WR" not in by_position["RB"]["reason"]
+
+        assert by_position["WR"]["roster_need"] == "overstocked"
+        assert "WR" in by_position["WR"]["reason"]
+
+        assert by_position["TE"]["roster_need"] == "needs_attention"
+        assert "TE" in by_position["TE"]["reason"]
+        assert "WR" not in by_position["TE"]["reason"]
+
+    @pytest.mark.asyncio
     async def test_unweighted_when_roster_and_settings_not_supplied(self, test_db_session):
         """Backward compatibility: existing callers that pass neither
         user_roster nor league_settings must not break, and must not have
@@ -130,6 +184,53 @@ class TestRosterNeedWeighting:
         for rec in recs:
             assert rec["roster_need"] is None
             assert rec["confidence_score"] == round(rec["add_count_24h"] / 500, 3)
+
+
+class TestRealAvailabilityFilter:
+    """Regression test for a real bug (2026-09-05): Sleeper's global
+    trending-add feed has no idea whether a candidate is actually a free
+    agent in any one specific connected league -- a real ESPN league got
+    recommended a player (MarShawn Lloyd) who was already rostered by
+    another team in that exact league, confirmed live against real ESPN
+    data. `available_player_names`, when supplied, must exclude any
+    candidate not present in it.
+    """
+
+    @pytest.mark.asyncio
+    async def test_candidate_not_in_available_names_is_excluded(self, test_db_session):
+        service = WaiverWireService(test_db_session)
+
+        trending = [
+            {"player_id": "1001", "count": 500},  # real free agent
+            {"player_id": "1002", "count": 400},  # rostered by another team in this league
+        ]
+        all_players = {
+            "1001": sleeper_player_data(position="RB", full_name="Free Agent Guy"),
+            "1002": sleeper_player_data(position="RB", full_name="Already Rostered Guy"),
+        }
+        patch_sleeper(service, trending, all_players)
+
+        recs = await service.get_live_trending_recommendations(
+            available_player_names={"free agent guy"}
+        )
+
+        assert len(recs) == 1
+        assert recs[0]["player_name"] == "Free Agent Guy"
+
+    @pytest.mark.asyncio
+    async def test_no_availability_filter_when_not_supplied(self, test_db_session):
+        """Backward compatible: omitting available_player_names (existing
+        callers, or a platform where availability couldn't be determined)
+        must not filter anything out.
+        """
+        service = WaiverWireService(test_db_session)
+
+        trending = [{"player_id": "1001", "count": 500}]
+        all_players = {"1001": sleeper_player_data(position="RB", full_name="Anybody")}
+        patch_sleeper(service, trending, all_players)
+
+        recs = await service.get_live_trending_recommendations()
+        assert len(recs) == 1
 
 
 class TestByeWeekAwareness:

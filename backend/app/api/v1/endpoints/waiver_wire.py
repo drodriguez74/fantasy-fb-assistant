@@ -35,20 +35,29 @@ async def _fetch_connected_roster_and_settings(
     Reuses the exact platform roster-fetch calls already used elsewhere in
     this codebase (post_draft.py's /import-roster/{league_id} does the same
     ESPN/Yahoo/Sleeper branching) rather than inventing a new one. Returns
-    (None, None) on any failure (no connected league with this id, no
+    (None, None, None) on any failure (no connected league with this id, no
     team_id configured, platform call error, etc.) -- callers should treat
     that as "fall back to unweighted" rather than raising, since this is a
     best-effort personalization layer, not a hard requirement of the
     endpoint.
+
+    Third return value is `available_player_names` -- real, lower-cased
+    free-agent names for this specific league, or None if it couldn't be
+    determined. See WaiverWireService.get_live_trending_recommendations's
+    docstring for why this matters: Sleeper's global trending feed doesn't
+    know who's actually a free agent in any one specific league (confirmed
+    live: a real ESPN league got recommended a player another team in that
+    exact league had already rostered).
     """
     try:
         user_service = UserService(db)
         user_league = user_service.get_user_league(current_user.id, league_id)
         if not user_league or not user_league.team_id:
-            return None, None
+            return None, None, None
 
         platform = user_league.platform.value.upper()
         roster_players: List[Dict[str, Any]] = []
+        available_player_names: Optional[set] = None
 
         if platform == "ESPN":
             from app.services.espn_service_enhanced import espn_service_enhanced
@@ -61,22 +70,39 @@ async def _fetch_connected_roster_and_settings(
                 espn_s2=user_league.espn_s2
             )
             if "error" in roster_data:
-                return None, None
+                return None, None, None
             roster_players = [
                 {"position": p.get("position", "UNKNOWN")}
                 for p in roster_data.get("players", [])
             ]
+
+            free_agents = await espn_service_enhanced.get_available_players(
+                league_id=user_league.league_id,
+                season=user_league.season,
+                size=300,
+                swid=user_league.espn_swid,
+                espn_s2=user_league.espn_s2,
+            )
+            if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
+                available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
 
         elif platform == "YAHOO":
             from app.services.yahoo_service import yahoo_service
 
             roster_data = await yahoo_service.get_team_roster(user_league.team_id)
             if "error" in roster_data:
-                return None, None
+                return None, None, None
             roster_players = [
                 {"position": p.get("position", "UNKNOWN")}
                 for p in roster_data.get("players", [])
             ]
+
+            if user_league.yahoo_access_token and user_league.league_key:
+                free_agents = await yahoo_service.get_available_players(
+                    user_league.yahoo_access_token, user_league.league_key, count=300
+                )
+                if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
+                    available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
 
         elif platform == "SLEEPER":
             from app.services.sleeper_service import SleeperService
@@ -84,7 +110,7 @@ async def _fetch_connected_roster_and_settings(
             sleeper = SleeperService()
             rosters = await sleeper.get_league_rosters(user_league.league_id)
             if rosters and isinstance(rosters, list) and isinstance(rosters[0], dict) and "error" in rosters[0]:
-                return None, None
+                return None, None, None
 
             target_roster = next(
                 (
@@ -95,7 +121,7 @@ async def _fetch_connected_roster_and_settings(
                 None
             )
             if not target_roster:
-                return None, None
+                return None, None, None
 
             # Best-effort position resolution against our own (sparse) local
             # Player table by sleeper_id -- same honest-best-effort pattern
@@ -108,11 +134,34 @@ async def _fetch_connected_roster_and_settings(
                 ).first()
                 if local_match and local_match.position:
                     roster_players.append({"position": local_match.position.value})
+
+            # Sleeper has no dedicated "free agents" endpoint -- derive
+            # real per-league availability instead by excluding anyone
+            # rostered by ANY team in this league (not just the user's own).
+            # Best-effort against the sparse local Player table, same
+            # honesty tradeoff as the position resolution just above: a
+            # rostered Sleeper id with no local name match simply can't be
+            # excluded by name, so it's left out of the exclusion set
+            # rather than guessed at.
+            rostered_sleeper_ids = {
+                str(pid)
+                for r in rosters
+                for pid in (r.get("players") or [])
+            }
+            if rostered_sleeper_ids:
+                rostered_names = {
+                    p.name.lower()
+                    for p in db.query(Player).filter(Player.sleeper_id.in_(rostered_sleeper_ids)).all()
+                    if p.name
+                }
+                all_local_names = {p.name.lower() for p in db.query(Player).filter(Player.name.isnot(None)).all()}
+                if all_local_names:
+                    available_player_names = all_local_names - rostered_names
         else:
-            return None, None
+            return None, None, None
 
         if not roster_players:
-            return None, None
+            return None, None, None
 
         raw_starters = None
         if user_league.roster_positions:
@@ -126,13 +175,14 @@ async def _fetch_connected_roster_and_settings(
             "starters": raw_starters or {},
             "scoring_format": user_league.scoring_format,
             "points_per_reception": user_league.points_per_reception,
+            "team_count": user_league.league_size,
         }
 
-        return roster_players, league_settings
+        return roster_players, league_settings, available_player_names
 
     except Exception as e:
         logger.warning(f"Could not fetch connected roster/settings for league {league_id}: {str(e)}")
-        return None, None
+        return None, None, None
 
 
 @router.get("/league-aware-recommendations/{league_id}")
@@ -165,7 +215,7 @@ async def get_league_aware_waiver_recommendations(
 
         waiver_service = WaiverWireService(db)
 
-        user_roster, league_settings = await _fetch_connected_roster_and_settings(
+        user_roster, league_settings, available_player_names = await _fetch_connected_roster_and_settings(
             db, current_user, league_id
         )
 
@@ -174,6 +224,7 @@ async def get_league_aware_waiver_recommendations(
             limit=limit,
             user_roster=user_roster,
             league_settings=league_settings,
+            available_player_names=available_player_names,
         )
 
         notify_trending_adds(db, current_user.id, recommendations)
@@ -234,9 +285,9 @@ async def get_waiver_recommendations(
     try:
         waiver_service = WaiverWireService(db)
 
-        user_roster, league_settings = (None, None)
+        user_roster, league_settings, available_player_names = (None, None, None)
         if league_id is not None:
-            user_roster, league_settings = await _fetch_connected_roster_and_settings(
+            user_roster, league_settings, available_player_names = await _fetch_connected_roster_and_settings(
                 db, current_user, league_id
             )
 
@@ -246,6 +297,7 @@ async def get_waiver_recommendations(
             limit=limit,
             user_roster=user_roster,
             league_settings=league_settings,
+            available_player_names=available_player_names,
         )
 
         # Lazily generate in-app notifications for genuinely new, high-signal

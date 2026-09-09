@@ -67,8 +67,8 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
   const CustomTooltip = ({ active, payload, label }: ScheduleTooltipProps) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg max-w-xs">
-          <p className="font-semibold text-gray-900 mb-2">{label}</p>
+        <div className="bg-surface p-3 border border-hairline rounded-lg max-w-xs">
+          <p className="font-semibold text-body mb-2">{label}</p>
           {payload.map((entry, index: number) => {
             if (entry.dataKey === 'average') {
               return (
@@ -87,7 +87,7 @@ export function ScheduleDifficultyChart({ data, height = 300, showAverage = true
                   {entry.dataKey}: {entry.value.toFixed(1)}/10
                 </p>
                 {opponent && (
-                  <p className="text-gray-600 text-xs">
+                  <p className="text-muted text-xs">
                     vs {opponent} ({rating})
                   </p>
                 )}
@@ -165,7 +165,7 @@ export function ScheduleDifficultyHeatmap({ data }: ScheduleDifficultyChartProps
       <div className="min-w-max">
         <div className="grid grid-cols-1 gap-2">
           {/* Header */}
-          <div className="grid grid-cols-[120px_repeat(8,80px)] gap-1 text-xs font-medium text-gray-700">
+          <div className="grid grid-cols-[120px_repeat(8,80px)] gap-1 text-xs font-medium text-muted">
             <div></div>
             {weeks.map(week => (
               <div key={week} className="text-center">Week {week}</div>
@@ -175,11 +175,11 @@ export function ScheduleDifficultyHeatmap({ data }: ScheduleDifficultyChartProps
           {/* Data rows */}
           {players.map(player => (
             <div key={player} className="grid grid-cols-[120px_repeat(8,80px)] gap-1">
-              <div className="text-sm font-medium text-gray-900 truncate">{player}</div>
+              <div className="text-sm font-medium text-body truncate">{player}</div>
               {weeks.map(week => {
                 const playerWeek = data.find(d => d.player === player && d.week === week)
                 if (!playerWeek) {
-                  return <div key={week} className="h-12 bg-gray-100 rounded flex items-center justify-center text-xs text-gray-400">-</div>
+                  return <div key={week} className="h-12 bg-surface-2 rounded flex items-center justify-center text-xs text-faint">-</div>
                 }
                 
                 return (

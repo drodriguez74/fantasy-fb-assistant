@@ -32,7 +32,7 @@ export function PlayerDetailPage() {
         </div>
         <button
           onClick={() => navigate('/players')}
-          className="mt-4 flex items-center text-accent-600 hover:text-accent-700"
+          className="mt-4 flex items-center text-accent-ink hover:text-accent-ink"
         >
           <ArrowLeftIcon className="h-4 w-4 mr-1" />
           Back to Players
@@ -47,46 +47,46 @@ export function PlayerDetailPage() {
     <div className="max-w-2xl mx-auto space-y-6">
       <button
         onClick={() => navigate('/players')}
-        className="flex items-center text-accent-600 hover:text-accent-700 text-sm font-medium"
+        className="flex items-center text-accent-ink hover:text-accent-ink text-sm font-medium"
       >
         <ArrowLeftIcon className="h-4 w-4 mr-1" />
         Back to Players
       </button>
 
-      <div className="bg-white rounded-lg shadow-sm border border-ink-200 p-6">
+      <div className="bg-surface rounded-lg border border-hairline p-6">
         <div className="flex items-center space-x-3 mb-2">
-          <h1 className="font-display font-black uppercase tracking-tight text-2xl text-ink-900">{player.name}</h1>
+          <h1 className="font-display font-bold uppercase tracking-tight text-2xl text-body">{player.name}</h1>
           <span className={clsx('px-2 py-1 text-xs font-medium rounded-full', positionColors[player.position])}>
             {player.position}
           </span>
         </div>
 
-        <p className="text-sm text-ink-600 mb-4 flex items-center gap-2">
+        <p className="text-sm text-muted mb-4 flex items-center gap-2">
           <span>{player.team}</span>
           {player.bye_week && (
-            <span className="px-1.5 py-0.5 text-xs font-medium bg-ink-100 text-ink-600 rounded">
+            <span className="px-1.5 py-0.5 text-xs font-medium bg-surface-2 text-muted rounded">
               Bye: {player.bye_week}
             </span>
           )}
-          {playerId && <span className="text-ink-300">&middot; ID {playerId}</span>}
+          {playerId && <span className="text-faint">&middot; ID {playerId}</span>}
         </p>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 text-sm mb-4">
           {player.projected_points != null && (
             <div>
-              <span className="text-ink-500 block">Projected</span>
+              <span className="text-muted block">Projected</span>
               <span className="font-stat tabular-nums font-medium">{player.projected_points.toFixed(1)} pts</span>
             </div>
           )}
           {player.adp != null && (
             <div>
-              <span className="text-ink-500 block">ADP</span>
+              <span className="text-muted block">ADP</span>
               <span className="font-stat tabular-nums font-medium">{player.adp.toFixed(1)}</span>
             </div>
           )}
           {player.risk_level && (
             <div>
-              <span className="text-ink-500 block">Risk</span>
+              <span className="text-muted block">Risk</span>
               <span className={clsx('font-medium', riskColors[player.risk_level])}>
                 {player.risk_level}
               </span>

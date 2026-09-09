@@ -51,8 +51,8 @@ export function BreakoutCandidateChart({
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900 mb-2">{data.player}</p>
+        <div className="bg-surface p-3 border border-hairline rounded-lg">
+          <p className="font-semibold text-body mb-2">{data.player}</p>
           <div className="space-y-1 text-sm">
             <p>Breakout Probability: <span className="font-medium">{(data.probability * 100).toFixed(1)}%</span></p>
             <p>Age: <span className="font-medium">{data.age || 'N/A'}</span></p>
@@ -124,8 +124,8 @@ export function BreakoutCandidateBubbleChart({ data, height = 400 }: BreakoutCan
     if (active && payload && payload.length) {
       const data = payload[0].payload
       return (
-        <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
-          <p className="font-semibold text-gray-900 mb-2">{data.player}</p>
+        <div className="bg-surface p-3 border border-hairline rounded-lg">
+          <p className="font-semibold text-body mb-2">{data.player}</p>
           <div className="space-y-1 text-sm">
             <p>Breakout Probability: <span className="font-medium">{(data.probability * 100).toFixed(1)}%</span></p>
             <p>Ownership: <span className="font-medium">{data.ownership?.toFixed(1) || '0'}%</span></p>
@@ -140,7 +140,7 @@ export function BreakoutCandidateBubbleChart({ data, height = 400 }: BreakoutCan
 
   return (
     <div className="w-full">
-      <div className="mb-4 text-sm text-gray-600">
+      <div className="mb-4 text-sm text-muted">
         <p>X-axis: Ownership %, Y-axis: Breakout Probability, Bubble size: Target Share</p>
       </div>
       <ResponsiveContainer width="100%" height={height}>

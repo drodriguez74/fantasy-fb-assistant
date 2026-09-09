@@ -29,10 +29,10 @@ export function AIAnalysis({ player, showButton = true }: AIAnalysisProps) {
   if (!analysis && !showButton) return null
 
   return (
-    <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-blue-200">
+    <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg border border-highlight-line">
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center space-x-2">
-          <span className="text-sm font-semibold text-blue-800">🤖 AI Analysis</span>
+          <span className="text-sm font-semibold text-accent-ink">AI Analysis</span>
           {player.risk_level && (
             <span className={`px-2 py-1 text-xs font-medium rounded-full ${
               player.risk_level === 'LOW' ? 'bg-green-100 text-green-800' :
@@ -48,7 +48,7 @@ export function AIAnalysis({ player, showButton = true }: AIAnalysisProps) {
           <button
             onClick={generateAnalysis}
             disabled={loading}
-            className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            className="px-3 py-1 text-xs bg-volt text-volt-ink rounded hover:bg-volt-dark disabled:opacity-50"
           >
             {loading ? 'Analyzing...' : 'Get AI Insights'}
           </button>
@@ -63,22 +63,22 @@ export function AIAnalysis({ player, showButton = true }: AIAnalysisProps) {
 
       {loading && (
         <div className="flex items-center space-x-2">
-          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-          <span className="text-sm text-blue-600">Generating AI analysis...</span>
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-accent-ink"></div>
+          <span className="text-sm text-accent-ink">Generating AI analysis...</span>
         </div>
       )}
 
       {analysis && !loading && (
-        <div className="text-sm text-gray-700 leading-relaxed">
+        <div className="text-sm text-muted leading-relaxed">
           <p className="whitespace-pre-wrap">{analysis}</p>
           
           {showButton && (
             <button
               onClick={generateAnalysis}
               disabled={loading}
-              className="mt-2 px-2 py-1 text-xs text-blue-600 hover:text-blue-800 hover:bg-blue-100 rounded"
+              className="mt-2 px-2 py-1 text-xs text-accent-ink hover:text-accent-ink hover:bg-highlight rounded"
             >
-              🔄 Refresh Analysis
+              Refresh Analysis
             </button>
           )}
         </div>
