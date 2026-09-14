@@ -12,12 +12,15 @@ the kind -> (builder, ttl) registry.
 from datetime import datetime
 from typing import Any, Dict
 
+import asyncio
+
 from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.sleeper_service import sleeper_service
 from app.services.roster_grading import grade_roster
 from app.services.this_week_service import build_this_week as _build_this_week
+from app.services.league_competition import compute_position_pressure
 
 
 class SnapshotBuildError(Exception):
@@ -201,3 +204,45 @@ async def build_standings_snapshot(user_league: UserLeague) -> Dict[str, Any]:
         return {**base, "teams": teams}
 
     raise SnapshotBuildError(f"Standings are not yet implemented for {platform} leagues.")
+
+
+async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str, Any]:
+    """How thin the OTHER teams in this league are at each skill position,
+    from their own real rosters -- see league_competition.py. Used to tell
+    a waiver recommendation apart from a genuinely contested one."""
+    league_info = _league_info(user_league)
+
+    if league_info["platform"] != "ESPN":
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": f"Waiver competition isn't available for {league_info['platform']} leagues yet.",
+        }
+
+    teams, settings = await asyncio.gather(
+        espn_service_enhanced.get_league_teams(
+            league_id=user_league.league_id,
+            season=user_league.season,
+            swid=user_league.espn_swid,
+            espn_s2=user_league.espn_s2,
+        ),
+        espn_service_enhanced.get_scoring_and_roster_settings(
+            league_id=user_league.league_id,
+            season=user_league.season,
+            swid=user_league.espn_swid,
+            espn_s2=user_league.espn_s2,
+        ),
+    )
+    if teams and isinstance(teams, list) and "error" in teams[0]:
+        raise SnapshotBuildError(teams[0]["error"])
+    if "error" in settings:
+        settings = None
+
+    pressure = compute_position_pressure(teams, settings, exclude_team_id=user_league.team_id)
+
+    return {
+        "league_info": league_info,
+        "supported": True,
+        "position_pressure": pressure,
+        "other_teams_considered": max(0, len(teams) - (1 if user_league.team_id else 0)),
+    }

@@ -28,6 +28,7 @@ from app.models.league_snapshot import LeagueSnapshot
 from app.models.user_league import UserLeague
 from app.services.league_snapshots import (
     SnapshotBuildError,
+    build_position_pressure_snapshot,
     build_roster_analysis_snapshot,
     build_standings_snapshot,
     build_this_week_snapshot,
@@ -40,6 +41,9 @@ _REGISTRY: Dict[str, Tuple[Callable, int]] = {
     "this_week": (build_this_week_snapshot, 180),       # moves during games
     "roster_analysis": (build_roster_analysis_snapshot, 900),
     "standings": (build_standings_snapshot, 900),
+    # Other teams' rosters don't turn over intra-week outside waiver
+    # processing, so this can sit longer than the others.
+    "position_pressure": (build_position_pressure_snapshot, 3600),
 }
 
 

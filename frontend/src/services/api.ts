@@ -139,6 +139,11 @@ export const leagues = {
   // actual settings say it runs on. ESPN only today.
   getWaiverPosition: (leagueId: number) => api.get(`/leagues/${leagueId}/waiver-position`),
 
+  // How thin the OTHER teams in this league are at each skill position,
+  // from their own real rosters -- a per-league proxy for how contested a
+  // waiver claim is likely to be, independent of global Sleeper demand.
+  getPositionPressure: (leagueId: number) => api.get(`/leagues/${leagueId}/position-pressure`),
+
   // Consolidated payload for the "This Week" screen: real weekly box-score
   // matchup (both projected scores + every starter's weekly projection and
   // pro opponent), standings records, and a deterministic lineup-optimizer

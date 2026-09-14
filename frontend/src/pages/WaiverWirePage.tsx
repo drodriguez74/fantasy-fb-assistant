@@ -72,6 +72,33 @@ interface WaiverPosition {
   budget_remaining?: number
 }
 
+// Real per-league competition signal -- see GET /leagues/{id}/position-pressure
+// and app/services/league_competition.py. Only QB/RB/WR/TE are meaningful
+// (K/DEF benches are routinely empty by design in most leagues).
+interface PositionPressureEntry {
+  teams_in_need: number
+  total_teams: number
+  ratio: number
+  level: 'high' | 'medium' | 'low'
+}
+interface PositionPressure {
+  supported: boolean
+  detail?: string
+  position_pressure?: Record<string, PositionPressureEntry>
+  other_teams_considered?: number
+}
+
+const COMPETITION_LABEL: Record<'high' | 'medium' | 'low', string> = {
+  high: 'High competition',
+  medium: 'Some competition',
+  low: 'Low competition',
+}
+const COMPETITION_CLASS: Record<'high' | 'medium' | 'low', string> = {
+  high: 'bg-danger-100 text-danger-800',
+  medium: 'bg-warning-100 text-warning-800',
+  low: 'bg-success-100 text-success-800',
+}
+
 // The "Alerts" tab now reads the app's real in-app notification center
 // (see backend/app/services/notification_service.py) instead of the old
 // GET /waiver-wire/alerts stub, which queried a WaiverWireAlert table
@@ -248,6 +275,7 @@ export function WaiverWirePage() {
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | ''>('')
   const [personalized, setPersonalized] = useState(false)
   const [waiverPosition, setWaiverPosition] = useState<WaiverPosition | null>(null)
+  const [positionPressure, setPositionPressure] = useState<PositionPressure | null>(null)
 
   // Roster analyzer
   const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
@@ -313,6 +341,20 @@ export function WaiverWirePage() {
     leaguesApi.getWaiverPosition(selectedLeagueId)
       .then((response) => setWaiverPosition(response.data))
       .catch(() => setWaiverPosition(null))
+  }, [selectedLeagueId])
+
+  // Real per-league competition signal (other teams' actual roster depth
+  // per position) -- same opt-in as waiver position above. Cached ~1hr
+  // server-side (roster composition barely moves intra-week), so this is
+  // cheap to fetch alongside it.
+  useEffect(() => {
+    if (selectedLeagueId === '') {
+      setPositionPressure(null)
+      return
+    }
+    leaguesApi.getPositionPressure(selectedLeagueId)
+      .then((response) => setPositionPressure(response.data))
+      .catch(() => setPositionPressure(null))
   }, [selectedLeagueId])
 
   const loadTrendingPlayers = useCallback(async () => {
@@ -661,6 +703,9 @@ export function WaiverWirePage() {
             <div className="space-y-4">
               {recommendations.map((rec) => {
                 const addCount = getAddCount(rec)
+                const competition = positionPressure?.supported
+                  ? positionPressure.position_pressure?.[rec.position]
+                  : undefined
                 return (
                   <div key={rec.player_id} className="bg-surface rounded-lg shadow p-4 sm:p-6">
                     <div className="flex items-start justify-between">
@@ -692,6 +737,14 @@ export function WaiverWirePage() {
                           {rec.pass_catcher_boost && (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-highlight text-accent-ink">
                               PPR target-share edge
+                            </span>
+                          )}
+                          {competition && (
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${COMPETITION_CLASS[competition.level]}`}
+                              title={`${competition.teams_in_need} of ${competition.total_teams} other teams look thin at ${rec.position} right now`}
+                            >
+                              {COMPETITION_LABEL[competition.level]}
                             </span>
                           )}
                         </div>

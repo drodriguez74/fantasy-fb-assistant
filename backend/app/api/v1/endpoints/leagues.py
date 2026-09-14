@@ -515,6 +515,36 @@ async def get_waiver_position(
         raise HTTPException(status_code=500, detail=f"Failed to get waiver position: {str(e)}")
 
 
+@router.get("/{league_id}/position-pressure")
+async def get_position_pressure(
+    league_id: int,
+    background_tasks: BackgroundTasks,
+    refresh: bool = Query(False, description="Force a live fetch, bypassing the cached snapshot"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """How thin the OTHER teams in this league are at each skill position,
+    from their own real rosters -- a real per-league proxy for how
+    contested a waiver claim is likely to be, independent of global
+    Sleeper trending-add demand. See app/services/league_competition.py.
+    """
+    try:
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        return await serve_swr(
+            db, user_league, "position_pressure", background_tasks=background_tasks, force=refresh
+        )
+    except HTTPException:
+        raise
+    except SnapshotBuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get position pressure: {str(e)}")
+
+
 @router.get("/{league_id}/standings")
 async def get_league_standings(
     league_id: int,
