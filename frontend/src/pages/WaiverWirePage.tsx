@@ -57,6 +57,21 @@ interface ConnectedLeagueOption {
   team_id: string | null
 }
 
+// Real FAAB balance or rolling-priority rank for the selected league -- see
+// GET /leagues/{id}/waiver-position. `supported: false` covers non-ESPN
+// leagues and leagues with no team_id set yet; `waiver_type` picks which of
+// the two mutually-exclusive fields this league actually uses.
+interface WaiverPosition {
+  supported: boolean
+  detail?: string
+  waiver_type?: 'faab' | 'priority'
+  total_teams?: number
+  waiver_rank?: number
+  total_budget?: number
+  budget_spent?: number
+  budget_remaining?: number
+}
+
 // The "Alerts" tab now reads the app's real in-app notification center
 // (see backend/app/services/notification_service.py) instead of the old
 // GET /waiver-wire/alerts stub, which queried a WaiverWireAlert table
@@ -232,6 +247,7 @@ export function WaiverWirePage() {
   const [connectedLeagues, setConnectedLeagues] = useState<ConnectedLeagueOption[]>([])
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | ''>('')
   const [personalized, setPersonalized] = useState(false)
+  const [waiverPosition, setWaiverPosition] = useState<WaiverPosition | null>(null)
 
   // Roster analyzer
   const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
@@ -284,6 +300,20 @@ export function WaiverWirePage() {
       })
       .catch(() => setConnectedLeagues([]))
   }, [user])
+
+  // Real waiver standing for whichever league is selected to personalize
+  // against -- FAAB remaining or priority rank, whichever this league
+  // actually runs on. Not fetched until a league is chosen (same opt-in as
+  // personalization above).
+  useEffect(() => {
+    if (selectedLeagueId === '') {
+      setWaiverPosition(null)
+      return
+    }
+    leaguesApi.getWaiverPosition(selectedLeagueId)
+      .then((response) => setWaiverPosition(response.data))
+      .catch(() => setWaiverPosition(null))
+  }, [selectedLeagueId])
 
   const loadTrendingPlayers = useCallback(async () => {
     try {
@@ -586,6 +616,32 @@ export function WaiverWirePage() {
               </p>
             )}
           </div>
+
+          {/* Waiver position -- real FAAB balance or priority rank for the
+              selected league, so a recommendation can be read against
+              whether a claim is actually realistic. */}
+          {selectedLeagueId !== '' && waiverPosition?.supported && (
+            <div className="flex flex-wrap items-center gap-3 bg-surface-2 border border-hairline rounded-lg px-4 py-3">
+              <ShieldCheckIcon className="h-5 w-5 text-accent-ink shrink-0" />
+              {waiverPosition.waiver_type === 'faab' ? (
+                <p className="text-sm text-body">
+                  <span className="font-semibold">${waiverPosition.budget_remaining}</span> of ${waiverPosition.total_budget} FAAB remaining
+                  {typeof waiverPosition.budget_spent === 'number' && (
+                    <span className="text-muted"> &mdash; ${waiverPosition.budget_spent} spent this season</span>
+                  )}
+                </p>
+              ) : (
+                <p className="text-sm text-body">
+                  Waiver priority: <span className="font-semibold">#{waiverPosition.waiver_rank}</span> of {waiverPosition.total_teams}
+                  <span className="text-muted"> &mdash; moves to the back after you win a claim</span>
+                </p>
+              )}
+              <DataConfidenceBadge level="computed" label="ESPN" />
+            </div>
+          )}
+          {selectedLeagueId !== '' && waiverPosition && !waiverPosition.supported && (
+            <p className="text-xs text-faint">{waiverPosition.detail}</p>
+          )}
 
           {/* Recommendations List */}
           {loading ? (

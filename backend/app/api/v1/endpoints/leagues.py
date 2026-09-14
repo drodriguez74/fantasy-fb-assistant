@@ -469,6 +469,52 @@ async def get_user_leagues(
     ]
 
 
+@router.get("/{league_id}/waiver-position")
+async def get_waiver_position(
+    league_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Where this user actually stands to win a waiver claim right now --
+    FAAB balance or rolling priority rank, whichever this league's real
+    settings say it runs on. ESPN only today; other platforms get an
+    honest not-yet-implemented message rather than a fabricated number.
+    """
+    try:
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        platform = user_league.platform.value.upper()
+        if platform != "ESPN":
+            return {
+                "supported": False,
+                "detail": f"Waiver position isn't available for {platform} leagues yet.",
+            }
+        if not user_league.team_id:
+            return {
+                "supported": False,
+                "detail": "Your team isn't identified for this league yet. Set it via PUT /leagues/{league_id}/settings.",
+            }
+
+        position = await espn_service_enhanced.get_waiver_position(
+            league_id=user_league.league_id,
+            team_id=user_league.team_id,
+            season=user_league.season,
+            swid=user_league.espn_swid,
+            espn_s2=user_league.espn_s2,
+        )
+        if "error" in position:
+            raise HTTPException(status_code=400, detail=position["error"])
+
+        return {"supported": True, **position}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get waiver position: {str(e)}")
+
+
 @router.get("/{league_id}/standings")
 async def get_league_standings(
     league_id: int,

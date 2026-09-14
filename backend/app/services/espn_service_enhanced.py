@@ -363,7 +363,15 @@ class ESPNFantasyServiceEnhanced:
                     "ties": getattr(team, 'ties', 0),
                     "points_for": team.points_for,
                     "points_against": team.points_against,
-                    "acquisition_budget": getattr(team, 'acquisition_budget', 100),
+                    # espn_api's real attribute is `acquisition_budget_spent`
+                    # (from transactionCounter.acquisitionBudgetSpent) -- there
+                    # is no `acquisition_budget` attribute on Team at all, so
+                    # this previously read as a silent getattr-default miss:
+                    # every team, in every league (FAAB or not), always
+                    # reported a hardcoded 100 regardless of real spend. See
+                    # get_waiver_position() below for the real
+                    # FAAB-remaining/priority-rank picture.
+                    "acquisition_budget_spent": getattr(team, 'acquisition_budget_spent', 0),
                     "acquisitions": getattr(team, 'acquisitions', 0),
                     "trades": getattr(team, 'trades', 0),
                     "standing": getattr(team, 'standing', 0),
@@ -375,6 +383,54 @@ class ESPNFantasyServiceEnhanced:
         except Exception as e:
             logger.error(f"Error getting teams: {str(e)}")
             return [{"error": f"Failed to get teams: {str(e)}"}]
+
+    @async_wrapper
+    def get_waiver_position(self, league_id: Union[str, int], team_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> Dict[str, Any]:
+        """This team's real standing to actually win a waiver claim.
+
+        ESPN leagues run on one of two real, mutually-exclusive systems
+        (league.settings.faab -- from acquisitionSettings.isUsingAcquisitionBudget):
+        FAAB (blind-bid a budget, default $100) or rolling waiver priority
+        (a strict claim order that moves to the back after you win one).
+        A recommendation is only actionable if you know which system you're
+        in and where you stand in it -- "add this player" means something
+        very different at waiver_rank 1 of 12 vs 11 of 12. Previously
+        nothing in this app read league.settings.faab or team.waiver_rank
+        at all.
+        """
+        try:
+            league = self._get_league(league_id, season, swid, espn_s2)
+            settings = league.settings
+
+            target_team = None
+            for team in league.teams:
+                if str(team.team_id) == str(team_id):
+                    target_team = team
+                    break
+            if not target_team:
+                return {"error": f"Team {team_id} not found in league"}
+
+            is_faab = bool(getattr(settings, "faab", False))
+            total_teams = len(league.teams)
+
+            result: Dict[str, Any] = {
+                "waiver_type": "faab" if is_faab else "priority",
+                "total_teams": total_teams,
+            }
+            if is_faab:
+                total_budget = getattr(settings, "acquisition_budget", 100) or 100
+                spent = getattr(target_team, "acquisition_budget_spent", 0) or 0
+                result["total_budget"] = total_budget
+                result["budget_spent"] = spent
+                result["budget_remaining"] = max(0, total_budget - spent)
+            else:
+                # ESPN's waiver_rank is 1-indexed, 1 = first claim priority.
+                result["waiver_rank"] = getattr(target_team, "waiver_rank", None)
+
+            return result
+        except Exception as e:
+            logger.error(f"Error getting waiver position: {str(e)}")
+            return {"error": f"Failed to get waiver position: {str(e)}"}
 
     @async_wrapper
     def get_team_roster(self, league_id: Union[str, int], team_id: int, season: int = 2024, week: int = None, swid: str = None, espn_s2: str = None) -> Dict[str, Any]:

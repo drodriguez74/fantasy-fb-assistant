@@ -135,6 +135,10 @@ export const leagues = {
 
   getStandings: (leagueId: number) => api.get(`/leagues/${leagueId}/standings`),
 
+  // Real FAAB balance or rolling-priority rank, whichever this league's
+  // actual settings say it runs on. ESPN only today.
+  getWaiverPosition: (leagueId: number) => api.get(`/leagues/${leagueId}/waiver-position`),
+
   // Consolidated payload for the "This Week" screen: real weekly box-score
   // matchup (both projected scores + every starter's weekly projection and
   // pro opponent), standings records, and a deterministic lineup-optimizer
