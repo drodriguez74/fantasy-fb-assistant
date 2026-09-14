@@ -76,9 +76,8 @@ interface WaiverPosition {
 // and app/services/league_competition.py. Only QB/RB/WR/TE are meaningful
 // (K/DEF benches are routinely empty by design in most leagues).
 interface PositionPressureEntry {
-  teams_in_need: number
-  total_teams: number
-  ratio: number
+  season: { teams_in_need: number; total_teams: number; team_names: string[]; ratio: number }
+  this_week: { teams_in_need: number; team_names: string[] }
   level: 'high' | 'medium' | 'low'
 }
 interface PositionPressure {
@@ -93,6 +92,11 @@ const COMPETITION_LABEL: Record<'high' | 'medium' | 'low', string> = {
   medium: 'Some competition',
   low: 'Low competition',
 }
+function formatTeamNames(names: string[], max = 3): string {
+  if (names.length <= max) return names.join(', ')
+  return `${names.slice(0, max).join(', ')}, +${names.length - max} more`
+}
+
 const COMPETITION_CLASS: Record<'high' | 'medium' | 'low', string> = {
   high: 'bg-danger-100 text-danger-800',
   medium: 'bg-warning-100 text-warning-800',
@@ -742,7 +746,7 @@ export function WaiverWirePage() {
                           {competition && (
                             <span
                               className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${COMPETITION_CLASS[competition.level]}`}
-                              title={`${competition.teams_in_need} of ${competition.total_teams} other teams look thin at ${rec.position} right now`}
+                              title={`${competition.season.teams_in_need} of ${competition.season.total_teams} other teams look thin at ${rec.position} all season`}
                             >
                               {COMPETITION_LABEL[competition.level]}
                             </span>
@@ -750,6 +754,23 @@ export function WaiverWirePage() {
                         </div>
 
                         <p className="text-sm text-muted mb-3">{rec.reason}</p>
+                        {competition && (competition.this_week.teams_in_need > 0 || competition.season.teams_in_need > 0) && (
+                          <p className="text-xs text-faint mb-3">
+                            {competition.this_week.teams_in_need > 0 && (
+                              <>
+                                Likely in the market <em>this week</em>:{' '}
+                                <span className="text-body font-medium">{formatTeamNames(competition.this_week.team_names)}</span>
+                                {' '}(starting {rec.position} out/bye, no healthy bench cover).{' '}
+                              </>
+                            )}
+                            {competition.season.teams_in_need > 0 && (
+                              <>
+                                Thin at {rec.position} all season:{' '}
+                                <span className="text-body font-medium">{formatTeamNames(competition.season.team_names)}</span>.
+                              </>
+                            )}
+                          </p>
+                        )}
                         {rec.league_scoring_context?.scoring_format && (
                           <p className="text-xs text-faint mb-3">
                             League scoring: {rec.league_scoring_context.scoring_format}

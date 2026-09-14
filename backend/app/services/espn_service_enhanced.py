@@ -675,6 +675,62 @@ class ESPNFantasyServiceEnhanced:
             return {"error": f"Failed to get week matchup: {str(e)}"}
 
     @async_wrapper
+    def get_league_week_lineups(
+        self,
+        league_id: Union[str, int],
+        week: int = None,
+        season: int = 2024,
+        swid: str = None,
+        espn_s2: str = None,
+    ) -> Dict[str, Any]:
+        """Every team's real current-week starting lineup + bench, across
+        the whole league, from the same league.box_scores(week) call
+        get_week_matchup uses for one team -- one HTTP round-trip covers
+        every team since ESPN returns the full week's box scores at once.
+
+        Used to compute real acute per-team need (a starter out/bye this
+        week with no healthy bench replacement at that slot) rather than
+        just season-long roster depth -- see app/services/league_competition.py.
+        """
+        try:
+            league = self._get_league(league_id, season, swid, espn_s2)
+            week = week or getattr(league, "current_week", 1) or 1
+            box_scores = league.box_scores(week=week)
+
+            def _clean(v):
+                return None if v in (None, "None", "") else v
+
+            def _fmt(bp) -> Dict[str, Any]:
+                return {
+                    "name": getattr(bp, "name", "Unknown"),
+                    "position": getattr(bp, "position", "UNKNOWN"),
+                    "slot_position": getattr(bp, "slot_position", None),
+                    "pro_opponent": _clean(getattr(bp, "pro_opponent", None)),
+                    "injury_status": getattr(bp, "injuryStatus", "ACTIVE"),
+                    "on_bye": bool(getattr(bp, "on_bye_week", False)),
+                    "eligible_slots": [s for s in getattr(bp, "eligibleSlots", []) if isinstance(s, str)],
+                }
+
+            teams: Dict[str, Dict[str, Any]] = {}
+            for bs in box_scores:
+                for team_attr, lineup_attr in (("home_team", "home_lineup"), ("away_team", "away_lineup")):
+                    team = getattr(bs, team_attr, None)
+                    if team is None:
+                        continue
+                    lineup = getattr(bs, lineup_attr, None) or []
+                    team_id = getattr(team, "team_id", None)
+                    teams[str(team_id)] = {
+                        "team_id": team_id,
+                        "team_name": getattr(team, "team_name", "Team"),
+                        "lineup": [_fmt(p) for p in lineup],
+                    }
+
+            return {"week": week, "teams": list(teams.values())}
+        except Exception as e:
+            logger.error(f"Error getting league week lineups: {str(e)}")
+            return {"error": f"Failed to get league week lineups: {str(e)}"}
+
+    @async_wrapper
     def get_standings(self, league_id: Union[str, int], season: int = 2024, swid: str = None, espn_s2: str = None) -> List[Dict[str, Any]]:
         """Get league standings"""
         try:

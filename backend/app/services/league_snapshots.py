@@ -219,7 +219,7 @@ async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str,
             "detail": f"Waiver competition isn't available for {league_info['platform']} leagues yet.",
         }
 
-    teams, settings = await asyncio.gather(
+    teams, settings, week_lineups = await asyncio.gather(
         espn_service_enhanced.get_league_teams(
             league_id=user_league.league_id,
             season=user_league.season,
@@ -232,13 +232,26 @@ async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str,
             swid=user_league.espn_swid,
             espn_s2=user_league.espn_s2,
         ),
+        espn_service_enhanced.get_league_week_lineups(
+            league_id=user_league.league_id,
+            season=user_league.season,
+            swid=user_league.espn_swid,
+            espn_s2=user_league.espn_s2,
+        ),
     )
     if teams and isinstance(teams, list) and "error" in teams[0]:
         raise SnapshotBuildError(teams[0]["error"])
     if "error" in settings:
         settings = None
+    # This week's acute-need signal is a bonus, not load-bearing -- a
+    # transient failure fetching it (e.g. box scores not posted yet in
+    # week 1) degrades to season-depth-only rather than failing the whole
+    # snapshot.
+    week_lineups_list = week_lineups.get("teams") if isinstance(week_lineups, dict) and "error" not in week_lineups else None
 
-    pressure = compute_position_pressure(teams, settings, exclude_team_id=user_league.team_id)
+    pressure = compute_position_pressure(
+        teams, settings, exclude_team_id=user_league.team_id, week_lineups=week_lineups_list
+    )
 
     return {
         "league_info": league_info,
