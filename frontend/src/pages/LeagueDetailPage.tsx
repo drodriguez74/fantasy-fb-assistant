@@ -107,19 +107,6 @@ interface TradeRecommendation {
   updated_at: string
 }
 
-interface MatchupTeam {
-  name?: string
-  points?: number
-}
-
-interface MatchupData {
-  week: number
-  user_team: MatchupTeam
-  opponent_team: MatchupTeam
-  ai_analysis: string
-  updated_at: string
-}
-
 interface StandingsTeam {
   rank: number
   name?: string
@@ -196,6 +183,8 @@ interface ThisWeekData {
   _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
 }
 
+const STALE_RETRY_DELAYS_MS = [7000, 15000, 30000]
+
 function relTime(iso?: string): string {
   if (!iso) return ''
   const secs = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000))
@@ -212,8 +201,8 @@ export function LeagueDetailPage() {
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
 
-  type LeagueTab = 'this-week' | 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
-  const TABS: LeagueTab[] = ['this-week', 'overview', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
+  type LeagueTab = 'this-week' | 'overview' | 'roster' | 'standings' | 'waiver' | 'trades' | 'scoring'
+  const TABS: LeagueTab[] = ['this-week', 'overview', 'roster', 'standings', 'waiver', 'trades', 'scoring']
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<LeagueTab>(
     TABS.includes(tabParam as LeagueTab) ? (tabParam as LeagueTab) : 'this-week'
@@ -222,7 +211,6 @@ export function LeagueDetailPage() {
   const [rosterAnalysis, setRosterAnalysis] = useState<RosterAnalysis | null>(null)
   const [waiverRecs, setWaiverRecs] = useState<WaiverRecommendation | null>(null)
   const [tradeRecs, setTradeRecs] = useState<TradeRecommendation | null>(null)
-  const [matchupData, setMatchupData] = useState<MatchupData | null>(null)
   const [standingsData, setStandingsData] = useState<StandingsData | null>(null)
   const [insights, setInsights] = useState<LeagueInsights | null>(null)
   const [thisWeek, setThisWeek] = useState<ThisWeekData | null>(null)
@@ -292,7 +280,6 @@ export function LeagueDetailPage() {
       })
 
       setInsights(insightsResponse.data.insights)
-      setMatchupData(null)
       setLoading(false)
     })()
 
@@ -343,25 +330,35 @@ export function LeagueDetailPage() {
   // The This Week payload pulls a live ESPN weekly box score. The backend
   // now serves a stored snapshot instantly (stale-while-revalidate) and
   // refreshes in the background, so the first open is fast; when it hands
-  // back a stale copy (`_cache.stale`) we re-fetch once a few seconds later
-  // to pick up the freshly-synced version.
-  const staleRetryRef = useRef(false)
-  const loadThisWeek = useCallback(async (force = false) => {
-    setThisWeekLoading(true)
-    setThisWeekError('')
+  // back a stale copy (`_cache.stale`) we silently re-poll to pick up the
+  // freshly-synced version, with backoff (7s/15s/30s) rather than a single
+  // fixed retry -- a cold Render instance (free tier sleeps after ~15min
+  // idle) can take longer than a few seconds to wake up AND finish the
+  // live ESPN fetch, and one missed retry previously meant the stale copy
+  // (e.g. last night's pre-game 0-0) just sat there until the user
+  // manually reloaded or hit Refresh.
+  const staleRetryCountRef = useRef(0)
+  const loadThisWeek = useCallback(async (force = false, silent = false) => {
+    if (!silent) {
+      setThisWeekLoading(true)
+      setThisWeekError('')
+    }
     try {
       const res = await api.get(`/leagues/${leagueId}/this-week${force ? '?refresh=1' : ''}`)
       setThisWeek(res.data)
-      if (res.data?._cache?.stale && !staleRetryRef.current) {
-        staleRetryRef.current = true
-        setTimeout(() => { void loadThisWeek(false) }, 7000)
+      if (res.data?._cache?.stale && staleRetryCountRef.current < STALE_RETRY_DELAYS_MS.length) {
+        const delay = STALE_RETRY_DELAYS_MS[staleRetryCountRef.current]
+        staleRetryCountRef.current += 1
+        setTimeout(() => { void loadThisWeek(false, true) }, delay)
       } else if (!res.data?._cache?.stale) {
-        staleRetryRef.current = false
+        staleRetryCountRef.current = 0
       }
     } catch (err) {
-      setThisWeekError(getErrorMessage(err, 'This Week is unavailable for this league right now.'))
+      if (!silent) {
+        setThisWeekError(getErrorMessage(err, 'This Week is unavailable for this league right now.'))
+      }
     } finally {
-      setThisWeekLoading(false)
+      if (!silent) setThisWeekLoading(false)
     }
   }, [leagueId])
 
@@ -372,7 +369,7 @@ export function LeagueDetailPage() {
   }, [user, leagueId, activeTab, thisWeek, thisWeekLoading, thisWeekError, loadThisWeek])
 
   const refreshData = async () => {
-    staleRetryRef.current = false
+    staleRetryCountRef.current = 0
     setThisWeekError('')
     await Promise.all([
       loadLeagueData(true),
@@ -434,7 +431,6 @@ export function LeagueDetailPage() {
     { id: 'this-week', name: 'This Week', icon: CalendarDaysIcon },
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'roster', name: 'Roster Analysis', icon: UserGroupIcon },
-    { id: 'matchups', name: 'Matchups', icon: TrophyIcon },
     { id: 'standings', name: 'Standings', icon: StarIcon },
     { id: 'waiver', name: 'Waiver Wire', icon: FireIcon },
     { id: 'trades', name: 'Trade Center', icon: ArrowsRightLeftIcon },
@@ -996,24 +992,6 @@ export function LeagueDetailPage() {
             </div>
           )}
 
-          {/* Current Matchup Preview */}
-          {matchupData && (
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <h3 className="text-lg font-medium text-body mb-4">Week {matchupData.week} Matchup</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="text-center">
-                  <h4 className="font-medium text-accent-ink">Your Team</h4>
-                  <p className="text-lg font-bold">{matchupData.user_team?.name || 'Your Team'}</p>
-                  <p className="text-sm text-muted">{matchupData.user_team?.points || 0} points</p>
-                </div>
-                <div className="text-center">
-                  <h4 className="font-medium text-danger-600">Opponent</h4>
-                  <p className="text-lg font-bold">{matchupData.opponent_team?.name || 'Opponent'}</p>
-                  <p className="text-sm text-muted">{matchupData.opponent_team?.points || 0} points</p>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
       )}
 
@@ -1284,33 +1262,6 @@ export function LeagueDetailPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'matchups' && matchupData && (
-        <div className="space-y-6">
-          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-body mb-4">Week {matchupData.week} Matchup Analysis</h3>
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              <div className="text-center p-4 border-2 border-highlight-line rounded-lg">
-                <h4 className="font-medium text-accent-ink mb-2">Your Team</h4>
-                <p className="text-xl font-bold text-body">{matchupData.user_team?.name || 'Your Team'}</p>
-                <p className="text-lg text-muted">{matchupData.user_team?.points || 0} points</p>
-              </div>
-              
-              <div className="text-center p-4 border-2 border-danger-200 rounded-lg">
-                <h4 className="font-medium text-danger-600 mb-2">Opponent</h4>
-                <p className="text-xl font-bold text-body">{matchupData.opponent_team?.name || 'Opponent'}</p>
-                <p className="text-lg text-muted">{matchupData.opponent_team?.points || 0} points</p>
-              </div>
-            </div>
-            
-            <div className="bg-surface-2 rounded-lg p-4">
-              <h4 className="font-medium text-body mb-2">AI Matchup Analysis</h4>
-              <p className="text-sm text-body whitespace-pre-wrap">{matchupData.ai_analysis}</p>
             </div>
           </div>
         </div>
