@@ -124,6 +124,8 @@ class WaiverWireService:
         user_roster: Optional[List[Dict[str, Any]]] = None,
         league_settings: Optional[Dict[str, Any]] = None,
         available_player_names: Optional[set] = None,
+        espn_enrichment: Optional[Dict[str, Dict[str, Any]]] = None,
+        team_bye_map: Optional[Dict[str, bool]] = None,
     ) -> List[Dict[str, Any]]:
         """Real waiver-add recommendations sourced from Sleeper's live
         trending-add feed (players actually being added across real fantasy
@@ -160,6 +162,14 @@ class WaiverWireService:
         a free agent at all). When omitted, behavior is unchanged
         (unfiltered by real per-league availability) -- callers with real
         league context should pass this whenever they have it.
+
+        `espn_enrichment`/`team_bye_map` (ESPN only, optional): real per-player
+        ownership%/season-projected-points and real per-team this-week bye
+        status this method otherwise has no source for -- Sleeper's trending
+        feed carries neither. See waiver_wire.py's _fetch_connected_roster_
+        and_settings for how these are built. Matched by lower-cased name /
+        NFL team abbreviation; a candidate with no match simply keeps the
+        honest `None`/`False` default rather than a guessed value.
         """
         try:
             # Over-fetch: some trending adds will be filtered out by the
@@ -362,22 +372,39 @@ class WaiverWireService:
                         f"Strong target share ({local_player.target_share:.1f}%) in a PPR league."
                     )
 
+                # Real ESPN enrichment for this exact free agent, when the
+                # caller has a connected ESPN league -- ownership%/season
+                # projection Sleeper's trending feed doesn't carry, and a
+                # real this-week bye read off the league's own rosters
+                # rather than the sparse local Player table above.
+                espn_info = (espn_enrichment or {}).get(name.lower())
+                espn_team = espn_info.get('team') if espn_info else None
+                on_bye_this_week = (team_bye_map or {}).get(espn_team or player_data.get('team'))
+                if on_bye_this_week and not bye_week_flag:
+                    bye_week_flag = True
+                    confidence *= 0.5
+                    reason_parts.append("On bye this week (per your connected league's real rosters) -- cannot play.")
+
                 recommendations.append({
                     'player_id': player_id,
                     'player_name': name,
                     'position': player_data.get('position'),
-                    'team': player_data.get('team'),
+                    'team': espn_team or player_data.get('team'),
                     'recommendation_type': RecommendationType.ADD.value,
                     'priority': rec_priority,
+                    'rank': rank + 1,
+                    'total_candidates': total,
                     'confidence_score': round(confidence, 3),
                     'reason': " ".join(reason_parts),
-                    'projected_points': None,
-                    'ownership_percentage': None,
+                    'projected_points': espn_info.get('season_projected_points') if espn_info else None,
+                    'ownership_percentage': espn_info.get('ownership_percentage') if espn_info else None,
                     'trend_direction': 'up',
                     'add_count_24h': add_count,
                     'roster_need': roster_need,
                     'bye_week': local_bye_week,
                     'bye_week_flag': bye_week_flag,
+                    'on_bye_this_week': on_bye_this_week,
+                    'espn_player_id': espn_info.get('espn_player_id') if espn_info else None,
                     'pass_catcher_boost': pass_catcher_boost,
                     'league_scoring_context': league_scoring_context,
                 })

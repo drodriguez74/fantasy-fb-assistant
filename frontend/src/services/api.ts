@@ -144,6 +144,10 @@ export const leagues = {
   // waiver claim is likely to be, independent of global Sleeper demand.
   getPositionPressure: (leagueId: number) => api.get(`/leagues/${leagueId}/position-pressure`),
 
+  // This team's real result every week of the season so far -- the season
+  // schedule/history view. Distinct from getThisWeek (current week only).
+  getMatchupHistory: (leagueId: number) => api.get(`/leagues/${leagueId}/matchup-history`),
+
   // Consolidated payload for the "This Week" screen: real weekly box-score
   // matchup (both projected scores + every starter's weekly projection and
   // pro opponent), standings records, and a deterministic lineup-optimizer

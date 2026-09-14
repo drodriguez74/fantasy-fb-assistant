@@ -545,6 +545,35 @@ async def get_position_pressure(
         raise HTTPException(status_code=500, detail=f"Failed to get position pressure: {str(e)}")
 
 
+@router.get("/{league_id}/matchup-history")
+async def get_matchup_history(
+    league_id: int,
+    background_tasks: BackgroundTasks,
+    refresh: bool = Query(False, description="Force a live fetch, bypassing the cached snapshot"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """This team's real result every week of the season so far -- the
+    season schedule/history view. Distinct from /this-week (the live box
+    score for the CURRENT week only). ESPN only today.
+    """
+    try:
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        return await serve_swr(
+            db, user_league, "matchup_history", background_tasks=background_tasks, force=refresh
+        )
+    except HTTPException:
+        raise
+    except SnapshotBuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get matchup history: {str(e)}")
+
+
 @router.get("/{league_id}/standings")
 async def get_league_standings(
     league_id: int,

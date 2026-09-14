@@ -586,6 +586,87 @@ class ESPNFantasyServiceEnhanced:
             return [{"error": f"Failed to get matchups: {str(e)}"}]
 
     @async_wrapper
+    def get_team_matchup_history(
+        self,
+        league_id: Union[str, int],
+        team_id: Union[str, int],
+        season: int = 2024,
+        through_week: int = None,
+        swid: str = None,
+        espn_s2: str = None,
+    ) -> Dict[str, Any]:
+        """This team's real result every week of the season so far -- who
+        they played, the final score, win/loss/tie. Distinct from
+        get_week_matchup (the live box score for the CURRENT week only,
+        used by the This Week screen): this is the season schedule/history
+        view, one real call per week up to (and including) the current
+        week. Cheap early in the season, grows with it -- callers should
+        cache this (see league_snapshots.py).
+
+        Deliberately uses league.box_scores(week), not league.scoreboard(week):
+        scoreboard()'s home_score/away_score stay 0-0 until ESPN officially
+        settles a week (observed live: week 1's real, final box-score points
+        were 194.8-170.1 the same day scoreboard() still reported 0-0).
+        box_scores() reflects live/actual player points as soon as games are
+        played, which is what get_week_matchup already relies on for the
+        same reason.
+        """
+        try:
+            league = self._get_league(league_id, season, swid, espn_s2)
+            through_week = through_week or getattr(league, "current_week", 1) or 1
+
+            results = []
+            for week in range(1, through_week + 1):
+                try:
+                    box_scores = league.box_scores(week=week)
+                except Exception as e:
+                    logger.warning(f"Could not load week {week} box scores: {str(e)}")
+                    continue
+
+                for bs in box_scores:
+                    home = getattr(bs, "home_team", None)
+                    away = getattr(bs, "away_team", None)
+                    home_id = getattr(home, "team_id", None) if home else None
+                    away_id = getattr(away, "team_id", None) if away else None
+
+                    if str(home_id) == str(team_id):
+                        opp, my_score, opp_score = away, bs.home_score, bs.away_score
+                    elif str(away_id) == str(team_id):
+                        opp, my_score, opp_score = home, bs.away_score, bs.home_score
+                    else:
+                        continue
+
+                    my_score = float(my_score or 0.0)
+                    opp_score = float(opp_score or 0.0)
+                    if opp is None:
+                        result = "bye"
+                    elif week == through_week and my_score == 0.0 and opp_score == 0.0:
+                        # Not played yet -- ESPN returns a scheduled matchup
+                        # with 0-0 scores until the week's games start.
+                        result = "upcoming"
+                    elif my_score > opp_score:
+                        result = "win"
+                    elif my_score < opp_score:
+                        result = "loss"
+                    else:
+                        result = "tie"
+
+                    results.append({
+                        "week": week,
+                        "opponent_team_id": getattr(opp, "team_id", None) if opp else None,
+                        "opponent_name": getattr(opp, "team_name", None) if opp else "Bye",
+                        "my_score": round(my_score, 1),
+                        "opponent_score": round(opp_score, 1),
+                        "result": result,
+                    })
+                    break
+
+            return {"through_week": through_week, "matchups": results}
+        except Exception as e:
+            logger.error(f"Error getting team matchup history: {str(e)}")
+            return {"error": f"Failed to get team matchup history: {str(e)}"}
+
+    @async_wrapper
     def get_week_matchup(
         self,
         league_id: Union[str, int],
@@ -704,6 +785,7 @@ class ESPNFantasyServiceEnhanced:
                 return {
                     "name": getattr(bp, "name", "Unknown"),
                     "position": getattr(bp, "position", "UNKNOWN"),
+                    "team": getattr(bp, "proTeam", None),
                     "slot_position": getattr(bp, "slot_position", None),
                     "pro_opponent": _clean(getattr(bp, "pro_opponent", None)),
                     "injury_status": getattr(bp, "injuryStatus", "ACTIVE"),

@@ -259,3 +259,45 @@ async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str,
         "position_pressure": pressure,
         "other_teams_considered": max(0, len(teams) - (1 if user_league.team_id else 0)),
     }
+
+
+async def build_matchup_history_snapshot(user_league: UserLeague) -> Dict[str, Any]:
+    """The real "Matchups" screen: this team's actual result every week of
+    the season so far, not just the current week (that's This Week's job).
+    See espn_service_enhanced.get_team_matchup_history."""
+    league_info = _league_info(user_league)
+
+    if league_info["platform"] != "ESPN":
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": f"Matchup history isn't available for {league_info['platform']} leagues yet.",
+        }
+    if not user_league.team_id:
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": "Your team isn't identified for this league yet. Set it via PUT /leagues/{league_id}/settings.",
+        }
+
+    history = await espn_service_enhanced.get_team_matchup_history(
+        league_id=user_league.league_id,
+        team_id=user_league.team_id,
+        season=user_league.season,
+        swid=user_league.espn_swid,
+        espn_s2=user_league.espn_s2,
+    )
+    if "error" in history:
+        raise SnapshotBuildError(history["error"])
+
+    wins = sum(1 for m in history["matchups"] if m["result"] == "win")
+    losses = sum(1 for m in history["matchups"] if m["result"] == "loss")
+    ties = sum(1 for m in history["matchups"] if m["result"] == "tie")
+
+    return {
+        "league_info": league_info,
+        "supported": True,
+        "through_week": history["through_week"],
+        "matchups": history["matchups"],
+        "record": {"wins": wins, "losses": losses, "ties": ties},
+    }

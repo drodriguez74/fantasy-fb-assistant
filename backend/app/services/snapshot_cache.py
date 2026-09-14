@@ -28,6 +28,7 @@ from app.models.league_snapshot import LeagueSnapshot
 from app.models.user_league import UserLeague
 from app.services.league_snapshots import (
     SnapshotBuildError,
+    build_matchup_history_snapshot,
     build_position_pressure_snapshot,
     build_roster_analysis_snapshot,
     build_standings_snapshot,
@@ -44,6 +45,10 @@ _REGISTRY: Dict[str, Tuple[Callable, int]] = {
     # Other teams' rosters don't turn over intra-week outside waiver
     # processing, so this can sit longer than the others.
     "position_pressure": (build_position_pressure_snapshot, 3600),
+    # Only the current (last) week in this payload can still move --
+    # everything before it is final. Same TTL as this_week since the
+    # current week's live score is the part worth keeping fresh.
+    "matchup_history": (build_matchup_history_snapshot, 180),
 }
 
 

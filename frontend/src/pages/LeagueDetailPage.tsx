@@ -183,6 +183,26 @@ interface ThisWeekData {
   _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
 }
 
+// The real "Matchups" screen: this team's actual result every week of the
+// season so far (GET /leagues/{id}/matchup-history). Distinct from
+// ThisWeekData, which is the live box score for the CURRENT week only.
+interface MatchupHistoryWeek {
+  week: number
+  opponent_team_id: number | null
+  opponent_name: string
+  my_score: number
+  opponent_score: number
+  result: 'win' | 'loss' | 'tie' | 'bye' | 'upcoming'
+}
+interface MatchupHistoryData {
+  supported: boolean
+  detail?: string
+  through_week?: number
+  matchups?: MatchupHistoryWeek[]
+  record?: { wins: number; losses: number; ties: number }
+  _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
+}
+
 const STALE_RETRY_DELAYS_MS = [7000, 15000, 30000]
 
 function relTime(iso?: string): string {
@@ -201,8 +221,8 @@ export function LeagueDetailPage() {
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
 
-  type LeagueTab = 'this-week' | 'overview' | 'roster' | 'standings' | 'waiver' | 'trades' | 'scoring'
-  const TABS: LeagueTab[] = ['this-week', 'overview', 'roster', 'standings', 'waiver', 'trades', 'scoring']
+  type LeagueTab = 'this-week' | 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
+  const TABS: LeagueTab[] = ['this-week', 'overview', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<LeagueTab>(
     TABS.includes(tabParam as LeagueTab) ? (tabParam as LeagueTab) : 'this-week'
@@ -216,6 +236,9 @@ export function LeagueDetailPage() {
   const [thisWeek, setThisWeek] = useState<ThisWeekData | null>(null)
   const [thisWeekLoading, setThisWeekLoading] = useState(false)
   const [thisWeekError, setThisWeekError] = useState('')
+  const [matchupHistory, setMatchupHistory] = useState<MatchupHistoryData | null>(null)
+  const [matchupHistoryLoading, setMatchupHistoryLoading] = useState(false)
+  const [matchupHistoryError, setMatchupHistoryError] = useState('')
   const [showOptimal, setShowOptimal] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -368,12 +391,35 @@ export function LeagueDetailPage() {
     }
   }, [user, leagueId, activeTab, thisWeek, thisWeekLoading, thisWeekError, loadThisWeek])
 
+  // Season schedule/history -- fetched lazily the first time the Matchups
+  // tab is opened, same pattern as This Week (a live ESPN call per week
+  // played, cached server-side via the same snapshot mechanism).
+  const loadMatchupHistory = useCallback(async (force = false) => {
+    setMatchupHistoryLoading(true)
+    setMatchupHistoryError('')
+    try {
+      const res = await api.get(`/leagues/${leagueId}/matchup-history${force ? '?refresh=1' : ''}`)
+      setMatchupHistory(res.data)
+    } catch (err) {
+      setMatchupHistoryError(getErrorMessage(err, 'Matchup history is unavailable for this league right now.'))
+    } finally {
+      setMatchupHistoryLoading(false)
+    }
+  }, [leagueId])
+
+  useEffect(() => {
+    if (user && leagueId && activeTab === 'matchups' && !matchupHistory && !matchupHistoryLoading && !matchupHistoryError) {
+      loadMatchupHistory()
+    }
+  }, [user, leagueId, activeTab, matchupHistory, matchupHistoryLoading, matchupHistoryError, loadMatchupHistory])
+
   const refreshData = async () => {
     staleRetryCountRef.current = 0
     setThisWeekError('')
     await Promise.all([
       loadLeagueData(true),
       activeTab === 'this-week' ? loadThisWeek(true) : Promise.resolve(),
+      activeTab === 'matchups' ? loadMatchupHistory(true) : Promise.resolve(),
     ])
   }
 
@@ -431,6 +477,7 @@ export function LeagueDetailPage() {
     { id: 'this-week', name: 'This Week', icon: CalendarDaysIcon },
     { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'roster', name: 'Roster Analysis', icon: UserGroupIcon },
+    { id: 'matchups', name: 'Matchups', icon: TrophyIcon },
     { id: 'standings', name: 'Standings', icon: StarIcon },
     { id: 'waiver', name: 'Waiver Wire', icon: FireIcon },
     { id: 'trades', name: 'Trade Center', icon: ArrowsRightLeftIcon },
@@ -1117,6 +1164,77 @@ export function LeagueDetailPage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'matchups' && (
+        <div className="space-y-6">
+          {matchupHistoryLoading && !matchupHistory && (
+            <div className="bg-surface rounded-lg border border-hairline p-8 text-center">
+              <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+              <p className="text-sm text-muted">Loading your season schedule...</p>
+            </div>
+          )}
+          {!matchupHistoryLoading && matchupHistoryError && (
+            <div className="bg-danger-50 border border-danger-200 rounded-md p-4">
+              <p className="text-sm text-danger-700">{matchupHistoryError}</p>
+            </div>
+          )}
+          {!matchupHistoryLoading && matchupHistory && !matchupHistory.supported && (
+            <div className="bg-surface rounded-lg border border-hairline p-8 text-center">
+              <TrophyIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+              <p className="text-sm text-muted">{matchupHistory.detail || 'Matchup history is only available for ESPN leagues today.'}</p>
+            </div>
+          )}
+          {!matchupHistoryLoading && matchupHistory?.supported && matchupHistory.matchups && (
+            <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between p-4 sm:p-6 border-b border-hairline">
+                <div>
+                  <h3 className="text-lg font-medium text-body">Season Schedule</h3>
+                  <p className="text-sm text-muted">Through Week {matchupHistory.through_week}</p>
+                </div>
+                {matchupHistory.record && (
+                  <div className="stat-nums text-2xl font-bold text-body">
+                    {matchupHistory.record.wins}-{matchupHistory.record.losses}
+                    {matchupHistory.record.ties > 0 ? `-${matchupHistory.record.ties}` : ''}
+                  </div>
+                )}
+              </div>
+              <div className="divide-y divide-hairline">
+                {matchupHistory.matchups.map((m) => (
+                  <div key={m.week} className="flex items-center gap-3 px-4 sm:px-6 py-3">
+                    <span className="stat-nums text-xs text-faint w-14 shrink-0">WK {m.week}</span>
+                    <span className="flex-1 min-w-0 truncate text-sm text-body">
+                      {m.result === 'bye' ? 'Bye week' : `vs ${m.opponent_name}`}
+                    </span>
+                    {m.result !== 'bye' && m.result !== 'upcoming' && (
+                      <span className="stat-nums text-sm tabular-nums text-muted shrink-0">
+                        {m.my_score.toFixed(1)} &ndash; {m.opponent_score.toFixed(1)}
+                      </span>
+                    )}
+                    <span
+                      className={`shrink-0 inline-flex items-center justify-center w-16 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        m.result === 'win'
+                          ? 'bg-success-100 text-success-800'
+                          : m.result === 'loss'
+                          ? 'bg-danger-100 text-danger-800'
+                          : m.result === 'tie'
+                          ? 'bg-warning-100 text-warning-800'
+                          : 'bg-surface-2 text-muted'
+                      }`}
+                    >
+                      {m.result === 'upcoming' ? 'UPCOMING' : m.result === 'bye' ? 'BYE' : m.result.toUpperCase()}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {matchupHistory._cache && (
+                <div className="px-4 sm:px-6 py-2 border-t border-hairline stat-nums text-[10px] tracking-wider text-faint">
+                  UPDATED {relTime(matchupHistory._cache.as_of).toUpperCase()}
+                </div>
+              )}
             </div>
           )}
         </div>

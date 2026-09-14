@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth'
 import { waiverWire, matchupAnalysis, notifications as notificationsApi, leagues as leaguesApi, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { getPositionColor } from '../components/players/playerDisplay'
+import { PlayerAvatar } from '../components/players/PlayerAvatar'
 import type { Notification } from '../types'
 import {
   PlusIcon,
@@ -48,6 +49,19 @@ interface WaiverRecommendation {
   bye_week_flag?: boolean
   pass_catcher_boost?: boolean
   league_scoring_context?: { scoring_format?: string | null; points_per_reception?: number | null } | null
+  // Where this candidate sits in today's real Sleeper trending-add pool
+  // (after real per-league availability filtering) -- e.g. rank 3 of 44.
+  // Shown instead of just repeating the priority label, which otherwise
+  // reads the same ("URGENT"/"HIGH") on nearly every visible card since
+  // the list IS the top of that ranking by construction.
+  rank?: number
+  total_candidates?: number
+  // Real per-league signal (ESPN only, when a league is selected):
+  // true/false from that team's actual current-week lineup, null/undefined
+  // when not determinable (no league selected, or this team has zero
+  // rostered players anywhere in the league to read a bye off of).
+  on_bye_this_week?: boolean | null
+  espn_player_id?: number | null
 }
 
 interface ConnectedLeagueOption {
@@ -711,18 +725,43 @@ export function WaiverWirePage() {
                   ? positionPressure.position_pressure?.[rec.position]
                   : undefined
                 return (
-                  <div key={rec.player_id} className="bg-surface rounded-lg shadow p-4 sm:p-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center space-x-3 mb-2">
-                          <h4 className="text-lg font-medium text-body">{rec.player_name}</h4>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionColor(rec.position)}`}>
-                            {rec.position}
-                          </span>
-                          <span className="text-sm text-muted">{rec.team}</span>
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityBadgeColor(rec.priority)}`}>
-                            {rec.priority.toUpperCase()}
-                          </span>
+                  <div key={rec.player_id} className="bg-surface rounded-lg shadow p-4 sm:p-6 border-l-2 border-l-transparent hover:border-l-volt transition-colors">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start gap-3 mb-2">
+                          <PlayerAvatar
+                            playerId={rec.espn_player_id}
+                            name={rec.player_name}
+                            position={rec.position}
+                            team={rec.team}
+                            size={40}
+                          />
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-lg font-medium text-body">{rec.player_name}</h4>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPositionColor(rec.position)}`}>
+                                {rec.position}
+                              </span>
+                              <span className="text-sm text-muted">{rec.team}</span>
+                              {rec.on_bye_this_week && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-danger-100 text-danger-800">
+                                  BYE this week
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPriorityBadgeColor(rec.priority)}`}>
+                                {rec.priority.toUpperCase()}
+                              </span>
+                              {rec.rank != null && rec.total_candidates != null && (
+                                <span className="stat-nums text-[11px] text-faint" title="This player's rank in today's real Sleeper trending-add pool, after filtering to actual free agents in your league">
+                                  #{rec.rank} of {rec.total_candidates} trending
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 mb-2">
                           {rec.roster_need === 'needs_attention' && (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-success-100 text-success-800">
                               Fills a roster need
@@ -733,7 +772,7 @@ export function WaiverWirePage() {
                               Position already deep
                             </span>
                           )}
-                          {rec.bye_week_flag && (
+                          {rec.bye_week_flag && !rec.on_bye_this_week && (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-danger-100 text-danger-800">
                               On bye Week {rec.bye_week}
                             </span>
@@ -780,20 +819,28 @@ export function WaiverWirePage() {
                           </p>
                         )}
 
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm mb-4">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-4">
                           <div>
-                            <span className="font-medium text-body">Projected Points:</span>
-                            <span className="ml-2 font-stat tabular-nums">{rec.projected_points?.toFixed(1) || 'N/A'}</span>
+                            <span className="block text-xs text-muted">Season Proj (ESPN)</span>
+                            <span className="font-stat tabular-nums">
+                              {rec.projected_points != null ? rec.projected_points.toFixed(1) : 'N/A'}
+                            </span>
                           </div>
                           <div>
-                            <span className="font-medium text-body">Ownership:</span>
-                            <span className="ml-2 font-stat tabular-nums">
+                            <span className="block text-xs text-muted">Owned</span>
+                            <span className="font-stat tabular-nums">
                               {rec.ownership_percentage != null ? `${rec.ownership_percentage.toFixed(1)}%` : 'N/A'}
                             </span>
                           </div>
-                          <div className="flex items-center">
-                            <span className="font-medium text-body">Trend:</span>
-                            <span className="ml-2 flex items-center space-x-1">
+                          <div>
+                            <span className="block text-xs text-muted">24h Adds</span>
+                            <span className="font-stat tabular-nums">
+                              {addCount != null ? addCount.toLocaleString() : 'N/A'}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-xs text-muted">Trend</span>
+                            <span className="flex items-center gap-1">
                               {getTrendIcon(rec.trend_direction)}
                               <span>{rec.trend_direction}</span>
                             </span>
@@ -813,16 +860,11 @@ export function WaiverWirePage() {
                               {(rec.confidence_score * 100).toFixed(0)}%
                             </span>
                           </div>
-                          {addCount != null && (
-                            <p className="mt-1 text-xs font-stat tabular-nums text-muted">
-                              {addCount.toLocaleString()} adds &middot; 24h
-                            </p>
-                          )}
                         </div>
                       </div>
 
-                      <div className="ml-4">
-                        <button className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark flex items-center space-x-2">
+                      <div className="sm:ml-4">
+                        <button className="w-full sm:w-auto bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark flex items-center justify-center space-x-2">
                           <PlusIcon className="h-4 w-4" />
                           <span>Add</span>
                         </button>
