@@ -49,6 +49,52 @@ def _player_full_name(player_data: Dict[str, Any]) -> str:
 # Fantasy-relevant positions we're willing to recommend off the waiver wire.
 _WAIVER_ELIGIBLE_POSITIONS = {"QB", "RB", "WR", "TE", "K", "DEF"}
 
+_FLEX_ELIGIBLE = {"RB", "WR", "TE"}
+
+
+def pick_drop_candidate(roster_players: List[Dict[str, Any]], position: str) -> Optional[Dict[str, Any]]:
+    """The single most droppable real bench player, so an "add" recommendation
+    can say who to actually drop for it and by how much real projected value.
+
+    Only ever looks at BENCH slots (`lineup_slot` BE/BENCH) -- IR doesn't
+    free up a normal roster spot on ESPN, and a starter isn't really an
+    "add/drop" candidate. Prefers a bench player at the same position (or
+    another FLEX-eligible position, since RB/WR/TE bench depth is fungible
+    against a FLEX slot); falls back to the single lowest-projected bench
+    player of ANY position if there's no same-position/FLEX match, which is
+    still a real, honest answer ("here's your weakest bench player"), not a
+    guess.
+
+    Uses each player's real season-projected points (ESPN's own
+    `projected_total_points`, the same field the roster/grading screens
+    already show) -- never a fabricated per-player value.
+    """
+    def is_bench(p: Dict[str, Any]) -> bool:
+        return (p.get("lineup_slot") or "").upper() in ("BE", "BENCH")
+
+    def value(p: Dict[str, Any]) -> float:
+        return float(p.get("projected_points") or 0.0)
+
+    bench = [p for p in roster_players if is_bench(p)]
+    if not bench:
+        return None
+
+    position = (position or "").upper()
+    same_group = [
+        p for p in bench
+        if (p.get("position") or "").upper() == position
+        or ((p.get("position") or "").upper() in _FLEX_ELIGIBLE and position in _FLEX_ELIGIBLE)
+    ]
+    pool = same_group or bench
+    worst = min(pool, key=value)
+
+    return {
+        "name": worst.get("name"),
+        "position": worst.get("position"),
+        "projected_points": worst.get("projected_points"),
+        "position_matched": bool(same_group),
+    }
+
 # Same fallback used elsewhere in this codebase (roster_grading.py,
 # post_draft_analysis_service.py) when no real per-league starter
 # requirements are available.

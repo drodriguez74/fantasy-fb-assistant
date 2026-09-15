@@ -638,16 +638,34 @@ class LeagueManagementService:
     _WAIVER_PRIORITY_SCORES = {"urgent": 3, "high": 3, "medium": 2, "low": 1, "watch": 1}
 
     def _live_waiver_candidates_to_league_view(
-        self, candidates: List[Dict[str, Any]]
+        self, candidates: List[Dict[str, Any]], roster_players: Optional[List[Dict[str, Any]]] = None
     ) -> List[Dict[str, Any]]:
         """Adapt WaiverWireService.get_live_trending_recommendations's dicts
         into the {"player": {...}, "priority", "reason"} shape this
         endpoint's response has always used (and the frontend already
         renders), so swapping the underlying data source doesn't require a
         frontend contract change.
+
+        When `roster_players` (the real, live ESPN roster) is supplied,
+        also attaches a real drop_candidate -- see
+        waiver_wire_service.pick_drop_candidate -- and the resulting real
+        projected-value delta, so "add this player" comes with an honest
+        answer to "at whose expense" rather than floating free of the
+        user's actual 18-man roster.
         """
+        from app.services.waiver_wire_service import pick_drop_candidate
+
         adapted = []
         for c in candidates:
+            drop_candidate = None
+            value_delta = None
+            if roster_players:
+                drop_candidate = pick_drop_candidate(roster_players, c.get("position") or "")
+                add_proj = c.get("projected_points")
+                drop_proj = drop_candidate.get("projected_points") if drop_candidate else None
+                if isinstance(add_proj, (int, float)) and isinstance(drop_proj, (int, float)):
+                    value_delta = round(add_proj - drop_proj, 1)
+
             adapted.append({
                 "player": {
                     "name": c.get("player_name"),
@@ -656,6 +674,8 @@ class LeagueManagementService:
                 },
                 "priority": self._WAIVER_PRIORITY_SCORES.get(c.get("priority"), 1),
                 "reason": c.get("reason"),
+                "drop_candidate": drop_candidate,
+                "value_delta": value_delta,
             })
         return adapted
 
@@ -712,7 +732,7 @@ class LeagueManagementService:
             )
             candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]
 
-            filtered_recs = self._live_waiver_candidates_to_league_view(candidates)
+            filtered_recs = self._live_waiver_candidates_to_league_view(candidates, roster_players)
 
             return {
                 "recommendations": filtered_recs[:10],
@@ -781,8 +801,22 @@ class LeagueManagementService:
             # filter is applied, same fallback-to-unweighted pattern this
             # method already uses elsewhere.
             available_player_names = None
+            espn_enrichment = None
             if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                 available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
+                # Same free-agent fetch already made above -- real season
+                # projected points, not the flat None get_live_trending_
+                # recommendations otherwise leaves every candidate with
+                # (Sleeper's trending feed carries no projections at all).
+                espn_enrichment = {
+                    (p.get("name") or "").lower(): {
+                        "ownership_percentage": p.get("percent_owned"),
+                        "season_projected_points": p.get("projected_points"),
+                        "espn_player_id": p.get("player_id"),
+                        "team": p.get("team"),
+                    }
+                    for p in free_agents if p.get("name")
+                }
 
             from app.services.waiver_wire_service import WaiverWireService
             waiver_service = WaiverWireService(self.db)
@@ -791,10 +825,11 @@ class LeagueManagementService:
                 user_roster=roster_players,
                 league_settings=league_settings,
                 available_player_names=available_player_names,
+                espn_enrichment=espn_enrichment,
             )
             candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]
 
-            filtered_recs = self._live_waiver_candidates_to_league_view(candidates)
+            filtered_recs = self._live_waiver_candidates_to_league_view(candidates, roster_players)
 
             return {
                 "recommendations": filtered_recs[:10],

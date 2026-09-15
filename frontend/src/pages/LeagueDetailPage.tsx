@@ -84,6 +84,17 @@ interface WaiverRecommendationItem {
   }
   reason?: string
   priority?: number
+  // Real answer to "at whose expense" -- the actual weakest bench player
+  // at this position (or another FLEX-eligible one) on your real ESPN
+  // roster, and the resulting real season-projected-points swing. null
+  // when no bench player was available to compare against.
+  drop_candidate?: {
+    name: string
+    position?: string
+    projected_points?: number | null
+    position_matched: boolean
+  } | null
+  value_delta?: number | null
 }
 
 interface WaiverRecommendation {
@@ -515,8 +526,12 @@ export function LeagueDetailPage() {
     WR: 'bg-highlight text-accent-ink',
     TE: 'bg-warning-100 text-warning-800',
     K: 'bg-surface-2 text-body',
-    DEF: 'bg-ink-200 text-body',
-    'D/ST': 'bg-ink-200 text-body',
+    // Was bg-ink-200 (a fixed light gray) + text-body (which flips to a
+    // light color in dark mode) -- light bg + light text, invisible in
+    // dark mode. bg-surface-2/text-body is the same theme-safe pairing K
+    // already uses above.
+    DEF: 'bg-surface-2 text-body',
+    'D/ST': 'bg-surface-2 text-body',
   }
   const getPositionColor = (position?: string) => POSITION_COLORS[position || ''] || 'bg-surface-2 text-body'
 
@@ -617,7 +632,8 @@ export function LeagueDetailPage() {
         const lineup = thisWeek.lineup ?? []
         const BENCH = new Set(['BE', 'IR', 'BENCH', ''])
         const starters = lineup.filter((p) => !BENCH.has((p.slot_position || '').toUpperCase()))
-        const bench = lineup.filter((p) => BENCH.has((p.slot_position || '').toUpperCase()))
+        const bench = lineup.filter((p) => (p.slot_position || '').toUpperCase() !== 'IR' && BENCH.has((p.slot_position || '').toUpperCase()))
+        const ir = lineup.filter((p) => (p.slot_position || '').toUpperCase() === 'IR')
         const swapOutNames = new Set((opt?.swaps ?? []).map((s) => s.bench_out.name))
         const swapInNames = new Set((opt?.swaps ?? []).map((s) => s.start_in.name))
         const rec = (side: ThisWeekMatchupSide) =>
@@ -637,7 +653,7 @@ export function LeagueDetailPage() {
           return (
             <div
               key={`tw-${isBench ? 'bn' : 'st'}-${p.name}`}
-              className={`grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_7rem_4rem] items-center gap-2 px-3 py-2.5 border-b border-hairline text-sm ${
+              className={`grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_6rem_4rem_4rem] items-center gap-2 px-3 py-2.5 border-b border-hairline text-sm ${
                 highlight ? 'bg-highlight border-l-2 border-l-volt' : ''
               }`}
             >
@@ -655,6 +671,9 @@ export function LeagueDetailPage() {
                     {p.position || '—'}
                   </span>
                   <span className="font-medium text-body truncate">{p.name}</span>
+                  {p.team && (
+                    <span className="shrink-0 stat-nums text-[11px] text-faint">{p.team}</span>
+                  )}
                   {injured && (
                     <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${getStatusColor(p.injury_status)}`}>
                       {formatStatusLabel(p.injury_status)}
@@ -663,6 +682,7 @@ export function LeagueDetailPage() {
                 </div>
                 <div className="sm:hidden stat-nums text-[11px] text-faint mt-0.5 pl-[38px]">
                   {p.pro_opponent || (p.on_bye ? 'BYE' : '')}
+                  {p.game_played ? ` · ${p.points?.toFixed(1) ?? '0.0'} actual` : ''}
                 </div>
                 {showOptimal && flaggedOut && (
                   <p className="stat-nums text-[11px] text-accent-ink mt-1">
@@ -676,8 +696,11 @@ export function LeagueDetailPage() {
               <span className="hidden sm:block stat-nums text-xs text-muted">
                 {p.pro_opponent || (p.on_bye ? 'BYE' : '—')}
               </span>
-              <span className="stat-nums text-sm text-body text-right tabular-nums">
+              <span className="stat-nums text-sm text-muted text-right tabular-nums">
                 {p.projected_points != null ? p.projected_points.toFixed(1) : '—'}
+              </span>
+              <span className="stat-nums text-sm text-body text-right tabular-nums font-medium">
+                {p.game_played ? (p.points ?? 0).toFixed(1) : '—'}
               </span>
             </div>
           )
@@ -789,14 +812,20 @@ export function LeagueDetailPage() {
             {/* BODY: lineup + rail */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6">
               <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
-                <div className="grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_7rem_4rem] gap-2 px-3 py-2 border-b border-hairline stat-nums text-[10px] tracking-wider text-faint">
-                  <span>SLOT</span><span>PLAYER</span><span className="hidden sm:block">MATCHUP</span><span className="text-right">PROJ</span>
+                <div className="grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_6rem_4rem_4rem] gap-2 px-3 py-2 border-b border-hairline stat-nums text-[10px] tracking-wider text-faint">
+                  <span>SLOT</span><span>PLAYER</span><span className="hidden sm:block">MATCHUP</span><span className="text-right">PROJ</span><span className="hidden sm:block text-right">ACT</span>
                 </div>
                 {starters.map((p) => renderRow(p, false))}
                 {bench.length > 0 && (
                   <>
                     <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">BENCH</div>
                     {bench.map((p) => renderRow(p, true))}
+                  </>
+                )}
+                {ir.length > 0 && (
+                  <>
+                    <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">IR</div>
+                    {ir.map((p) => renderRow(p, true))}
                   </>
                 )}
               </div>
@@ -865,17 +894,42 @@ export function LeagueDetailPage() {
                       <span className="stat-nums text-[10px] tracking-wider text-muted">TOP WAIVER TARGET</span>
                       <button onClick={() => setActiveTab('waiver')} className="stat-nums text-[10px] text-accent-ink hover:underline">All &#9656;</button>
                     </div>
-                    <div className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span className={`inline-flex items-center justify-center w-9 h-6 rounded text-[11px] font-semibold ${getPositionColor(waiverRecs.recommendations[0].player.position?.value)}`}>
-                          {waiverRecs.recommendations[0].player.position?.value || '—'}
-                        </span>
-                        <span className="text-sm font-medium text-body">{waiverRecs.recommendations[0].player.name}</span>
-                      </div>
-                      {waiverRecs.recommendations[0].reason && (
-                        <p className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">{waiverRecs.recommendations[0].reason}</p>
-                      )}
-                    </div>
+                    {(() => {
+                      const top = waiverRecs.recommendations[0]
+                      const drop = top.drop_candidate
+                      const delta = top.value_delta
+                      const worthIt = delta == null ? null : delta > 0
+                      return (
+                        <div className="p-4">
+                          <div className="flex items-center gap-2">
+                            <span className={`inline-flex items-center justify-center w-9 h-6 rounded text-[11px] font-semibold ${getPositionColor(top.player.position?.value)}`}>
+                              {top.player.position?.value || '—'}
+                            </span>
+                            <span className="text-sm font-medium text-body">{top.player.name}</span>
+                            {top.player.projected_points != null && (
+                              <span className="stat-nums text-xs text-muted ml-auto">{top.player.projected_points.toFixed(0)} pts</span>
+                            )}
+                          </div>
+                          {top.reason && (
+                            <p className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">{top.reason}</p>
+                          )}
+                          {drop && (
+                            <div className={`mt-3 rounded-md border p-2.5 ${worthIt === false ? 'border-danger-200 bg-danger-50' : 'border-hairline bg-surface-2'}`}>
+                              <p className="text-xs text-body">
+                                Drop <span className="font-medium">{drop.name}</span>
+                                {drop.position ? ` (${drop.position}${drop.position_matched ? '' : ', flex-eligible'})` : ''} to make room.
+                              </p>
+                              {delta != null && drop.projected_points != null && top.player.projected_points != null && (
+                                <p className={`stat-nums text-[11px] mt-1 ${worthIt ? 'text-success-700' : 'text-danger-700'}`}>
+                                  {top.player.name} projects {top.player.projected_points.toFixed(0)} pts this season vs {drop.name}&apos;s {drop.projected_points.toFixed(0)}
+                                  {' '}&mdash; {worthIt ? `a +${delta.toFixed(0)} pt real upgrade` : `NOT a clear upgrade (${delta.toFixed(0)} pts)`}.
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
                 )}
               </div>
