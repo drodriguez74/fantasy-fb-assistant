@@ -7,7 +7,6 @@ import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { PlayerAvatar } from '../components/players/PlayerAvatar'
 import { injuryTag } from '../components/players/playerDisplay'
 import {
-  ChartBarIcon,
   UserGroupIcon,
   TrophyIcon,
   ArrowsRightLeftIcon,
@@ -134,11 +133,6 @@ interface StandingsData {
   total_teams: number
   playoff_teams: number
   updated_at: string
-}
-
-interface LeagueInsights {
-  weekly_outlook?: { key_points?: string[] }
-  pickup_targets?: Array<{ player: string; position?: string }>
 }
 
 interface ThisWeekPlayer {
@@ -283,8 +277,8 @@ export function LeagueDetailPage() {
   const { user } = useAuth()
   const [searchParams] = useSearchParams()
 
-  type LeagueTab = 'this-week' | 'overview' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
-  const TABS: LeagueTab[] = ['this-week', 'overview', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
+  type LeagueTab = 'this-week' | 'roster' | 'matchups' | 'standings' | 'waiver' | 'trades' | 'scoring'
+  const TABS: LeagueTab[] = ['this-week', 'roster', 'matchups', 'standings', 'waiver', 'trades', 'scoring']
   const tabParam = searchParams.get('tab')
   const [activeTab, setActiveTab] = useState<LeagueTab>(
     TABS.includes(tabParam as LeagueTab) ? (tabParam as LeagueTab) : 'this-week'
@@ -294,7 +288,6 @@ export function LeagueDetailPage() {
   const [waiverRecs, setWaiverRecs] = useState<WaiverRecommendation | null>(null)
   const [tradeRecs, setTradeRecs] = useState<TradeRecommendation | null>(null)
   const [standingsData, setStandingsData] = useState<StandingsData | null>(null)
-  const [insights, setInsights] = useState<LeagueInsights | null>(null)
   const [thisWeek, setThisWeek] = useState<ThisWeekData | null>(null)
   const [thisWeekLoading, setThisWeekLoading] = useState(false)
   const [thisWeekError, setThisWeekError] = useState('')
@@ -325,20 +318,22 @@ export function LeagueDetailPage() {
     setWaiverLoading(true)
     setTradeLoading(true)
 
-    // The page renders progressively: roster / standings / insights are the
-    // "core" bundle the header + most tabs need, so only those block the
+    // The page renders progressively: roster / standings are the "core"
+    // bundle the header + most tabs need, so only those block the
     // page-level spinner. Waiver + trade recommendations (which internally
     // make slow live ESPN/Yahoo calls, and honestly 400 for Sleeper) fill
     // in their own sections afterwards without holding up the rest.
+    // (The old /insights fetch was dropped along with the Overview tab --
+    // it only ever fed that tab's "Weekly Insights" card, and the endpoint
+    // itself is an honest not-yet-computed stub with no real content.)
     void (async () => {
-      const [rosterResult, standingsResult, insightsResult] = await Promise.allSettled([
+      const [rosterResult, standingsResult] = await Promise.allSettled([
         api.get(`/leagues/${leagueId}/roster-analysis?_=1${rq}`),
         api.get(`/leagues/${leagueId}/standings?season=2025${rq}`),
-        api.get(`/leagues/${leagueId}/insights`)
       ])
       if (!isCurrent()) return
 
-      const firstRejection = [rosterResult, standingsResult, insightsResult].find((r) => r.status === 'rejected')
+      const firstRejection = [rosterResult, standingsResult].find((r) => r.status === 'rejected')
       if (firstRejection && firstRejection.status === 'rejected') {
         setError(getErrorMessage(firstRejection.reason, 'Failed to load league data'))
         setLoading(false)
@@ -347,7 +342,6 @@ export function LeagueDetailPage() {
 
       const rosterResponse = (rosterResult as PromiseFulfilledResult<{ data: { league_info: LeagueInfo; roster_analysis: RosterAnalysis } }>).value
       const standingsResponse = (standingsResult as PromiseFulfilledResult<{ data: { teams: StandingsTeam[] } }>).value
-      const insightsResponse = (insightsResult as PromiseFulfilledResult<{ data: { insights: LeagueInsights } }>).value
 
       setLeagueInfo(rosterResponse.data.league_info)
       setRosterAnalysis(rosterResponse.data.roster_analysis)
@@ -365,7 +359,6 @@ export function LeagueDetailPage() {
         updated_at: new Date().toISOString()
       })
 
-      setInsights(insightsResponse.data.insights)
       setLoading(false)
     })()
 
@@ -538,7 +531,6 @@ export function LeagueDetailPage() {
 
   const tabs = [
     { id: 'this-week', name: 'This Week', icon: CalendarDaysIcon },
-    { id: 'overview', name: 'Overview', icon: ChartBarIcon },
     { id: 'roster', name: 'Roster Analysis', icon: UserGroupIcon },
     { id: 'matchups', name: 'Matchups', icon: TrophyIcon },
     { id: 'standings', name: 'Standings', icon: StarIcon },
@@ -1073,164 +1065,6 @@ export function LeagueDetailPage() {
         )
       })()}
 
-      {activeTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Quick Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <div className="flex items-center">
-                <TrophyIcon className="h-8 w-8 text-accent-ink" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted">Team Rank</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
-                    {standingsData?.user_team_rank || 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <div className="flex items-center">
-                <UserGroupIcon className="h-8 w-8 text-accent-ink" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted">Roster Grade</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
-                    {rosterAnalysis?.overall_grade?.grade || 'N/A'}
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <div className="flex items-center">
-                <ExclamationTriangleIcon className="h-8 w-8 text-danger-600" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted">Injuries</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
-                    {rosterAnalysis?.injury_concerns?.length || 0}
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <div className="flex items-center">
-                <FireIcon className="h-8 w-8 text-accent-ink" />
-                <div className="ml-4">
-                  <p className="text-sm font-medium text-muted">Waiver Targets</p>
-                  <p className="text-2xl font-stat tabular-nums font-semibold text-body">
-                    {waiverRecs?.recommendations?.length || 0}
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Player Alerts -- real injury/availability status pulled directly
-              from the connected platform for every rostered player. This app
-              has no real per-player news source (a prior attempt at one
-              turned out to fabricate canned text, so it was deliberately
-              disabled) -- this is the honest substitute: real status
-              changes, not invented headlines. */}
-          {rosterAnalysis?.injury_concerns && rosterAnalysis.injury_concerns.length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <h3 className="text-lg font-medium text-body mb-1 flex items-center gap-2">
-                <ExclamationTriangleIcon className="h-5 w-5 text-danger-500" />
-                Player Alerts
-              </h3>
-              <p className="text-sm text-muted mb-4">
-                Real status changes for your rostered players, from {leagueInfo?.platform || 'your platform'}.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {rosterAnalysis.injury_concerns.map((concern, index) => (
-                  <div
-                    key={`alert-${concern.player}-${index}`}
-                    className="flex items-center justify-between p-3 border border-danger-100 bg-danger-50/40 rounded-lg"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-body">{concern.player}</p>
-                      <p className="text-xs text-muted">{concern.position} • {concern.team}</p>
-                    </div>
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getStatusColor(concern.status)}`}>
-                      {formatStatusLabel(concern.status)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Your Roster -- condensed starting lineup, so the Overview tab
-              actually shows who's on the team instead of only aggregate
-              numbers. Full roster + bench detail still lives on the Roster
-              Analysis tab. */}
-          {rosterAnalysis?.composition?.starting_lineup && rosterAnalysis.composition.starting_lineup.length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-medium text-body">Your Roster</h3>
-                <span className="text-sm text-muted">{rosterAnalysis.team_name}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {rosterAnalysis.composition.starting_lineup.map((player, index) => {
-                  const alert = rosterAnalysis.injury_concerns?.find((c) => c.player === player.name)
-                  return (
-                    <div
-                      key={`overview-starter-${player.name}-${index}`}
-                      className="flex items-center gap-3 p-3 bg-surface-2 rounded-lg"
-                    >
-                      <span className={`shrink-0 inline-flex items-center justify-center w-10 h-8 rounded text-xs font-semibold ${getPositionColor(player.position)}`}>
-                        {player.position || '—'}
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-body truncate">{player.name}</p>
-                        <p className="text-xs text-muted">{player.team || 'FA'}</p>
-                      </div>
-                      {alert && (
-                        <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${getStatusColor(alert.status)}`}>
-                          {formatStatusLabel(alert.status)}
-                        </span>
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Weekly Insights */}
-          {insights && (
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <h3 className="text-lg font-medium text-body mb-4">Weekly Insights</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <h4 className="font-medium text-body mb-2">Weekly Outlook</h4>
-                  <div className="space-y-2">
-                    {insights.weekly_outlook?.key_points?.map((point: string, index: number) => (
-                      <div key={`weekly-point-${index}-${point.slice(0, 20)}`} className="flex items-start space-x-2">
-                        <CheckCircleIcon className="h-4 w-4 text-success-500 mt-0.5" />
-                        <span className="text-sm text-muted">{point}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <h4 className="font-medium text-body mb-2">Top Pickup Targets</h4>
-                  <div className="space-y-2">
-                    {insights.pickup_targets?.slice(0, 3).map((target, index: number) => (
-                      <div key={`pickup-${target.player}-${index}`} className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-body">{target.player}</span>
-                        <span className="text-xs text-muted">{target.position}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-        </div>
-      )}
-
       {activeTab === 'roster' && rosterAnalysis && (
         <div className="space-y-6">
           {/* Roster Summary */}
@@ -1331,30 +1165,6 @@ export function LeagueDetailPage() {
             </div>
           </div>
 
-          {/* Position Analysis (if available) */}
-          {rosterAnalysis.position_analysis && Object.keys(rosterAnalysis.position_analysis).length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-              <h3 className="text-lg font-medium text-body mb-4">Position-by-Position Analysis</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(rosterAnalysis.position_analysis).map(([position, analysis]) => (
-                  <div key={position} className="border rounded-lg p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="font-medium text-body">{position}</h4>
-                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${getGradeColor(analysis.grade)}`}>
-                        {analysis.grade}
-                      </span>
-                    </div>
-                    <p className="text-sm text-muted mb-2">{analysis.summary}</p>
-                    {analysis.recommendations && (
-                      <div className="text-xs text-accent-ink">
-                        {analysis.recommendations.slice(0, 2).join(', ')}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
