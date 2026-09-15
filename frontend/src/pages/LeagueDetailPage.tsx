@@ -184,6 +184,10 @@ interface ThisWeekData {
     favored: 'my_team' | 'opponent' | 'even'
   }
   lineup?: ThisWeekPlayer[]
+  // The opponent's real lineup for this same matchup (same shape as
+  // `lineup`) -- powers the side-by-side H2H view. Real ESPN box-score
+  // data, same source as `lineup`.
+  opponent_lineup?: ThisWeekPlayer[]
   optimization?: {
     current_projected: number
     optimized_projected: number
@@ -226,6 +230,53 @@ function relTime(iso?: string): string {
   return `${Math.round(secs / 3600)} hr ago`
 }
 
+interface H2HRow {
+  slot: string
+  mine?: ThisWeekPlayer
+  theirs?: ThisWeekPlayer
+}
+
+// Pairs two same-category lineups (both starters, or both bench) by their
+// real ESPN slot_position -- both teams share the same league roster
+// requirements, so e.g. "2 RB starters" lines up as two rows even though
+// each side's box score lists its own players independently. A slot with
+// more of one side than the other (rare -- a bye/IR gap) just leaves the
+// short side's cell empty rather than mis-pairing players.
+function pairBySlot(mine: ThisWeekPlayer[], theirs: ThisWeekPlayer[]): H2HRow[] {
+  const bucket = (arr: ThisWeekPlayer[]) => {
+    const m = new Map<string, ThisWeekPlayer[]>()
+    for (const p of arr) {
+      const slot = (p.slot_position || '').toUpperCase()
+      if (!m.has(slot)) m.set(slot, [])
+      m.get(slot)!.push(p)
+    }
+    return m
+  }
+  const mineBuckets = bucket(mine)
+  const theirBuckets = bucket(theirs)
+
+  const orderedSlots: string[] = []
+  const seen = new Set<string>()
+  for (const p of [...mine, ...theirs]) {
+    const slot = (p.slot_position || '').toUpperCase()
+    if (!seen.has(slot)) {
+      seen.add(slot)
+      orderedSlots.push(slot)
+    }
+  }
+
+  const rows: H2HRow[] = []
+  for (const slot of orderedSlots) {
+    const mineArr = mineBuckets.get(slot) || []
+    const theirArr = theirBuckets.get(slot) || []
+    const n = Math.max(mineArr.length, theirArr.length)
+    for (let i = 0; i < n; i++) {
+      rows.push({ slot, mine: mineArr[i], theirs: theirArr[i] })
+    }
+  }
+  return rows
+}
+
 export function LeagueDetailPage() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
@@ -251,6 +302,7 @@ export function LeagueDetailPage() {
   const [matchupHistoryLoading, setMatchupHistoryLoading] = useState(false)
   const [matchupHistoryError, setMatchupHistoryError] = useState('')
   const [showOptimal, setShowOptimal] = useState(false)
+  const [lineupView, setLineupView] = useState<'mine' | 'matchup'>('mine')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [waiverLoading, setWaiverLoading] = useState(true)
@@ -634,6 +686,11 @@ export function LeagueDetailPage() {
         const starters = lineup.filter((p) => !BENCH.has((p.slot_position || '').toUpperCase()))
         const bench = lineup.filter((p) => (p.slot_position || '').toUpperCase() !== 'IR' && BENCH.has((p.slot_position || '').toUpperCase()))
         const ir = lineup.filter((p) => (p.slot_position || '').toUpperCase() === 'IR')
+        const oppLineup = thisWeek.opponent_lineup ?? []
+        const oppStarters = oppLineup.filter((p) => !BENCH.has((p.slot_position || '').toUpperCase()))
+        const oppBench = oppLineup.filter((p) => (p.slot_position || '').toUpperCase() !== 'IR' && BENCH.has((p.slot_position || '').toUpperCase()))
+        const h2hStarterRows = pairBySlot(starters, oppStarters)
+        const h2hBenchRows = pairBySlot(bench, oppBench)
         const swapOutNames = new Set((opt?.swaps ?? []).map((s) => s.bench_out.name))
         const swapInNames = new Set((opt?.swaps ?? []).map((s) => s.start_in.name))
         const rec = (side: ThisWeekMatchupSide) =>
@@ -705,6 +762,42 @@ export function LeagueDetailPage() {
             </div>
           )
         }
+
+        const h2hCell = (p: ThisWeekPlayer | undefined, side: 'mine' | 'theirs') => {
+          if (!p) return <div />
+          const injured = !['ACTIVE', 'NORMAL', 'HEALTHY', ''].includes((p.injury_status || '').toUpperCase())
+          const flipped = side === 'theirs'
+          return (
+            <div className={`min-w-0 flex items-center gap-1.5 ${flipped ? 'flex-row-reverse text-right' : ''}`}>
+              <PlayerAvatar playerId={p.player_id} name={p.name} position={p.position} team={p.team} size={24} className="shrink-0" />
+              <div className="min-w-0">
+                <div className={`flex items-center gap-1 ${flipped ? 'flex-row-reverse' : ''}`}>
+                  <span className="text-xs font-medium text-body truncate">{p.name}</span>
+                  {injured && (
+                    <span className={`shrink-0 text-[9px] px-1 rounded font-medium ${getStatusColor(p.injury_status)}`}>
+                      {formatStatusLabel(p.injury_status)}
+                    </span>
+                  )}
+                </div>
+                <div className={`stat-nums text-[10px] text-muted flex items-center gap-1 ${flipped ? 'flex-row-reverse' : ''}`}>
+                  <span>{p.team || '—'}</span>
+                  <span className="text-faint">&middot;</span>
+                  <span className={p.game_played ? 'text-body font-medium' : ''}>
+                    {p.game_played ? (p.points ?? 0).toFixed(1) : `${p.projected_points != null ? p.projected_points.toFixed(1) : '—'}p`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )
+        }
+
+        const renderH2HRow = (row: H2HRow, idx: number) => (
+          <div key={`h2h-${row.slot}-${idx}`} className="grid grid-cols-[1fr_2.25rem_1fr] items-center gap-1.5 px-2 sm:px-3 py-2 border-b border-hairline">
+            {h2hCell(row.mine, 'mine')}
+            <span className="stat-nums text-[9px] text-faint text-center">{row.slot === 'RB/WR/TE' || row.slot === 'FLEX' || row.slot === 'OP' ? 'FLX' : row.slot}</span>
+            {h2hCell(row.theirs, 'theirs')}
+          </div>
+        )
 
         return (
           <div className="space-y-6">
@@ -812,20 +905,62 @@ export function LeagueDetailPage() {
             {/* BODY: lineup + rail */}
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_20rem] gap-6">
               <div className="bg-surface rounded-lg border border-hairline overflow-hidden">
-                <div className="grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_6rem_4rem_4rem] gap-2 px-3 py-2 border-b border-hairline stat-nums text-[10px] tracking-wider text-faint">
-                  <span>SLOT</span><span>PLAYER</span><span className="hidden sm:block">MATCHUP</span><span className="text-right">PROJ</span><span className="hidden sm:block text-right">ACT</span>
+                <div className="flex items-center gap-1 px-2 sm:px-3 pt-2">
+                  <button
+                    onClick={() => setLineupView('mine')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      lineupView === 'mine' ? 'bg-volt text-volt-ink' : 'text-muted hover:text-body'
+                    }`}
+                  >
+                    My Lineup
+                  </button>
+                  <button
+                    onClick={() => setLineupView('matchup')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+                      lineupView === 'matchup' ? 'bg-volt text-volt-ink' : 'text-muted hover:text-body'
+                    }`}
+                  >
+                    Matchup
+                  </button>
                 </div>
-                {starters.map((p) => renderRow(p, false))}
-                {bench.length > 0 && (
+
+                {lineupView === 'mine' ? (
                   <>
-                    <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">BENCH</div>
-                    {bench.map((p) => renderRow(p, true))}
+                    <div className="grid grid-cols-[3rem_1fr_auto] sm:grid-cols-[3.5rem_1fr_6rem_4rem_4rem] gap-2 px-3 py-2 border-b border-hairline stat-nums text-[10px] tracking-wider text-faint mt-2">
+                      <span>SLOT</span><span>PLAYER</span><span className="hidden sm:block">MATCHUP</span><span className="text-right">PROJ</span><span className="hidden sm:block text-right">ACT</span>
+                    </div>
+                    {starters.map((p) => renderRow(p, false))}
+                    {bench.length > 0 && (
+                      <>
+                        <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">BENCH</div>
+                        {bench.map((p) => renderRow(p, true))}
+                      </>
+                    )}
+                    {ir.length > 0 && (
+                      <>
+                        <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">IR</div>
+                        {ir.map((p) => renderRow(p, true))}
+                      </>
+                    )}
                   </>
-                )}
-                {ir.length > 0 && (
+                ) : oppLineup.length === 0 ? (
+                  <div className="p-8 text-center">
+                    <p className="text-sm text-muted">Your opponent&apos;s lineup isn&apos;t available yet.</p>
+                  </div>
+                ) : (
                   <>
-                    <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider">IR</div>
-                    {ir.map((p) => renderRow(p, true))}
+                    <div className="grid grid-cols-[1fr_2.25rem_1fr] items-center gap-1.5 px-2 sm:px-3 py-2 border-b border-hairline stat-nums text-[9px] tracking-wider text-faint mt-2">
+                      <span className="truncate">{m.my_team.team_name || 'MY TEAM'}</span>
+                      <span className="text-center">SLOT</span>
+                      <span className="truncate text-right">{m.opponent.team_name || 'OPPONENT'}</span>
+                    </div>
+                    {h2hStarterRows.map((row, i) => renderH2HRow(row, i))}
+                    {h2hBenchRows.length > 0 && (
+                      <>
+                        <div className="stat-nums text-[10px] text-faint px-3 pt-3 pb-1 tracking-wider text-center">BENCH</div>
+                        {h2hBenchRows.map((row, i) => renderH2HRow(row, i))}
+                      </>
+                    )}
                   </>
                 )}
               </div>

@@ -199,6 +199,7 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
     projected_margin = round(my_proj - opp_proj, 1)
 
     lineup = matchup.get("my_lineup", [])
+    opponent_lineup = matchup.get("opponent_lineup", [])
     optimization = optimize_lineup(lineup)
 
     # roll starter injuries up so the UI can badge them
@@ -223,6 +224,11 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
             "favored": "my_team" if projected_margin > 0 else ("opponent" if projected_margin < 0 else "even"),
         },
         "lineup": lineup,
+        # The opponent's real lineup for this same matchup -- espn_api's
+        # box_scores(week) call already returns both sides at once (see
+        # get_week_matchup), it just wasn't surfaced here before. Powers
+        # the side-by-side "my starters vs theirs" view.
+        "opponent_lineup": opponent_lineup,
         "optimization": optimization,
         "starter_injuries": injury_flags,
     }
