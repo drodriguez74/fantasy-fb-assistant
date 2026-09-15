@@ -1,3 +1,40 @@
+# Handoff (2026-09-15, session 13) — dead /blog router + scraper cleanup
+
+**Status:** working tree clean, pushed to `main` (`268a791`), Render auto-deploy
+triggered. Backend 102 tests pass.
+
+**What happened:** picked "kill/verify the mock news scraper" off session 12's
+backlog. Investigation found the actual fabrication (canned player-news
+string, hardcoded trending topic) was **already fixed months ago** (`f791d8a`,
+2026-08-23) — `scraper_service.py`'s mock methods already honestly returned
+`[]`. What was left was **dead code**, not fake data: `blog.py` (7 routes)
+and its sole backer `app/services/content_service.py` (an abandoned original
+`ContentGenerationService`, name-colliding with the real one in
+`content_generation_service.py`) had **zero frontend callers** — confirmed
+via grep, the frontend only ever calls `/content/*`. Live-tested `blog.py`'s
+own scrape methods too: `fantasypros.com/nfl/waiver-wire/` 404s,
+`nfl.com/fantasy/` permanently redirects — 100% dead even if something did
+call them.
+
+**Shipped:** deleted `blog.py` + `content_service.py`, dropped the `/blog`
+router registration, trimmed `scraper_service.py` to just the one method
+still actually called (`scrape_player_news`, from
+`content_generation_service.py`'s `player_analysis` path — still an honest
+no-op, just no dead HTTP-scrape code around it anymore). Fixed a stale
+comment in `players.py` referencing the old fabrication + a since-removed
+method name. Updated `docs/guides/API_GUIDE.md` and
+`docs/audits/DECOMMISSION_TASK_LIST.md` to mark this resolved — and while in
+there, corrected a separately-already-fixed "`content-stats` always 500s"
+doc claim that was also stale (fixed in `71cb1ab`, doc never updated).
+
+**Next:** pick another item off session 12's list — Bye Week Radar (blocked
+on the real `on_bye_week` espn_api bug, [[project_espn_api_bye_week_bug]]),
+priority-aware waiver bid tiers, or weekly digest notifications (highest
+retention leverage per the backlog — notification center exists, just not
+schedule-driven).
+
+---
+
 # Handoff (2026-09-14, session 12) — waiver depth, H2H matchup, Overview cut
 
 **Status:** working tree clean, all pushed to `main`, Render/Vercel auto-deployed.
