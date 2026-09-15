@@ -282,19 +282,12 @@ async def get_player(player_id: str):
         )
 
         # Get recent news: scraper_service.scrape_player_news() is deliberately NOT
-        # wired up here. It looks like a real scraper (real httpx/BeautifulSoup
-        # calls against FantasyPros/ESPN/NFL.com for the general waiver/trending
-        # endpoints, and both dependencies are installed -- the old "missing
-        # dependencies" comment above this was stale), but its actual per-player
-        # path calls FantasyContentScraper._search_player_news(), which is an
-        # explicit "Mock implementation" that fabricates a canned string
-        # ("Recent updates and analysis for {player_name}...") and a fake
-        # https://example.com search URL rather than scraping anything real.
-        # Returning that here would present made-up content as real news, which
-        # is worse than admitting we don't have it. A real fix needs an actual
-        # per-player news source (e.g. a real search/RSS integration) wired into
-        # that method before this can be honestly enabled.
-        # TODO: replace with a real per-player news source, then re-enable.
+        # wired up here. It no longer fabricates content (fixed 2026-08-23,
+        # f791d8a) but there's still no real per-player news source behind
+        # it -- it's an honest no-op that always returns []. Calling it here
+        # would just add a no-op await with nothing to show for it.
+        # TODO: replace with a real per-player news source (search/RSS
+        # integration), then wire it in here.
         news = None
 
         return {

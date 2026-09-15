@@ -61,7 +61,7 @@ Response:
 ```
 Verified live (200, real Sleeper data, ~4,263 fantasy-relevant players). `projected_points`/`adp` are always `null` on this endpoint (not computed here — see `?sort=consensus` for a real relative ranking instead).
 
-- `GET /players/{player_id}` — `player_id` is the Sleeper player id (string). Returns `{id, player_data, stats, ai_analysis, recent_news, sleeper_id}` with a real AI-generated analysis (via `ai_service`). Verified live. `recent_news` is always `null` by design — the underlying per-player news scraper (`scraper_service.py::_search_player_news`) is an explicit mock that fabricates text, so it's deliberately not wired in rather than presenting fake news as real.
+- `GET /players/{player_id}` — `player_id` is the Sleeper player id (string). Returns `{id, player_data, stats, ai_analysis, recent_news, sleeper_id}` with a real AI-generated analysis (via `ai_service`). Verified live. `recent_news` is always `null` by design — the underlying per-player news lookup (`scraper_service.py::scrape_player_news`) no longer fabricates text (fixed 2026-08-23) but still has no real news source behind it, so it's an honest no-op not worth awaiting here.
 - `GET /players/search/{player_name}` — searches the local `Player` table first, then falls back to/extends with a Sleeper name search. Returns `{matches: [...], search_term}`. Verified live.
 - `POST /players/add-from-sleeper` — auth required. Body `{sleeper_id}`. Adds a player from Sleeper into the local `Player` table and kicks off historical sync for it.
 - `POST /players/{player_id}/analysis` — auth required. Regenerates AI analysis for a player (Sleeper-backed). This is the AI-analysis path the frontend actually calls (`components/players/AIAnalysis.tsx`).
@@ -164,16 +164,16 @@ All require auth. Wired to `AdvancedAnalysisPage.tsx`:
 
 **Backend-only / not currently wired:** `GET /advanced-analysis/analysis-summary` (returns local-DB player counts — verified live, currently 14 seed players), `GET /advanced-analysis/metrics-available`. (`POST /advanced-analysis/game-situations` — the superseded duplicate — was removed 2026-08-29; see Game Situations above.)
 
-## Content / Blog (`/content`) — real, wired; `/blog` is a dead legacy duplicate still present in the code
+## Content / Blog (`/content`)
 
 `content.py` + `content_generation_service.py` is what actually shipped and is what `BlogPage.tsx`/`ContentPage.tsx` call (via raw `api.get/post()` calls with string-literal paths, not grouped `api.ts` functions — a deviation from this project's own documented API-call convention).
 
 - `POST /content/generate-and-save`, `GET /content/templates`, `GET /content/blog-posts/`, `GET /content/blog-posts/{id}`, `PUT /content/blog-posts/{id}/publish`, `DELETE /content/blog-posts/{id}`, `POST /content/weekly-rankings`, `POST /content/waiver-wire`, `POST /content/injury-report` — all real and wired. Verified `GET /content/templates` and `GET /content/blog-posts/` live.
 - Of the 10 content types `generate`/`generate-and-save` accept, only `player_analysis` and `injury_report` actually call the AI service; the other 8 (`weekly_rankings`, `waiver_wire`, `start_sit`, `trade_analysis`, `breakout_candidates`, `draft_strategy`, `matchup_analysis`, `season_recap`) are static, templated f-strings honestly flagged `ai_generated: false` in their response — real content, just not AI-written despite what "AI-powered" framing elsewhere might suggest.
-- `GET /content/content-stats` — **confirmed broken live: always 500s.** The handler calls `db.func.count(...)`, but a SQLAlchemy `Session` object has no `func` attribute (`func` was never imported from `sqlalchemy` in this file) — every call raises `AttributeError`, caught and turned into a 500. Not called from the frontend.
+- `GET /content/content-stats` — the missing `sqlalchemy.func` import that made this always 500 was fixed separately; real and wired now.
 - `POST /content/generate` — real but not called (the frontend always uses `generate-and-save`).
 
-**`/blog` (`blog.py`, all 7 routes: `GET /posts`, `/waiver-wire/{week}`, `/player-spotlight/{player_name}`, `/rankings/{position}/week/{week}`, `POST /save-post`, `GET /trending-topics`, `GET /content-sources`) is fully superseded by `/content` above and has zero frontend callers** (no page calls it; `components/blog/BlogCard.tsx`/`BlogSearch.tsx`/`ContentGenerator.tsx`, the components that once used it, are themselves unused). It is still present and still registered in `router.py` today — it has not actually been removed despite being a known decommission candidate — so it still works if called directly, it's just dead weight. Don't build new integrations against it.
+**`/blog` removed (2026-09-15).** It was a dead legacy duplicate of `/content` above (`blog.py`, `app/services/content_service.py`, all 7 routes) with zero frontend callers, and its own two live-scrape endpoints (`GET /trending-topics`, `GET /content-sources`) were confirmed dead on top of that — `fantasypros.com/nfl/waiver-wire/` 404s, `nfl.com/fantasy/` permanently redirects. `scraper_service.py` was trimmed to just the one method still actually called (`scrape_player_news`, from `content_generation_service.py`'s `player_analysis` path) — an honest no-op today (no real per-player news source wired in; fabricating one was removed 2026-08-23, `f791d8a`), not the fabrication it used to be.
 
 ## Historical Data (`/historical`)
 
