@@ -328,3 +328,74 @@ class TestEvaluatePlayerForWaiverDataConfidence:
 
         player = make_player(test_db_session, "Blank Slate", "WR", "NYJ")
         assert service._calculate_opportunity_score(player, []) is None
+
+
+class TestComputeBidTier:
+    """Priority-aware waiver bid tiers -- WaiverWireService.compute_bid_tier
+    turns a recommendation's real priority into an actual actionable claim
+    suggestion, read against the team's real FAAB balance or rolling-priority
+    rank (never the priority tier in isolation)."""
+
+    def test_no_waiver_position_returns_none(self):
+        assert WaiverWireService.compute_bid_tier("urgent", None) is None
+        assert WaiverWireService.compute_bid_tier("urgent", {}) is None
+        assert WaiverWireService.compute_bid_tier("urgent", {"error": "not connected"}) is None
+
+    def test_faab_suggested_bid_scales_with_real_budget_remaining(self):
+        urgent = WaiverWireService.compute_bid_tier(
+            "urgent", {"waiver_type": "faab", "budget_remaining": 80, "total_budget": 100}
+        )
+        assert urgent["bid_type"] == "faab"
+        assert urgent["suggested_bid"] == 16  # 20% of real remaining budget
+        assert urgent["budget_remaining"] == 80
+        assert urgent["bid_range"][0] <= urgent["suggested_bid"] <= urgent["bid_range"][1]
+
+        low = WaiverWireService.compute_bid_tier(
+            "low", {"waiver_type": "faab", "budget_remaining": 80, "total_budget": 100}
+        )
+        # A lower priority tier should never suggest a larger bid than a
+        # higher one against the same real budget.
+        assert low["suggested_bid"] < urgent["suggested_bid"]
+
+    def test_faab_never_suggests_more_than_real_remaining_budget(self):
+        result = WaiverWireService.compute_bid_tier(
+            "urgent", {"waiver_type": "faab", "budget_remaining": 3, "total_budget": 100}
+        )
+        assert result["suggested_bid"] <= 3
+        assert result["bid_range"][1] <= 3
+
+    def test_faab_zero_budget_suggests_nothing(self):
+        result = WaiverWireService.compute_bid_tier(
+            "urgent", {"waiver_type": "faab", "budget_remaining": 0, "total_budget": 100}
+        )
+        assert result["suggested_bid"] == 0
+        assert "note" in result
+
+    def test_priority_urgent_always_recommends_using_claim(self):
+        # Even at the worst possible rank, an urgent add is still worth
+        # using a rolling-priority claim on.
+        result = WaiverWireService.compute_bid_tier(
+            "urgent", {"waiver_type": "priority", "waiver_rank": 12, "total_teams": 12}
+        )
+        assert result["bid_type"] == "priority"
+        assert result["recommendation"] == "use_claim"
+
+    def test_priority_medium_depends_on_real_rank(self):
+        favorable = WaiverWireService.compute_bid_tier(
+            "medium", {"waiver_type": "priority", "waiver_rank": 2, "total_teams": 12}
+        )
+        unfavorable = WaiverWireService.compute_bid_tier(
+            "medium", {"waiver_type": "priority", "waiver_rank": 11, "total_teams": 12}
+        )
+        assert favorable["recommendation"] == "use_claim"
+        assert unfavorable["recommendation"] == "hold_priority"
+
+    def test_priority_watch_tier_holds_unless_rank_is_top(self):
+        top_rank = WaiverWireService.compute_bid_tier(
+            "watch", {"waiver_type": "priority", "waiver_rank": 1, "total_teams": 12}
+        )
+        mid_rank = WaiverWireService.compute_bid_tier(
+            "watch", {"waiver_type": "priority", "waiver_rank": 6, "total_teams": 12}
+        )
+        assert top_rank["recommendation"] == "use_claim"
+        assert mid_rank["recommendation"] == "hold_priority"

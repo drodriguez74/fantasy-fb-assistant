@@ -62,6 +62,22 @@ interface WaiverRecommendation {
   // rostered players anywhere in the league to read a bye off of).
   on_bye_this_week?: boolean | null
   espn_player_id?: number | null
+  // Real, priority-aware claim suggestion -- this recommendation's actual
+  // priority tier read against your real FAAB balance or rolling-priority
+  // rank for the selected league (see WaiverWireService.compute_bid_tier).
+  // null/undefined when no waiver position is known (no league selected,
+  // non-ESPN league, or team_id not configured).
+  bid_tier?: {
+    bid_type: 'faab' | 'priority'
+    suggested_bid?: number
+    bid_range?: [number, number]
+    budget_remaining?: number
+    note?: string
+    recommendation?: 'use_claim' | 'hold_priority'
+    waiver_rank?: number | null
+    total_teams?: number | null
+    reasoning?: string
+  } | null
 }
 
 interface ConnectedLeagueOption {
@@ -817,6 +833,33 @@ export function WaiverWirePage() {
                               ` (${rec.league_scoring_context.points_per_reception} pts/reception)`}
                             {' '}-- shown for context, not the primary ranking signal.
                           </p>
+                        )}
+                        {rec.bid_tier && (
+                          <div className="flex flex-wrap items-center gap-2 mb-3">
+                            {rec.bid_tier.bid_type === 'faab' ? (
+                              <span
+                                className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-highlight text-accent-ink"
+                                title={
+                                  rec.bid_tier.bid_range
+                                    ? `Suggested range: $${rec.bid_tier.bid_range[0]}-$${rec.bid_tier.bid_range[1]} of your real $${rec.bid_tier.budget_remaining} remaining FAAB`
+                                    : rec.bid_tier.note
+                                }
+                              >
+                                Suggested bid: ${rec.bid_tier.suggested_bid}
+                              </span>
+                            ) : (
+                              <span
+                                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                  rec.bid_tier.recommendation === 'use_claim'
+                                    ? 'bg-highlight text-accent-ink'
+                                    : 'bg-surface-2 text-muted'
+                                }`}
+                                title={rec.bid_tier.reasoning}
+                              >
+                                {rec.bid_tier.recommendation === 'use_claim' ? 'Use your claim' : 'Hold priority'}
+                              </span>
+                            )}
+                          </div>
                         )}
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-4">

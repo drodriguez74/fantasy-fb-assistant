@@ -172,6 +172,7 @@ class WaiverWireService:
         available_player_names: Optional[set] = None,
         espn_enrichment: Optional[Dict[str, Dict[str, Any]]] = None,
         team_bye_map: Optional[Dict[str, bool]] = None,
+        waiver_position: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """Real waiver-add recommendations sourced from Sleeper's live
         trending-add feed (players actually being added across real fantasy
@@ -216,6 +217,16 @@ class WaiverWireService:
         and_settings for how these are built. Matched by lower-cased name /
         NFL team abbreviation; a candidate with no match simply keeps the
         honest `None`/`False` default rather than a guessed value.
+
+        `waiver_position` (optional): this team's real FAAB balance or
+        rolling-priority rank for this league, from espn_service_enhanced.
+        get_waiver_position. When supplied, every recommendation gets a
+        real `bid_tier` -- see `compute_bid_tier` -- reading the
+        recommendation's actual priority tier against the team's actual
+        standing (e.g. a suggested FAAB bid as a fraction of real budget
+        remaining, or use-claim/hold-priority advice for rolling-priority
+        leagues). When omitted, `bid_tier` is simply None on every
+        recommendation.
         """
         try:
             # Over-fetch: some trending adds will be filtered out by the
@@ -453,6 +464,7 @@ class WaiverWireService:
                     'espn_player_id': espn_info.get('espn_player_id') if espn_info else None,
                     'pass_catcher_boost': pass_catcher_boost,
                     'league_scoring_context': league_scoring_context,
+                    'bid_tier': self.compute_bid_tier(rec_priority, waiver_position),
                 })
 
             # When roster-need weighting is active, re-rank by the real
@@ -583,6 +595,100 @@ class WaiverWireService:
             return Priority.LOW.value
         else:
             return Priority.WATCH.value
+
+    # Fraction of remaining FAAB budget suggested per priority tier. These
+    # are deliberately conservative at the top (an "urgent" pickup is worth
+    # spending real budget on, but even the top add of the week rarely
+    # justifies more than a fifth of a $100 budget with 17 weeks of waivers
+    # still ahead) and near-zero at the bottom (a "watch" tier add should
+    # cost almost nothing to try).
+    _FAAB_BID_FRACTION = {
+        Priority.URGENT.value: 0.20,
+        Priority.HIGH.value: 0.10,
+        Priority.MEDIUM.value: 0.04,
+        Priority.LOW.value: 0.015,
+        Priority.WATCH.value: 0.005,
+    }
+
+    @staticmethod
+    def compute_bid_tier(
+        priority: str, waiver_position: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Turn a recommendation's real priority tier into an actionable
+        claim suggestion, read against the user's ACTUAL real waiver
+        standing for this league (see espn_service_enhanced.get_waiver_
+        position) -- not just the tier in isolation.
+
+        "Urgent" means something very different to a team with $87 of FAAB
+        left than one with $4 left, and a rolling-priority league's claim
+        advice depends on where this team's real waiver_rank sits, not just
+        how hot the player is trending. Returns None when no real waiver
+        position was supplied (unsupported platform, league not connected,
+        team_id not set) -- this is an additive, best-effort layer, never a
+        fabricated placeholder.
+        """
+        if not waiver_position or waiver_position.get("error") or not waiver_position.get("waiver_type"):
+            return None
+
+        priority = (priority or "").lower()
+        fraction = WaiverWireService._FAAB_BID_FRACTION.get(priority, 0.0)
+
+        if waiver_position["waiver_type"] == "faab":
+            budget_remaining = waiver_position.get("budget_remaining")
+            if not isinstance(budget_remaining, (int, float)) or budget_remaining <= 0:
+                return {
+                    "bid_type": "faab",
+                    "suggested_bid": 0,
+                    "bid_range": [0, 0],
+                    "budget_remaining": budget_remaining or 0,
+                    "note": "No FAAB budget remaining this season.",
+                }
+
+            suggested = max(1, round(budget_remaining * fraction)) if fraction > 0 else 0
+            suggested = min(suggested, budget_remaining)
+            low = max(1 if suggested else 0, round(suggested * 0.6))
+            high = min(budget_remaining, max(suggested, round(suggested * 1.4)))
+
+            return {
+                "bid_type": "faab",
+                "suggested_bid": suggested,
+                "bid_range": [low, high],
+                "budget_remaining": budget_remaining,
+            }
+
+        # Rolling-priority league: there's no dollar figure to suggest, so
+        # give real, rank-aware advice instead -- whether to actually spend
+        # this claim (which sends the team to the back of the priority
+        # order) or hold it for something more valuable, given where this
+        # team's real rank currently sits.
+        rank = waiver_position.get("waiver_rank")
+        total_teams = waiver_position.get("total_teams")
+        favorable_rank = (
+            isinstance(rank, int) and isinstance(total_teams, int) and total_teams > 0
+            and rank <= max(1, round(total_teams / 2))
+        )
+
+        if priority in (Priority.URGENT.value, Priority.HIGH.value):
+            use_claim = True
+        elif priority == Priority.MEDIUM.value:
+            use_claim = favorable_rank
+        else:
+            use_claim = isinstance(rank, int) and rank <= 2
+
+        if use_claim:
+            reasoning = "Worth using your claim on this add."
+        elif favorable_rank:
+            reasoning = "Your priority is favorable, but save it for a higher-impact add."
+        else:
+            reasoning = "Hold your priority for a stronger claim -- this one isn't worth spending it."
+
+        return {
+            "bid_type": "priority",
+            "recommendation": "use_claim" if use_claim else "hold_priority",
+            "waiver_rank": rank,
+            "total_teams": total_teams,
+            "reasoning": reasoning,
+        }
 
     async def _evaluate_player_for_waiver(
         self, 

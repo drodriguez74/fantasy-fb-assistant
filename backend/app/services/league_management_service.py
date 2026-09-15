@@ -676,6 +676,7 @@ class LeagueManagementService:
                 "reason": c.get("reason"),
                 "drop_candidate": drop_candidate,
                 "value_delta": value_delta,
+                "bid_tier": c.get("bid_tier"),
             })
         return adapted
 
@@ -754,10 +755,10 @@ class LeagueManagementService:
             if not league.team_id:
                 return {"error": "Team ID not configured"}
 
-            # Roster, league settings, and the free-agent pool are three
-            # independent ESPN reads (the free-agent pull is the slow one) --
-            # fetch them concurrently.
-            roster_data, espn_settings, free_agents = await asyncio.gather(
+            # Roster, league settings, the free-agent pool, and this team's
+            # real waiver standing are four independent ESPN reads (the
+            # free-agent pull is the slow one) -- fetch them concurrently.
+            roster_data, espn_settings, free_agents, waiver_position_result = await asyncio.gather(
                 espn_service_enhanced.get_team_roster(
                     league_id=league.league_id,
                     team_id=int(league.team_id),
@@ -778,6 +779,18 @@ class LeagueManagementService:
                     swid=league.espn_swid,
                     espn_s2=league.espn_s2,
                 ),
+                espn_service_enhanced.get_waiver_position(
+                    league_id=league.league_id,
+                    team_id=league.team_id,
+                    season=league.season,
+                    swid=league.espn_swid,
+                    espn_s2=league.espn_s2,
+                ),
+            )
+            waiver_position = (
+                waiver_position_result
+                if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result
+                else None
             )
             if "error" in roster_data:
                 return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
@@ -826,6 +839,7 @@ class LeagueManagementService:
                 league_settings=league_settings,
                 available_player_names=available_player_names,
                 espn_enrichment=espn_enrichment,
+                waiver_position=waiver_position,
             )
             candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]
 

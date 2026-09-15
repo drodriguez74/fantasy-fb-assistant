@@ -94,6 +94,16 @@ interface WaiverRecommendationItem {
     position_matched: boolean
   } | null
   value_delta?: number | null
+  // Real, priority-aware claim suggestion (ESPN only) -- see
+  // WaiverWireService.compute_bid_tier. null/undefined when this team's
+  // real waiver standing couldn't be determined.
+  bid_tier?: {
+    bid_type: 'faab' | 'priority'
+    suggested_bid?: number
+    budget_remaining?: number
+    recommendation?: 'use_claim' | 'hold_priority'
+    reasoning?: string
+  } | null
 }
 
 interface WaiverRecommendation {
@@ -1364,6 +1374,15 @@ export function LeagueDetailPage() {
                       <h4 className="font-medium text-body">{rec.player.name}</h4>
                       <p className="text-sm text-muted">{rec.player.position?.value || 'UNKNOWN'}</p>
                       <p className="text-sm text-accent-ink">{rec.reason}</p>
+                      {rec.bid_tier && (
+                        <p className="text-xs text-faint mt-1" title={rec.bid_tier.reasoning}>
+                          {rec.bid_tier.bid_type === 'faab'
+                            ? `Suggested bid: $${rec.bid_tier.suggested_bid} of $${rec.bid_tier.budget_remaining} FAAB`
+                            : rec.bid_tier.recommendation === 'use_claim'
+                              ? 'Worth using your waiver claim'
+                              : 'Hold your waiver priority'}
+                        </p>
+                      )}
                     </div>
                     <div className="text-right">
                       <div className="text-sm font-medium text-body">

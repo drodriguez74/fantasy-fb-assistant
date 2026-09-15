@@ -60,21 +60,39 @@ async def _fetch_connected_roster_and_settings(
     players currently rostered anywhere in the league; teams with zero
     rostered players in this league simply aren't covered, so this is
     honest-best-effort, not guaranteed complete).
+
+    Sixth return value (ESPN only, None otherwise): `waiver_position`, this
+    team's real FAAB balance or rolling-priority rank (same data
+    GET /leagues/{id}/waiver-position surfaces standalone), so
+    WaiverWireService.compute_bid_tier can turn each recommendation's real
+    priority tier into an actual actionable bid/claim suggestion read
+    against this team's real standing, instead of the tier in isolation.
     """
     try:
         user_service = UserService(db)
         user_league = user_service.get_user_league(current_user.id, league_id)
         if not user_league or not user_league.team_id:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         platform = user_league.platform.value.upper()
         roster_players: List[Dict[str, Any]] = []
         available_player_names: Optional[set] = None
         espn_enrichment: Optional[Dict[str, Dict[str, Any]]] = None
         team_bye_map: Optional[Dict[str, bool]] = None
+        waiver_position: Optional[Dict[str, Any]] = None
 
         if platform == "ESPN":
             from app.services.espn_service_enhanced import espn_service_enhanced
+
+            waiver_position_result = await espn_service_enhanced.get_waiver_position(
+                league_id=user_league.league_id,
+                team_id=user_league.team_id,
+                season=user_league.season,
+                swid=user_league.espn_swid,
+                espn_s2=user_league.espn_s2,
+            )
+            if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result:
+                waiver_position = waiver_position_result
 
             roster_data = await espn_service_enhanced.get_team_roster(
                 league_id=user_league.league_id,
@@ -84,7 +102,7 @@ async def _fetch_connected_roster_and_settings(
                 espn_s2=user_league.espn_s2
             )
             if "error" in roster_data:
-                return None, None, None, None, None
+                return None, None, None, None, None, None
             roster_players = [
                 {"position": p.get("position", "UNKNOWN")}
                 for p in roster_data.get("players", [])
@@ -128,7 +146,7 @@ async def _fetch_connected_roster_and_settings(
 
             roster_data = await yahoo_service.get_team_roster(user_league.team_id)
             if "error" in roster_data:
-                return None, None, None, None, None
+                return None, None, None, None, None, None
             roster_players = [
                 {"position": p.get("position", "UNKNOWN")}
                 for p in roster_data.get("players", [])
@@ -147,7 +165,7 @@ async def _fetch_connected_roster_and_settings(
             sleeper = SleeperService()
             rosters = await sleeper.get_league_rosters(user_league.league_id)
             if rosters and isinstance(rosters, list) and isinstance(rosters[0], dict) and "error" in rosters[0]:
-                return None, None, None, None, None
+                return None, None, None, None, None, None
 
             target_roster = next(
                 (
@@ -158,7 +176,7 @@ async def _fetch_connected_roster_and_settings(
                 None
             )
             if not target_roster:
-                return None, None, None, None, None
+                return None, None, None, None, None, None
 
             # Best-effort position resolution against our own (sparse) local
             # Player table by sleeper_id -- same honest-best-effort pattern
@@ -195,10 +213,10 @@ async def _fetch_connected_roster_and_settings(
                 if all_local_names:
                     available_player_names = all_local_names - rostered_names
         else:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         if not roster_players:
-            return None, None, None, None, None
+            return None, None, None, None, None, None
 
         raw_starters = None
         if user_league.roster_positions:
@@ -215,11 +233,11 @@ async def _fetch_connected_roster_and_settings(
             "team_count": user_league.league_size,
         }
 
-        return roster_players, league_settings, available_player_names, espn_enrichment, team_bye_map
+        return roster_players, league_settings, available_player_names, espn_enrichment, team_bye_map, waiver_position
 
     except Exception as e:
         logger.warning(f"Could not fetch connected roster/settings for league {league_id}: {str(e)}")
-        return None, None, None, None, None
+        return None, None, None, None, None, None
 
 
 @router.get("/league-aware-recommendations/{league_id}")
@@ -252,7 +270,7 @@ async def get_league_aware_waiver_recommendations(
 
         waiver_service = WaiverWireService(db)
 
-        user_roster, league_settings, available_player_names, espn_enrichment, team_bye_map = await _fetch_connected_roster_and_settings(
+        user_roster, league_settings, available_player_names, espn_enrichment, team_bye_map, waiver_position = await _fetch_connected_roster_and_settings(
             db, current_user, league_id
         )
 
@@ -264,6 +282,7 @@ async def get_league_aware_waiver_recommendations(
             available_player_names=available_player_names,
             espn_enrichment=espn_enrichment,
             team_bye_map=team_bye_map,
+            waiver_position=waiver_position,
         )
 
         notify_trending_adds(db, current_user.id, recommendations)
@@ -324,9 +343,9 @@ async def get_waiver_recommendations(
     try:
         waiver_service = WaiverWireService(db)
 
-        user_roster, league_settings, available_player_names, espn_enrichment, team_bye_map = (None, None, None, None, None)
+        user_roster, league_settings, available_player_names, espn_enrichment, team_bye_map, waiver_position = (None, None, None, None, None, None)
         if league_id is not None:
-            user_roster, league_settings, available_player_names, espn_enrichment, team_bye_map = await _fetch_connected_roster_and_settings(
+            user_roster, league_settings, available_player_names, espn_enrichment, team_bye_map, waiver_position = await _fetch_connected_roster_and_settings(
                 db, current_user, league_id
             )
 
@@ -339,6 +358,7 @@ async def get_waiver_recommendations(
             available_player_names=available_player_names,
             espn_enrichment=espn_enrichment,
             team_bye_map=team_bye_map,
+            waiver_position=waiver_position,
         )
 
         # Lazily generate in-app notifications for genuinely new, high-signal
