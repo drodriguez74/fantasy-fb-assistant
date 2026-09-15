@@ -1,0 +1,56 @@
+name: Weekly Digest
+
+# Triggers the backend's real weekly-digest generation (see
+# backend/app/api/v1/endpoints/notifications.py's POST
+# /generate-weekly-digest) on a schedule. This exists because the backend
+# itself has no scheduler: Celery/Redis were removed (see git history,
+# "Decommission dead Celery/Redis background-task scaffolding"), and Render's
+# free web-service tier has no built-in cron. GitHub Actions' scheduled
+# workflows are free and already available on this repo, so this is the
+# actual trigger rather than a fabricated "runs automatically" claim with
+# nothing behind it.
+#
+# Setup required (one-time, not done by this file):
+# 1. Set DIGEST_CRON_SECRET to the same real random value in both:
+#    - Render dashboard -> this service -> Environment
+#    - This repo's Settings -> Secrets and variables -> Actions ->
+#      New repository secret, named DIGEST_CRON_SECRET
+# 2. Set BACKEND_URL as a repository secret or variable if it ever changes
+#    from the current production URL (falls back to the known value below).
+#
+# Schedule: Tuesday 13:00 UTC (~8-9am ET depending on DST) -- after Monday
+# Night Football has finished and injury designations from the weekend have
+# settled, well before Thursday's waiver processing in most leagues.
+on:
+  schedule:
+    - cron: '0 13 * * 2'
+  workflow_dispatch: {}
+
+jobs:
+  trigger-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call weekly digest endpoint
+        env:
+          DIGEST_CRON_SECRET: ${{ secrets.DIGEST_CRON_SECRET }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://fantasy-fb-assistant.onrender.com' }}
+        run: |
+          if [ -z "$DIGEST_CRON_SECRET" ]; then
+            echo "DIGEST_CRON_SECRET repo secret is not set -- see this file's header comment. Skipping."
+            exit 1
+          fi
+          # Render's free tier cold-starts after ~15min idle (~30-60s) --
+          # retry a couple of times before failing the run.
+          for attempt in 1 2 3; do
+            response=$(curl -sS -o /tmp/digest_response.json -w "%{http_code}" -X POST \
+              "$BACKEND_URL/api/v1/notifications/generate-weekly-digest" \
+              -H "X-Digest-Secret: $DIGEST_CRON_SECRET" --max-time 90) || response="000"
+            echo "Attempt $attempt: HTTP $response"
+            cat /tmp/digest_response.json 2>/dev/null || true
+            if [ "$response" = "200" ]; then
+              exit 0
+            fi
+            sleep 20
+          done
+          echo "Weekly digest trigger failed after 3 attempts."
+          exit 1

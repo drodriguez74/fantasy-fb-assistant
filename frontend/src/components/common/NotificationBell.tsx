@@ -15,6 +15,7 @@ import type { Notification } from '../../types'
 const TYPE_LABEL: Record<string, string> = {
   trending_add: 'Trending',
   injury_update: 'Injury',
+  weekly_digest: 'Weekly Digest',
 }
 
 function formatRelativeTime(iso: string): string {

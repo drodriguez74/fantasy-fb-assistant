@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     SMTP_PASSWORD: Optional[str] = None
     FROM_EMAIL: Optional[str] = None
 
+    # Shared secret for POST /notifications/generate-weekly-digest -- that
+    # endpoint iterates every user with a connected league, so it's meant
+    # to be hit by an external scheduler (see .github/workflows/
+    # weekly-digest.yml), not a logged-in user's own session, and needs its
+    # own auth rather than get_current_active_user. Optional like the API
+    # keys above: when unset, the endpoint refuses every request rather
+    # than silently running with no auth at all.
+    DIGEST_CRON_SECRET: Optional[str] = None
+
     # Origins allowed to call this API with credentials. Defaults to the
     # frontend's local dev URLs (matches vite.config.ts's non-default port
     # and its 127.0.0.1 equivalent, plus the backend's own two forms) so

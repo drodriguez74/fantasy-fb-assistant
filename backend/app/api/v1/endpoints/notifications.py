@@ -8,13 +8,19 @@ app.services.notification_service) as a side effect of real events -- this
 module only reads/updates them, scoped to the authenticated user.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+import logging
+
+from fastapi import APIRouter, Header, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
 from app.api.deps import get_db, get_current_active_user
+from app.core.config import settings
 from app.models.user import User
 from app.models.notification import Notification
+from app.services.notification_service import generate_weekly_digest_for_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -123,3 +129,53 @@ async def mark_all_notifications_read(
         return {"marked_read": updated}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to mark all notifications as read: {str(e)}")
+
+
+@router.post("/generate-weekly-digest")
+async def generate_weekly_digest(
+    x_digest_secret: str = Header(None, alias="X-Digest-Secret"),
+    db: Session = Depends(get_db),
+):
+    """Generate this week's real digest notification for every user with at
+    least one connected league.
+
+    Not user-authenticated (there's no logged-in user driving this -- it's
+    meant to be hit by an external scheduler; see .github/workflows/
+    weekly-digest.yml). Auth is instead a shared secret compared against
+    DIGEST_CRON_SECRET, since this endpoint fans out real work across every
+    user in the database and would otherwise be open to abuse by anyone who
+    finds the URL. Refuses every request when DIGEST_CRON_SECRET isn't set
+    (never falls back to "no auth").
+
+    Per-user digest generation is already best-effort and dedupe-keyed by
+    real calendar week (see notification_service.generate_weekly_digest_
+    for_user) -- a retried or re-scheduled run this same week is a no-op
+    for anyone who already got one.
+    """
+    if not settings.DIGEST_CRON_SECRET or x_digest_secret != settings.DIGEST_CRON_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid or missing digest secret")
+
+    try:
+        users = db.query(User).filter(User.is_active.is_(True)).all()
+        total_created = 0
+        users_notified = 0
+
+        for user in users:
+            try:
+                created = await generate_weekly_digest_for_user(db, user)
+                if created:
+                    total_created += len(created)
+                    users_notified += 1
+            except Exception as e:
+                # One user's digest failing (a stale/expired ESPN cookie,
+                # a platform outage) should never stop the rest of the
+                # run -- log and move on.
+                logger.error(f"Weekly digest failed for user {user.id}: {str(e)}")
+
+        return {
+            "users_checked": len(users),
+            "users_notified": users_notified,
+            "notifications_created": total_created,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate weekly digest: {str(e)}")

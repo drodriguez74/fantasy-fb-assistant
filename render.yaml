@@ -50,3 +50,10 @@ services:
         sync: false
       - key: YAHOO_REDIRECT_URI
         value: https://fantasy-fb-assistant.vercel.app/yahoo/callback
+      # Shared secret for POST /notifications/generate-weekly-digest --
+      # must match the DIGEST_CRON_SECRET repository secret set in
+      # GitHub Actions (see .github/workflows/weekly-digest.yml). Generate
+      # a real random value once (e.g. `openssl rand -hex 32`) and set the
+      # same value in both places.
+      - key: DIGEST_CRON_SECRET
+        sync: false
