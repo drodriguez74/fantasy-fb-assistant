@@ -1,3 +1,40 @@
+# Handoff (2026-09-14, session 12) — waiver depth, H2H matchup, Overview cut
+
+**Status:** working tree clean, all pushed to `main`, Render/Vercel auto-deployed.
+Backend 102 tests pass; frontend build/lint clean throughout.
+
+**Decisions:** (1) Waiver competition = real per-league signal (other teams'
+actual rosters/lineups), never a fabricated "who's bidding" guess — ESPN's
+API has no visibility into pending claims. (2) This Week keeps its
+single-column "My Lineup" as default; H2H is an added toggle, not a
+replacement. (3) Overview tab removed outright (panel review: 4 lenses all
+converged — every real thing on it was duplicated or a dead stub). (4)
+Bye Week Radar (the panel's pick for repurposing Roster Analysis) is
+**not built** — found a real espn_api bug (`on_bye_week` wrong for future
+weeks); shipping it would silently show wrong byes. See
+[[project_espn_api_bye_week_bug]].
+
+**Accomplishments:** waiver-position panel (FAAB/priority rank) + fixed a
+real `acquisition_budget` bug; per-league position-pressure competition
+badges (named teams, season + this-week signals); real drop-candidate +
+value-delta on the Top Waiver Target card; This Week table got team/actual
+columns + IR-below-bench; fixed invisible D/ST badge; real season-schedule
+"Matchups" tab (rebuilt from dead code, uses `box_scores` not `scoreboard`
+for live-accurate scores); side-by-side H2H matchup view; removed the dead
+Overview tab + its unused `/insights` fetch.
+
+**Key files:** `backend/app/services/{waiver_wire_service,league_competition,
+league_management_service,espn_service_enhanced,this_week_service}.py`,
+`backend/app/api/v1/endpoints/{leagues,waiver_wire}.py`,
+`frontend/src/pages/{LeagueDetailPage,WaiverWirePage}.tsx`.
+
+**Next:** either fix the espn_api bye-week bug and build Bye Week Radar for
+real, or pick a different next item (options given to founder: priority-
+aware waiver bid tiers, kill/verify the news scraper, weekly digest
+notifications).
+
+---
+
 # Handoff (2026-09-09, session 11) — Render deploy, mobile pass, snapshot cache, ESPN-parity polish
 
 **Snapshot cache (stale-while-revalidate)** shipped: new `league_snapshots`
