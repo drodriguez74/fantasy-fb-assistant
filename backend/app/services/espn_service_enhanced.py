@@ -1,5 +1,5 @@
 from espn_api.football import League
-from espn_api.football.constant import POSITION_MAP
+from espn_api.football.constant import POSITION_MAP, PRO_TEAM_MAP
 from typing import Dict, List, Optional, Any, Union
 import asyncio
 import threading
@@ -471,7 +471,82 @@ class ESPNFantasyServiceEnhanced:
             logger.error(f"Error getting team roster: {str(e)}")
             return {"error": f"Failed to get team roster: {str(e)}"}
 
-    @async_wrapper 
+    @async_wrapper
+    def get_bye_week_radar(self, league_id: Union[str, int], team_id: int, season: int = 2024, swid: str = None, espn_s2: str = None) -> Dict[str, Any]:
+        """Real upcoming-bye-week list for one team's roster.
+
+        Deliberately does NOT use league.box_scores()/BoxPlayer.on_bye_week
+        for this -- confirmed live (2026-09-14/15) that both are wrong for
+        any week beyond the current one, and not for the reason first
+        suspected (a missing `player_team_cache`). The real root cause is
+        one level up: `League.box_scores(week=N)` only actually requests
+        week N's data `if week and week <= self.current_week`; for a future
+        week it silently falls back to `scoring_period = self.current_week`
+        and fetches (and mislabels) the CURRENT week's box score instead.
+        So `box_scores(week=11)` on week 2 of the season doesn't error --
+        it just quietly returns week 2's data under a "week 11" label,
+        and no team is on bye in week 2, hence `on_bye_week: False` for
+        every player regardless of their team's real week-11 bye.
+
+        This sidesteps that entirely: ESPN's own `proTeams` schedule
+        payload (one request, `_get_pro_schedule`'s underlying
+        `get_pro_schedule()`) carries an explicit `byeWeek` field per real
+        NFL team, and `team.roster` (not box_scores) gives each rostered
+        player's real current pro team with no week-clamping at all. Cross
+        those two and there's no dependency on the broken box-score path.
+        """
+        try:
+            league = self._get_league(league_id, season, swid, espn_s2)
+
+            target_team = None
+            for team in league.teams:
+                if str(team.team_id) == str(team_id):
+                    target_team = team
+                    break
+            if not target_team:
+                return {"error": f"Team {team_id} not found in league"}
+
+            schedule_data = league.espn_request.get_pro_schedule()
+            pro_teams = schedule_data.get("settings", {}).get("proTeams", [])
+            bye_week_by_team_id = {
+                t["id"]: t.get("byeWeek")
+                for t in pro_teams
+                if t.get("id") and t.get("byeWeek")
+            }
+            # Player.proTeam is already the resolved abbreviation string
+            # (e.g. "SEA"); reverse PRO_TEAM_MAP to get back the id the
+            # bye-week map above is keyed on.
+            team_id_by_abbrev = {abbrev: tid for tid, abbrev in PRO_TEAM_MAP.items()}
+
+            current_week = league.current_week or 1
+            upcoming = []
+            for player in target_team.roster:
+                pro_team_id = team_id_by_abbrev.get(player.proTeam)
+                bye_week = bye_week_by_team_id.get(pro_team_id) if pro_team_id else None
+                if not bye_week or bye_week < current_week:
+                    continue
+                upcoming.append({
+                    "player_name": player.name,
+                    "position": getattr(player, "position", None),
+                    "team": player.proTeam,
+                    "bye_week": bye_week,
+                    "weeks_until_bye": bye_week - current_week,
+                    "lineup_slot": getattr(player, "lineupSlot", None),
+                })
+
+            upcoming.sort(key=lambda p: p["weeks_until_bye"])
+
+            return {
+                "team_id": target_team.team_id,
+                "team_name": target_team.team_name,
+                "current_week": current_week,
+                "upcoming_byes": upcoming,
+            }
+        except Exception as e:
+            logger.error(f"Error getting bye week radar: {str(e)}")
+            return {"error": f"Failed to get bye week radar: {str(e)}"}
+
+    @async_wrapper
     def get_available_players(self, league_id: Union[str, int], season: int = 2024, position: str = None, size: int = 50, swid: str = None, espn_s2: str = None) -> List[Dict[str, Any]]:
         """Get available players (free agents/waivers)"""
         try:

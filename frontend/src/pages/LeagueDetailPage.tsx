@@ -212,6 +212,24 @@ interface MatchupHistoryData {
   _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
 }
 
+interface UpcomingBye {
+  player_name: string
+  position: string | null
+  team: string
+  bye_week: number
+  weeks_until_bye: number
+  lineup_slot: string | null
+}
+
+interface ByeWeekRadarData {
+  supported: boolean
+  detail?: string
+  team_name?: string
+  current_week?: number
+  upcoming_byes?: UpcomingBye[]
+  _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
+}
+
 const STALE_RETRY_DELAYS_MS = [7000, 15000, 30000]
 
 function relTime(iso?: string): string {
@@ -294,6 +312,9 @@ export function LeagueDetailPage() {
   const [matchupHistory, setMatchupHistory] = useState<MatchupHistoryData | null>(null)
   const [matchupHistoryLoading, setMatchupHistoryLoading] = useState(false)
   const [matchupHistoryError, setMatchupHistoryError] = useState('')
+  const [byeWeekRadar, setByeWeekRadar] = useState<ByeWeekRadarData | null>(null)
+  const [byeWeekRadarLoading, setByeWeekRadarLoading] = useState(false)
+  const [byeWeekRadarError, setByeWeekRadarError] = useState('')
   const [showOptimal, setShowOptimal] = useState(false)
   const [lineupView, setLineupView] = useState<'mine' | 'matchup'>('mine')
   const [loading, setLoading] = useState(true)
@@ -469,6 +490,30 @@ export function LeagueDetailPage() {
     }
   }, [user, leagueId, activeTab, matchupHistory, matchupHistoryLoading, matchupHistoryError, loadMatchupHistory])
 
+  // Real upcoming byes, fetched lazily the first time the Roster tab is
+  // opened -- same snapshot-backed pattern as Matchups. See
+  // espn_service_enhanced.get_bye_week_radar's docstring for why this
+  // couldn't ship earlier (a real espn_api bug made every future-week bye
+  // lookup wrong; fixed 2026-09-15 by not depending on box_scores at all).
+  const loadByeWeekRadar = useCallback(async (force = false) => {
+    setByeWeekRadarLoading(true)
+    setByeWeekRadarError('')
+    try {
+      const res = await api.get(`/leagues/${leagueId}/bye-week-radar${force ? '?refresh=1' : ''}`)
+      setByeWeekRadar(res.data)
+    } catch (err) {
+      setByeWeekRadarError(getErrorMessage(err, 'Bye week radar is unavailable for this league right now.'))
+    } finally {
+      setByeWeekRadarLoading(false)
+    }
+  }, [leagueId])
+
+  useEffect(() => {
+    if (user && leagueId && activeTab === 'roster' && !byeWeekRadar && !byeWeekRadarLoading && !byeWeekRadarError) {
+      loadByeWeekRadar()
+    }
+  }, [user, leagueId, activeTab, byeWeekRadar, byeWeekRadarLoading, byeWeekRadarError, loadByeWeekRadar])
+
   const refreshData = async () => {
     staleRetryCountRef.current = 0
     setThisWeekError('')
@@ -476,6 +521,7 @@ export function LeagueDetailPage() {
       loadLeagueData(true),
       activeTab === 'this-week' ? loadThisWeek(true) : Promise.resolve(),
       activeTab === 'matchups' ? loadMatchupHistory(true) : Promise.resolve(),
+      activeTab === 'roster' ? loadByeWeekRadar(true) : Promise.resolve(),
     ])
   }
 
@@ -1163,6 +1209,60 @@ export function LeagueDetailPage() {
                 </div>
               </div>
             </div>
+          </div>
+
+          {/* Bye Week Radar */}
+          <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium text-body flex items-center gap-2">
+                <CalendarDaysIcon className="h-5 w-5 text-accent-ink" />
+                Bye Week Radar
+              </h3>
+              {byeWeekRadar?.supported && (
+                <DataConfidenceBadge level="computed" />
+              )}
+            </div>
+
+            {byeWeekRadarLoading && !byeWeekRadar && (
+              <div className="text-center py-6">
+                <ClockIcon className="animate-spin h-6 w-6 text-accent-ink mx-auto mb-2" />
+                <p className="text-sm text-muted">Checking your roster's upcoming byes...</p>
+              </div>
+            )}
+            {!byeWeekRadarLoading && byeWeekRadarError && (
+              <p className="text-sm text-danger-700">{byeWeekRadarError}</p>
+            )}
+            {!byeWeekRadarLoading && byeWeekRadar && !byeWeekRadar.supported && (
+              <p className="text-sm text-muted">{byeWeekRadar.detail || 'Bye week radar is only available for ESPN leagues today.'}</p>
+            )}
+            {!byeWeekRadarLoading && byeWeekRadar?.supported && (
+              (byeWeekRadar.upcoming_byes?.length ?? 0) === 0 ? (
+                <p className="text-sm text-muted">No rostered player has an upcoming bye week left this season.</p>
+              ) : (
+                <div className="space-y-2">
+                  {byeWeekRadar.upcoming_byes!.map((b, index) => (
+                    <div
+                      key={`${b.player_name}-${index}`}
+                      className={`flex items-center justify-between gap-2 p-2 rounded ${
+                        b.weeks_until_bye === 0 ? 'bg-warning-50' : 'bg-surface-2'
+                      }`}
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-body truncate">{b.player_name}</p>
+                        <p className="text-xs text-muted">{b.position} • {b.team}</p>
+                      </div>
+                      <span className="shrink-0 stat-nums text-xs text-accent-ink">
+                        {b.weeks_until_bye === 0
+                          ? 'BYE THIS WEEK'
+                          : b.weeks_until_bye === 1
+                          ? `WK ${b.bye_week} · NEXT WEEK`
+                          : `WK ${b.bye_week} · IN ${b.weeks_until_bye} WEEKS`}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )
+            )}
           </div>
 
         </div>

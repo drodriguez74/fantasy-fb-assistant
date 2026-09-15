@@ -721,6 +721,43 @@ async def get_roster_analysis(
         raise HTTPException(status_code=500, detail=f"Failed to get roster analysis: {str(e)}")
 
 
+@router.get("/{league_id}/bye-week-radar")
+async def get_bye_week_radar(
+    league_id: int,
+    background_tasks: BackgroundTasks,
+    refresh: bool = Query(False, description="Force a live fetch, bypassing the cached snapshot"),
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Real upcoming bye weeks for the current user's own roster.
+
+    Was blocked for a session on a real espn_api bug: `league.box_scores()`
+    (which `on_bye_week` depends on) silently returns the CURRENT week's
+    data for any week requested beyond it, rather than erroring -- so every
+    future-week bye lookup came back wrong. Fixed by sidestepping
+    box_scores entirely: this crosses ESPN's real per-team bye-week
+    schedule against the roster directly. See
+    espn_service_enhanced.get_bye_week_radar's docstring for the full
+    root-cause writeup.
+    """
+    try:
+        user_service = UserService(db)
+        user_league = user_service.get_user_league(current_user.id, league_id)
+
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+
+        return await serve_swr(
+            db, user_league, "bye_week_radar", background_tasks=background_tasks, force=refresh
+        )
+    except HTTPException:
+        raise
+    except SnapshotBuildError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get bye week radar: {str(e)}")
+
+
 @router.get("/{league_id}/waiver-recommendations")
 async def get_waiver_recommendations(
     league_id: int,

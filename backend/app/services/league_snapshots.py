@@ -261,6 +261,49 @@ async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str,
     }
 
 
+async def build_bye_week_radar_snapshot(user_league: UserLeague) -> Dict[str, Any]:
+    """Real upcoming bye weeks for this team's roster.
+
+    See espn_service_enhanced.get_bye_week_radar's docstring for why this
+    doesn't use box_scores/on_bye_week: that path is confirmed wrong for
+    any week beyond the current one (League.box_scores silently clamps a
+    future `week` back to the current week rather than fetching it). This
+    builder instead crosses ESPN's real per-team bye-week schedule against
+    the roster directly, with no such clamping."""
+    league_info = _league_info(user_league)
+
+    if league_info["platform"] != "ESPN":
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": f"Bye week radar isn't available for {league_info['platform']} leagues yet.",
+        }
+    if not user_league.team_id:
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": "Your team isn't identified for this league yet. Set it via PUT /leagues/{league_id}/settings.",
+        }
+
+    radar = await espn_service_enhanced.get_bye_week_radar(
+        league_id=user_league.league_id,
+        team_id=user_league.team_id,
+        season=user_league.season,
+        swid=user_league.espn_swid,
+        espn_s2=user_league.espn_s2,
+    )
+    if "error" in radar:
+        raise SnapshotBuildError(radar["error"])
+
+    return {
+        "league_info": league_info,
+        "supported": True,
+        "team_name": radar["team_name"],
+        "current_week": radar["current_week"],
+        "upcoming_byes": radar["upcoming_byes"],
+    }
+
+
 async def build_matchup_history_snapshot(user_league: UserLeague) -> Dict[str, Any]:
     """The real "Matchups" screen: this team's actual result every week of
     the season so far, not just the current week (that's This Week's job).
