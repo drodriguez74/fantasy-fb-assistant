@@ -1,3 +1,37 @@
+# Handoff (2026-09-15, session 14) — Bye Week Radar shipped, real espn_api fix
+
+**Status:** working tree clean, pushed to `main` (`848fe1c`), Render
+auto-deploy triggered. Backend 102 tests pass; frontend build/lint clean.
+
+**What happened:** picked up the espn_api bye-week bug from session 12's
+memory note ([[project_espn_api_bye_week_bug]]). The earlier note suspected
+`on_bye_week`'s `player_team_cache` fallback in `box_player.py` — that
+turned out to be a red herring. Root-caused it one level deeper: `League.
+box_scores(week=N)` only actually fetches week N's data `if week <= self.
+current_week`; for any future week it silently falls back to
+`scoring_period = self.current_week` and returns the CURRENT week's data
+mislabeled as the requested week. Confirmed live by diffing
+`box_scores(week=2)` vs `box_scores(week=11)` during week 2 of the real
+season — byte-for-byte identical. That's why every future-week bye lookup
+came back wrong: it was never really evaluating that week.
+
+**Fix:** sidestepped `box_scores()`/`on_bye_week` entirely rather than
+patching the clamp. `espn_service_enhanced.get_bye_week_radar()` crosses
+ESPN's own per-team `byeWeek` field (one HTTP call, `get_pro_schedule()`)
+against `team.roster` (no week-clamping at all) — no dependency on the
+broken path. Wired end-to-end: snapshot builder (ESPN-only, 3600s TTL) →
+`GET /leagues/{id}/bye-week-radar` → new "Bye Week Radar" card added to
+the Roster Analysis tab (additive, not a full repurpose — that's still an
+open design option, see session 12's notes). Live-verified against the
+real Optis Titans league (correctly flags Seahawks players' real week-11
+bye) and in-browser in both themes.
+
+**Next:** pick another item off the backlog — priority-aware waiver bid
+tiers, or weekly digest notifications (highest retention leverage —
+notification center exists, just not schedule-driven).
+
+---
+
 # Handoff (2026-09-15, session 13) — dead /blog router + scraper cleanup
 
 **Status:** working tree clean, pushed to `main` (`268a791`), Render auto-deploy
