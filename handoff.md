@@ -1,3 +1,75 @@
+# Handoff (2026-09-15, session 15) — waiver bid tiers + weekly digest notifications
+
+**Status:** working tree clean, pushed to `main` (`f025503`), Render
+auto-deploy triggered. Backend 116 tests pass; frontend build/lint clean.
+
+**Both backlog options from the last handoff shipped this session** (user
+asked for both, not a pick-one).
+
+**1) Priority-aware waiver bid tiers.** New `WaiverWireService.
+compute_bid_tier(priority, waiver_position)` (pure, unit-tested) turns a
+recommendation's real priority tier into an actionable claim suggestion by
+reading it against the user's REAL ESPN waiver standing
+(`espn_service_enhanced.get_waiver_position`, shipped session 12) --
+never the tier in isolation. FAAB leagues: a suggested $ bid as a real
+fraction of actual remaining budget (urgent 20% down to watch 0.5%,
+clamped to the real budget). Rolling-priority leagues: use-claim /
+hold-priority advice, based on the tier and whether the team's real
+`waiver_rank` is currently favorable. Returns `None` (never a fabricated
+placeholder) when no real waiver position is known -- non-ESPN league,
+not connected, no `team_id`. Wired through both `waiver_wire.py`
+personalization paths (`/recommendations`, `/league-aware-recommendations`)
+and `league_management_service._get_espn_waiver_recs` (the League Detail
+Waiver Wire tab). Frontend: `WaiverWirePage.tsx` recommendation cards and
+`LeagueDetailPage.tsx`'s Waiver Wire tab both render the suggestion when
+present. 7 new unit tests.
+
+**2) Weekly digest notifications.** The #1-ranked backlog item --
+notification center existed but was purely request-driven (piggybacks on
+a page load), so a user who doesn't open the app mid-week never saw
+anything. New `notification_service.generate_weekly_digest_for_user`:
+one real notification per connected league (team_id configured),
+summarizing the actual top live-Sleeper waiver target and (ESPN only)
+real upcoming bye-week risk via the session-14 Bye Week Radar fix.
+Dedupe-keyed per real ISO calendar week (`weekly_digest:{league.id}:
+{year}-W{week}`) so a retried trigger is a no-op; best-effort per league
+(one platform call failing never blocks another); skips a league
+entirely rather than send an empty digest.
+
+Trigger: this app has no background worker (Celery/Redis were removed
+session 13) and Render's free tier has no cron, so the real external
+trigger is **`.github/workflows/weekly-digest.yml`** (free GitHub Actions
+scheduled workflow, Tuesday 13:00 UTC + manual dispatch, cold-start
+retry logic) calling new `POST /notifications/generate-weekly-digest`.
+That endpoint is NOT user-authenticated (fans out across every active
+user, no logged-in session driving it) -- guarded instead by a shared
+`X-Digest-Secret` header compared against new `DIGEST_CRON_SECRET`
+setting; refuses every request when unset (never falls back to no auth).
+
+**MANUAL SETUP STILL NEEDED (external, not done this session) before the
+digest actually fires:**
+1. Generate one real secret value, e.g. `openssl rand -hex 32`.
+2. Render dashboard → this service → Environment → add `DIGEST_CRON_SECRET`
+   with that value.
+3. This GitHub repo → Settings → Secrets and variables → Actions → New
+   repository secret, named `DIGEST_CRON_SECRET`, same value.
+Until both are set, the workflow's curl call gets a real 401 and the
+Actions run fails loudly (not a silent no-op) -- check the Actions tab
+after setting these, or trigger it manually via `workflow_dispatch` to
+verify end-to-end.
+
+**Also fixed in passing:** `notification_service.py`'s module docstring
+still claimed "this app has a Celery worker" -- stale since session 13's
+Celery/Redis removal; corrected.
+
+**Next:** verify the digest secret setup above actually fires end-to-end
+once configured (check a real user's notification bell after the first
+Tuesday run, or trigger manually). Then continue down the ranked backlog:
+optimizer v2 + start/sit confidence, trade finder, Sleeper league
+analysis, weekly recap + shareable card, consolidate the 3 analysis pages.
+
+---
+
 # Handoff (2026-09-15, session 14) — Bye Week Radar shipped, real espn_api fix
 
 **Status:** working tree clean, pushed to `main` (`848fe1c`), Render
