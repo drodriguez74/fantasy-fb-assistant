@@ -9,6 +9,7 @@ from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
 from app.services import roster_grading
+from app.services import trade_finder_service
 from datetime import datetime, timedelta
 import asyncio
 import logging
@@ -914,68 +915,46 @@ class LeagueManagementService:
             return {"error": f"Failed to get trade recommendations: {str(e)}"}
 
     async def _get_espn_trade_recommendations(self, league: UserLeague) -> Dict[str, Any]:
-        """Get AI-powered trade recommendations for an ESPN league.
+        """Real, roster-grounded trade suggestions for an ESPN league.
 
-        Mirrors _get_trade_recommendations -- the AI generation is already
-        platform-agnostic, only the roster/teams fetch differs.
+        Used to ask the AI to invent "3 realistic trade scenarios" knowing
+        only `len(teams)` -- with zero visibility into any other team's
+        actual roster, `target_player`/`offer_players` were free-form AI
+        guesses, not real players anyone could actually trade for. That's
+        fabrication, not a heuristic. `get_league_teams` already returns
+        every team's real roster (with each player's real lineup slot and
+        ESPN's own real season-long projection) in one call, so this now
+        runs `trade_finder_service.find_trade_suggestions` over real data
+        instead -- every player named in a suggestion is a real rostered
+        player, and every suggestion is a real two-way value swap, not an
+        AI-authored scenario.
         """
         try:
             if not league.team_id:
                 return {"error": "Team ID not configured"}
 
-            roster_data, teams = await asyncio.gather(
-                espn_service_enhanced.get_team_roster(
-                    league_id=league.league_id,
-                    team_id=int(league.team_id),
-                    season=league.season,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2,
-                ),
-                espn_service_enhanced.get_league_teams(
-                    league_id=league.league_id,
-                    season=league.season,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2,
-                ),
+            teams = await espn_service_enhanced.get_league_teams(
+                league_id=league.league_id,
+                season=league.season,
+                swid=league.espn_swid,
+                espn_s2=league.espn_s2,
             )
-            if "error" in roster_data:
-                return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
-
             if teams and isinstance(teams, list) and "error" in teams[0]:
                 return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
 
-            analysis_prompt = f"""
-            Analyze potential trades for this fantasy team:
-
-            My Roster: {roster_data.get('players', [])}
-            League Teams: {len(teams)} teams
-
-            Suggest 3 realistic trade scenarios considering:
-            1. Position needs and surpluses
-            2. Player values and trends
-            3. Team contexts
-
-            Format as JSON array with: target_player, offer_players, reasoning, likelihood
-            """
-
-            ai_response = await ai_service._generate_with_fallback(analysis_prompt, prefer_fast_model=False)
-
-            try:
-                trade_suggestions = json.loads(ai_response)
-            except:
-                trade_suggestions = [
-                    {
-                        "target_player": "High-value player",
-                        "offer_players": ["Surplus player"],
-                        "reasoning": "Address position need",
-                        "likelihood": "Medium"
-                    }
-                ]
+            suggestions = trade_finder_service.find_trade_suggestions(
+                my_team_id=league.team_id,
+                teams=teams,
+            )
 
             return {
-                "suggestions": trade_suggestions,
+                "suggestions": suggestions,
                 "trade_deadline": "Week 13",  # Standard fantasy trade deadline
-                "updated_at": datetime.utcnow().isoformat()
+                "updated_at": datetime.utcnow().isoformat(),
+                "basis": (
+                    "Real rostered players on real other teams' rosters, matched by ESPN's own "
+                    "season-long projection for this league's scoring -- not AI-generated."
+                ),
             }
 
         except Exception as e:

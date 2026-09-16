@@ -113,10 +113,25 @@ interface WaiverRecommendation {
   updated_at: string
 }
 
+interface TradePlayerRef {
+  name: string
+  position?: string
+  team?: string
+  projected_points?: number
+}
+
 interface TradeSuggestion {
-  target?: { name?: string }
+  // Real, roster-grounded suggestions (ESPN, trade_finder_service) --
+  // every player named is a real rostered player on a real other team.
+  team_id?: number
+  team_name?: string
+  you_send?: TradePlayerRef
+  you_receive?: TradePlayerRef
+  value_ratio?: number
+  // Legacy AI-generated scenarios (still used on the non-ESPN/Yahoo path,
+  // which has no real per-team roster visibility to ground suggestions in)
   target_player?: string
-  offer_players: string[]
+  offer_players?: string[]
   likelihood?: string
   reasoning?: string
 }
@@ -125,6 +140,9 @@ interface TradeRecommendation {
   suggestions: TradeSuggestion[]
   trade_deadline: string
   updated_at: string
+  // Present only on the real ESPN path -- distinguishes it from the
+  // legacy AI-generated Yahoo path in the UI.
+  basis?: string
 }
 
 interface StandingsTeam {
@@ -432,7 +450,8 @@ export function LeagueDetailPage() {
         setTradeRecs({
           suggestions: tradeResponse.data.trade_recommendations?.suggestions ?? [],
           trade_deadline: tradeResponse.data.trade_recommendations?.trade_deadline ?? "Week 13",
-          updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString()
+          updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString(),
+          basis: tradeResponse.data.trade_recommendations?.basis
         })
       })
       .catch((err) => {
@@ -1460,33 +1479,66 @@ export function LeagueDetailPage() {
       {activeTab === 'trades' && tradeRecs && (
         <div className="space-y-6">
           <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-body mb-4">Trade Suggestions</h3>
+            <div className="flex items-start justify-between gap-3 mb-4">
+              <h3 className="text-lg font-medium text-body">Trade Suggestions</h3>
+              <DataConfidenceBadge
+                level={tradeRecs.basis ? 'computed' : 'heuristic'}
+                label={tradeRecs.basis ? 'Real rosters' : 'AI-generated'}
+              />
+            </div>
             <p className="text-sm text-muted mb-6">
-              Trade recommendations based on roster analysis. Trade deadline: {tradeRecs.trade_deadline}
+              {tradeRecs.basis || 'Trade recommendations based on roster analysis.'} Trade deadline: {tradeRecs.trade_deadline}
             </p>
-            
+
+            {tradeRecs.suggestions.length === 0 && (
+              <p className="text-sm text-muted">No real two-way trade upgrades found against this league's current rosters right now.</p>
+            )}
+
             <div className="space-y-4">
-              {tradeRecs.suggestions.map((suggestion, index: number) => (
-                <div key={`trade-suggestion-${index}-${suggestion.target?.name || index}`} className="border rounded-lg p-4">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div>
-                      <h4 className="font-medium text-success-700">Target</h4>
-                      <p className="text-body">{suggestion.target_player}</p>
+              {tradeRecs.suggestions.map((suggestion, index: number) =>
+                suggestion.you_receive && suggestion.you_send ? (
+                  <div key={`trade-suggestion-${index}-${suggestion.team_id}`} className="border border-hairline rounded-lg p-4">
+                    <div className="stat-nums text-[10px] tracking-wider text-faint mb-2">
+                      WITH {(suggestion.team_name || 'ANOTHER TEAM').toUpperCase()}
                     </div>
-                    <div>
-                      <h4 className="font-medium text-accent-ink">Offer</h4>
-                      <p className="text-body">{suggestion.offer_players.join(', ')}</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h4 className="font-medium text-danger-700">You Send</h4>
+                        <p className="text-body">{suggestion.you_send.name} ({suggestion.you_send.position})</p>
+                        <p className="stat-nums text-xs text-muted">{suggestion.you_send.projected_points?.toFixed(1)} proj</p>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-success-700">You Receive</h4>
+                        <p className="text-body">{suggestion.you_receive.name} ({suggestion.you_receive.position})</p>
+                        <p className="stat-nums text-xs text-muted">{suggestion.you_receive.projected_points?.toFixed(1)} proj</p>
+                      </div>
                     </div>
-                    <div>
-                      <h4 className="font-medium text-body">Likelihood</h4>
-                      <p className="text-body">{suggestion.likelihood}</p>
+                    <div className="mt-3 pt-3 border-t border-hairline">
+                      <p className="text-sm text-muted">{suggestion.reasoning}</p>
                     </div>
                   </div>
-                  <div className="mt-3 pt-3 border-t">
-                    <p className="text-sm text-muted">{suggestion.reasoning}</p>
+                ) : (
+                  <div key={`trade-suggestion-${index}`} className="border border-hairline rounded-lg p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <h4 className="font-medium text-success-700">Target</h4>
+                        <p className="text-body">{suggestion.target_player}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-accent-ink">Offer</h4>
+                        <p className="text-body">{(suggestion.offer_players ?? []).join(', ')}</p>
+                      </div>
+                      <div>
+                        <h4 className="font-medium text-body">Likelihood</h4>
+                        <p className="text-body">{suggestion.likelihood}</p>
+                      </div>
+                    </div>
+                    <div className="mt-3 pt-3 border-t border-hairline">
+                      <p className="text-sm text-muted">{suggestion.reasoning}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              )}
             </div>
           </div>
         </div>
