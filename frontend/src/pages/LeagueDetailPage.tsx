@@ -688,6 +688,28 @@ export function LeagueDetailPage() {
       <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${s.cls}`}>{s.label}</span>
     )
   }
+  // Row-level start/sit badge is deliberately quieter than the swap-card
+  // one above: 'comfortable' is the default state for most healthy
+  // starters with a real margin, so badging every single one is noise, not
+  // signal. Only surface the tiers that actually call for a look, and
+  // explain the real number behind the badge on hover rather than making
+  // the reader trust a label alone.
+  const startSitBadge = (call?: StartSitCall) => {
+    if (!call || call.tier === 'locked' || call.tier === 'comfortable') return null
+    const s = CONFIDENCE_STYLE[call.tier]
+    if (!s) return null
+    const title =
+      call.tier === 'risky'
+        ? 'Live injury designation for a game not yet played -- the projection alone doesn’t capture that risk.'
+        : call.margin != null
+          ? `${call.margin > 0 ? '+' : ''}${call.margin.toFixed(1)} pt projected edge over ${call.best_bench_alternative ?? 'the best bench option'} at this slot.`
+          : undefined
+    return (
+      <span title={title} className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${s.cls} cursor-help`}>
+        {s.label}
+      </span>
+    )
+  }
 
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
@@ -839,7 +861,7 @@ export function LeagueDetailPage() {
                       {formatStatusLabel(p.injury_status)}
                     </span>
                   )}
-                  {!isBench && confidenceBadge(startSitByName.get(p.name)?.tier)}
+                  {!isBench && startSitBadge(startSitByName.get(p.name))}
                 </div>
                 <div className="sm:hidden stat-nums text-[11px] text-faint mt-0.5 pl-[38px]">
                   {p.pro_opponent || (p.on_bye ? 'BYE' : '')}
@@ -1117,6 +1139,42 @@ export function LeagueDetailPage() {
                     </p>
                   </div>
                 )}
+
+                {(() => {
+                  // Starters in a real thin margin (< 1 pt) against their own
+                  // best bench option -- close enough that the optimizer's
+                  // 0.1pt threshold doesn't trigger a swap suggestion, but
+                  // not a confident call either. Already-flagged swaps get
+                  // their own full card above; skip those here.
+                  const closeCalls = (thisWeek.start_sit ?? []).filter(
+                    (c) => c.tier === 'toss_up' && !swapOutNames.has(c.name)
+                  )
+                  if (closeCalls.length === 0) return null
+                  return (
+                    <div className="border border-hairline bg-surface rounded-lg">
+                      <div className="px-4 py-2.5 border-b border-hairline">
+                        <span className="stat-nums text-[10px] tracking-wider text-warning-700">CLOSE CALLS</span>
+                      </div>
+                      <div className="p-4 space-y-2">
+                        {closeCalls.map((c, i) => (
+                          <div key={`close-${i}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-sm text-body">
+                                {c.name} <span className="text-xs text-muted">{c.position}</span>
+                              </span>
+                              {confidenceBadge(c.tier)}
+                            </div>
+                            {c.margin != null && (
+                              <p className="stat-nums text-[11px] text-muted mt-1 leading-relaxed">
+                                Only {c.margin > 0 ? '+' : ''}{c.margin.toFixed(1)} pts over {c.best_bench_alternative ?? 'the next best bench option'} at {c.slot} -- worth a look before kickoff.
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
 
                 {thisWeek.starter_injuries && thisWeek.starter_injuries.length > 0 && (
                   <div className="border border-hairline bg-surface rounded-lg">
