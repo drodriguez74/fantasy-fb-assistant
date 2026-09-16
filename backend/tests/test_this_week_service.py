@@ -1,5 +1,5 @@
 """Tests for the deterministic lineup optimizer behind the This Week screen."""
-from app.services.this_week_service import optimize_lineup, _slot_accepts
+from app.services.this_week_service import optimize_lineup, start_sit_confidence, _slot_accepts
 
 
 def _p(name, slot, pos, proj, **kw):
@@ -12,6 +12,7 @@ def _p(name, slot, pos, proj, **kw):
         "game_played": kw.get("game_played", 0),
         "on_bye": kw.get("on_bye", False),
         "team": kw.get("team", "XX"),
+        "injury_status": kw.get("injury_status", "ACTIVE"),
     }
     return base
 
@@ -56,3 +57,75 @@ def test_slot_eligibility_rules():
     assert _slot_accepts("RB/WR/TE", rb) is True
     assert _slot_accepts("QB", rb) is False
     assert _slot_accepts("RB", rb) is True
+
+
+def test_swap_confidence_downgraded_by_replacement_injury_status():
+    lineup = [
+        _p("Starter WR", "WR", "WR", 9.0),
+        _p("Questionable Bench WR", "BE", "WR", 20.0, injury_status="QUESTIONABLE"),
+    ]
+    result = optimize_lineup(lineup)
+    assert len(result["swaps"]) == 1
+    # Big point gap, but the replacement is a real injury risk -- confidence
+    # must reflect that, not just the raw delta.
+    assert result["swaps"][0]["confidence"] == "risky"
+
+
+def test_swap_confidence_tiers_by_delta_when_healthy():
+    lineup = [
+        _p("Starter WR", "WR", "WR", 9.0),
+        _p("Bench WR", "BE", "WR", 15.5),
+    ]
+    result = optimize_lineup(lineup)
+    assert result["swaps"][0]["confidence"] == "strong"
+
+    lineup2 = [
+        _p("Starter WR", "WR", "WR", 9.0),
+        _p("Bench WR", "BE", "WR", 11.5),
+    ]
+    result2 = optimize_lineup(lineup2)
+    assert result2["swaps"][0]["confidence"] == "moderate"
+
+    lineup3 = [
+        _p("Starter WR", "WR", "WR", 9.0),
+        _p("Bench WR", "BE", "WR", 9.8),
+    ]
+    result3 = optimize_lineup(lineup3)
+    assert result3["swaps"][0]["confidence"] == "lean"
+
+
+def test_start_sit_confidence_locked_with_no_bench_alternative():
+    lineup = [_p("QB1", "QB", "QB", 21.0)]
+    calls = start_sit_confidence(lineup)
+    assert calls == [
+        {
+            "name": "QB1",
+            "position": "QB",
+            "slot": "QB",
+            "tier": "locked",
+            "margin": None,
+            "best_bench_alternative": None,
+        }
+    ]
+
+
+def test_start_sit_confidence_comfortable_vs_toss_up():
+    lineup = [
+        _p("Comfy RB", "RB", "RB", 18.0),
+        _p("Bench RB1", "BE", "RB", 4.0),
+        _p("Thin RB", "RB", "RB", 10.0),
+        _p("Bench RB2", "BE", "RB", 9.6),
+    ]
+    calls = {c["name"]: c for c in start_sit_confidence(lineup)}
+    assert calls["Comfy RB"]["tier"] == "comfortable"
+    assert calls["Thin RB"]["tier"] == "toss_up"
+    assert calls["Thin RB"]["best_bench_alternative"] == "Bench RB2"
+
+
+def test_start_sit_confidence_risky_overrides_margin():
+    lineup = [
+        _p("Hurt WR", "WR", "WR", 18.0, injury_status="DOUBTFUL"),
+        _p("Bench WR", "BE", "WR", 5.0),
+    ]
+    calls = start_sit_confidence(lineup)
+    assert calls[0]["tier"] == "risky"

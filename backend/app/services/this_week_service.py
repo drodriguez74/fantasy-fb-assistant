@@ -46,13 +46,41 @@ def _slot_accepts(slot: Optional[str], player: Dict[str, Any]) -> bool:
     return False
 
 
+def _is_risky(player: Dict[str, Any]) -> bool:
+    """Real injury-designation risk: a non-healthy status on a player whose
+    game hasn't been played yet this week. Never fabricated -- ESPN's own
+    `injuryStatus` field, same one already badged in the UI.
+    """
+    status = (player.get("injury_status") or "").upper()
+    return status not in HEALTHY_STATUSES and float(player.get("game_played") or 0) < 100
+
+
+def _swap_confidence(delta: float, replacement: Dict[str, Any]) -> str:
+    """How much to trust a suggested swap -- purely a function of the real
+    projection gap plus the replacement's real injury status. A big
+    projected gain from a questionable/doubtful player is exactly the case
+    where a raw points-only optimizer (v1) misleads, so injury risk always
+    overrides point magnitude here.
+    """
+    if _is_risky(replacement):
+        return "risky"
+    if delta >= 5:
+        return "strong"
+    if delta >= 2:
+        return "moderate"
+    return "lean"
+
+
 def optimize_lineup(lineup: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Greedy, deterministic lineup optimizer.
 
     Walks the current starters weakest-first and, for each, looks for the
     highest-projected bench player who can legally fill that slot and beats
     the incumbent's weekly projection. Purely arithmetic on ESPN's own
-    weekly projected points -- no AI, no fabricated inputs.
+    weekly projected points -- no AI, no fabricated inputs. Each suggested
+    swap also carries a `confidence` tier (see `_swap_confidence`) so a
+    big-looking point gain from an injury-flagged replacement doesn't read
+    as equally trustworthy as a clean one -- v1 had no such signal.
     """
     starters = [p for p in lineup if _is_starter(p)]
     bench = [
@@ -94,6 +122,7 @@ def optimize_lineup(lineup: List[Dict[str, Any]]) -> Dict[str, Any]:
                     "projected_points": best.get("projected_points"),
                 },
                 "delta": delta,
+                "confidence": _swap_confidence(delta, best),
             }
         )
         bench_pool.remove(best)
@@ -107,6 +136,67 @@ def optimize_lineup(lineup: List[Dict[str, Any]]) -> Dict[str, Any]:
         "points_gained": gained,
         "swaps": swaps,
     }
+
+
+def _best_bench_alternative(slot: Optional[str], bench: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    candidates = [b for b in bench if _slot_accepts(slot, b)]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda b: b.get("projected_points") or 0.0)
+
+
+def start_sit_confidence(lineup: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Per-starter start/sit confidence -- one real tier per current starter,
+    not just the players the optimizer proposes swapping.
+
+    Two real signals, no fabrication: (1) the projection gap to that
+    starter's own best real bench alternative at the slot (a comfortable
+    gap = confident start, a thin one = a real toss-up ESPN's numbers don't
+    resolve), and (2) the starter's own real injury designation -- a
+    questionable/doubtful starter whose game hasn't been played is flagged
+    `risky` regardless of the point gap, since a start/sit call is exactly
+    where injury risk matters most and v1 had no such signal at all.
+    """
+    starters = [p for p in lineup if _is_starter(p)]
+    bench = [
+        p
+        for p in lineup
+        if not _is_starter(p)
+        and not p.get("on_bye")
+        and float(p.get("game_played") or 0) < 100
+    ]
+
+    calls: List[Dict[str, Any]] = []
+    for starter in starters:
+        s_proj = float(starter.get("projected_points") or 0.0)
+        alt = _best_bench_alternative(starter.get("slot_position"), bench)
+        risky = _is_risky(starter)
+
+        if alt is None:
+            margin = None
+            tier = "risky" if risky else "locked"
+        else:
+            margin = round(s_proj - float(alt.get("projected_points") or 0.0), 1)
+            if risky:
+                tier = "risky"
+            elif margin >= 5:
+                tier = "comfortable"
+            elif margin >= 1:
+                tier = "moderate"
+            else:
+                tier = "toss_up"
+
+        calls.append(
+            {
+                "name": starter.get("name"),
+                "position": starter.get("position"),
+                "slot": starter.get("slot_position"),
+                "tier": tier,
+                "margin": margin,
+                "best_bench_alternative": alt.get("name") if alt else None,
+            }
+        )
+    return calls
 
 
 def _trend(player: Dict[str, Any]) -> Optional[str]:
@@ -201,6 +291,7 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
     lineup = matchup.get("my_lineup", [])
     opponent_lineup = matchup.get("opponent_lineup", [])
     optimization = optimize_lineup(lineup)
+    start_sit = start_sit_confidence(lineup)
 
     # roll starter injuries up so the UI can badge them
     injury_flags = [
@@ -231,4 +322,5 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
         "opponent_lineup": opponent_lineup,
         "optimization": optimization,
         "starter_injuries": injury_flags,
+        "start_sit": start_sit,
     }

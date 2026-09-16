@@ -164,6 +164,18 @@ interface ThisWeekSwap {
   bench_out: { name: string; position?: string; projected_points?: number }
   start_in: { name: string; position?: string; team?: string; projected_points?: number }
   delta: number
+  // Real signal, not just the point delta: downgraded to 'risky' when the
+  // suggested replacement itself carries a live injury designation.
+  confidence?: 'strong' | 'moderate' | 'lean' | 'risky'
+}
+
+interface StartSitCall {
+  name: string
+  position?: string
+  slot?: string
+  tier: 'locked' | 'comfortable' | 'moderate' | 'toss_up' | 'risky'
+  margin: number | null
+  best_bench_alternative?: string | null
 }
 
 interface ThisWeekMatchupSide {
@@ -199,6 +211,7 @@ interface ThisWeekData {
     swaps: ThisWeekSwap[]
   }
   starter_injuries?: { name: string; position?: string; status?: string }[]
+  start_sit?: StartSitCall[]
   _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
 }
 
@@ -635,6 +648,28 @@ export function LeagueDetailPage() {
   }
   const getPositionColor = (position?: string) => POSITION_COLORS[position || ''] || 'bg-surface-2 text-body'
 
+  // Start/sit + swap confidence tiers -- both share a color language since
+  // they're the same two real signals (projection margin, live injury
+  // status) read at different points in the lineup. 'locked' (no bench
+  // alternative exists at that slot) is intentionally unstyled below --
+  // there's no real decision to flag confidence on.
+  const CONFIDENCE_STYLE: Record<string, { label: string; cls: string }> = {
+    comfortable: { label: 'Confident start', cls: 'bg-success-100 text-success-800' },
+    strong: { label: 'Strong upgrade', cls: 'bg-success-100 text-success-800' },
+    moderate: { label: 'Likely start', cls: 'bg-highlight text-accent-ink' },
+    toss_up: { label: 'Toss-up', cls: 'bg-warning-100 text-warning-800' },
+    lean: { label: 'Lean upgrade', cls: 'bg-warning-100 text-warning-800' },
+    risky: { label: 'Injury risk', cls: 'bg-danger-100 text-danger-800' },
+  }
+  const confidenceBadge = (tier?: string) => {
+    if (!tier || tier === 'locked') return null
+    const s = CONFIDENCE_STYLE[tier]
+    if (!s) return null
+    return (
+      <span className={`shrink-0 text-[10px] px-1.5 py-0.5 rounded font-medium ${s.cls}`}>{s.label}</span>
+    )
+  }
+
   return (
     <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
       {/* Header */}
@@ -741,6 +776,7 @@ export function LeagueDetailPage() {
         const h2hBenchRows = pairBySlot(bench, oppBench)
         const swapOutNames = new Set((opt?.swaps ?? []).map((s) => s.bench_out.name))
         const swapInNames = new Set((opt?.swaps ?? []).map((s) => s.start_in.name))
+        const startSitByName = new Map((thisWeek.start_sit ?? []).map((c) => [c.name, c]))
         const rec = (side: ThisWeekMatchupSide) =>
           side.wins != null ? `${side.wins}–${side.losses}${side.ties ? `–${side.ties}` : ''}` : null
         const fmtRank = (n?: number) => (n ? `#${n}` : null)
@@ -784,6 +820,7 @@ export function LeagueDetailPage() {
                       {formatStatusLabel(p.injury_status)}
                     </span>
                   )}
+                  {!isBench && confidenceBadge(startSitByName.get(p.name)?.tier)}
                 </div>
                 <div className="sm:hidden stat-nums text-[11px] text-faint mt-0.5 pl-[38px]">
                   {p.pro_opponent || (p.on_bye ? 'BYE' : '')}
@@ -1021,14 +1058,23 @@ export function LeagueDetailPage() {
                 {opt && opt.swaps.length > 0 ? (
                   opt.swaps.map((s, i) => (
                     <div key={`swap-${i}`} className="border border-hairline bg-surface rounded-lg">
-                      <div className="px-4 py-2.5 border-b border-hairline flex items-center justify-between">
+                      <div className="px-4 py-2.5 border-b border-hairline flex items-center justify-between gap-2">
                         <span className="stat-nums text-[10px] tracking-wider text-muted">LINEUP UPGRADE</span>
-                        <span className="stat-nums text-[10px] text-accent-ink">+{s.delta.toFixed(1)} PTS</span>
+                        <div className="flex items-center gap-1.5">
+                          {confidenceBadge(s.confidence)}
+                          <span className="stat-nums text-[10px] text-accent-ink">+{s.delta.toFixed(1)} PTS</span>
+                        </div>
                       </div>
                       <div className="p-4">
                         <div className="text-sm font-medium text-body leading-snug">
                           Start <span className="text-accent-ink">{s.start_in.name}</span> over {s.bench_out.name}{s.slot ? ` at ${s.slot}` : ''}.
                         </div>
+                        {s.confidence === 'risky' && (
+                          <div className="stat-nums text-[11px] text-danger-700 mt-2 leading-relaxed">
+                            {s.start_in.name} carries a live injury designation -- the point gap is real but the
+                            floor on this projection is shakier than a healthy swap.
+                          </div>
+                        )}
                         <div className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">
                           {s.start_in.name} projects {s.start_in.projected_points?.toFixed(1)} this week vs {s.bench_out.name}&apos;s {s.bench_out.projected_points?.toFixed(1)} &mdash; a {s.delta.toFixed(1)}-point swing on ESPN&apos;s own weekly projection.
                         </div>
