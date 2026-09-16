@@ -46,17 +46,14 @@ user, no logged-in session driving it) -- guarded instead by a shared
 `X-Digest-Secret` header compared against new `DIGEST_CRON_SECRET`
 setting; refuses every request when unset (never falls back to no auth).
 
-**MANUAL SETUP STILL NEEDED (external, not done this session) before the
-digest actually fires:**
-1. Generate one real secret value, e.g. `openssl rand -hex 32`.
-2. Render dashboard → this service → Environment → add `DIGEST_CRON_SECRET`
-   with that value.
-3. This GitHub repo → Settings → Secrets and variables → Actions → New
-   repository secret, named `DIGEST_CRON_SECRET`, same value.
-Until both are set, the workflow's curl call gets a real 401 and the
-Actions run fails loudly (not a silent no-op) -- check the Actions tab
-after setting these, or trigger it manually via `workflow_dispatch` to
-verify end-to-end.
+**Manual setup DONE, verified live end-to-end (same session):** founder set
+`DIGEST_CRON_SECRET` to the same real value in both the Render dashboard
+and this repo's GitHub Actions secrets. Confirmed by curling the live
+endpoint directly with that secret: `HTTP 200`,
+`{"users_checked":1,"users_notified":1,"notifications_created":1}` against
+production. Founder also confirmed seeing the resulting real notification
+in the app on their phone. Fully working, nothing further needed here
+beyond the normal Tuesday cron cadence going forward.
 
 **Also fixed in passing:** `notification_service.py`'s module docstring
 still claimed "this app has a Celery worker" -- stale since session 13's
