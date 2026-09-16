@@ -1,3 +1,82 @@
+# Handoff (2026-09-16, session 16) — optimizer v2, real trade finder, Sleeper roster analysis
+
+**Status:** working tree clean, pushed to `main` (`42d17fb`), Render
+auto-deploy triggered. Backend 136 tests pass (was 116); frontend
+build/lint clean throughout.
+
+**Three backlog items shipped, each tested + live-verified against real
+data before moving to the next.**
+
+**1) Optimizer v2 + start/sit confidence.** New `this_week_service.
+start_sit_confidence()` -- per-starter tier (comfortable/moderate/
+toss_up/risky/locked) from two real signals: the real projection gap to
+that starter's own best bench alternative at the slot, and whether the
+starter carries a live ESPN injury designation for a game not yet
+played. Optimizer swaps get the same treatment (`confidence` field) --
+a big point-gap swap into a questionable/doubtful replacement now reads
+as `risky`, not equally trustworthy as a clean upgrade. No fabricated
+inputs, pure arithmetic on data already flowing through the service.
+Wired into `GET /leagues/{id}/this-week` + rendered on LeagueDetailPage
+(starter rows + LINEUP CALL rail). 6 new tests. Live-verified against
+the real Optis Titans league -- Ladd McConkey correctly flagged `risky`
+despite a healthy margin, due to his real Questionable tag.
+
+**2) Real trade finder (found + fixed a real fabrication bug).**
+`_get_espn_trade_recommendations` was asking the AI to invent "3
+realistic trade scenarios" knowing only `len(teams)` -- zero visibility
+into any other team's actual roster, so `target_player`/`offer_players`
+were free-form AI guesses, not real players anyone could trade for.
+That's fabrication, not a heuristic. New `trade_finder_service.
+find_trade_suggestions` (pure, unit-tested) runs over real data instead:
+`get_league_teams` already returns every team's real roster (real
+lineup slot, ESPN's own real season-long projection) in one call. Finds
+a real bench player who out-projects one of my real starters, then a
+real bench player of mine who out-projects one of THEIR real starters
+at a different position, gated by a projection-gap margin + fairness
+ratio -- every suggestion names two real rostered players in a real
+two-way swap. Frontend renders the real you-send/you-receive/reasoning
+shape with a "Real rosters" confidence badge; the still-AI-generated
+Yahoo path is unchanged but now honestly labeled "AI-generated" instead
+of looking identical. 9 new tests. Live-verified against the real Optis
+Titans league.
+
+**3) Real Sleeper roster analysis (found + fixed a real bug).** Was an
+honest "not yet implemented for SLEEPER leagues" stub (standings already
+had real Sleeper support, roster analysis didn't). New
+`_build_sleeper_roster_analysis_snapshot` resolves Sleeper's raw
+roster-id player lists against the real global player catalog
+(`get_all_players`) and grades real composition through the shared
+`grade_roster` engine, using Sleeper's real `roster_positions`
+(`parse_league_settings`, already existed, just unused for this). No
+fabricated per-player projection -- Sleeper's roster endpoints don't
+expose one, so `projected_points` is honestly 0; `grade_roster` already
+degrades gracefully to composition-only grading in that case. **Live-
+verified against a real Sleeper league (Sleeper Friends League,
+289646328504385536, connected+disconnected via the real API during
+testing) and found a real bug in the process:** Sleeper's real
+`injury_status` value `"NA"` (confirmed live against Sleeper's public
+player catalog -- mostly inactive/practice-squad players with no real
+team) was being flagged as an injury concern; fixed to treat it as
+healthy like Sleeper's other real "no status" default (`None`). 6 new
+tests. No frontend changes needed -- LeagueDetailPage's roster tab
+already renders whatever shape the backend returns.
+
+**Remaining on the ranked backlog (deliberately NOT started this
+session -- asked the founder, they said stop here for now):** weekly
+recap + shareable card (new feature -- needs a design decision on what
+"shareable" means: image export? link? in-app view?), and consolidating
+the 3 standalone analysis pages (`AdvancedAnalysisPage`/`AnalyticsPage`/
+`HistoricalPage`, 2,869 lines combined). Before merging those three,
+worth auditing what's real vs fabricated first -- `AnalyticsPage`'s ML
+prediction code (`advanced_analytics_service.py`, real sklearn
+RandomForest/GradientBoosting/KMeans) looked legitimate but depends on
+per-player historical stats noted elsewhere in this codebase as sparse/
+often-empty in this deployment; same honesty-first approach that caught
+the trade-recommendation fabrication bug above should be applied before
+any redesign work, not just a mechanical merge.
+
+---
+
 # Handoff (2026-09-15, session 15) — waiver bid tiers + weekly digest notifications
 
 **Status:** working tree clean, pushed to `main` (`f025503`), Render
