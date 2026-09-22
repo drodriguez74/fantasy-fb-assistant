@@ -49,6 +49,30 @@ async def build_this_week_snapshot(user_league: UserLeague) -> Dict[str, Any]:
 _HEALTHY_STATUSES = {"ACTIVE", "NORMAL", "HEALTHY", ""}
 
 
+def _require_yahoo_token(user_league: UserLeague) -> str:
+    """Real access-token + real expiry check, shared by every Yahoo
+    snapshot builder. Raises SnapshotBuildError (mapped to a 400) rather
+    than a raw exception -- same honest "reconnect" message used
+    everywhere else a missing/expired Yahoo token is handled.
+    """
+    if not user_league.yahoo_access_token:
+        raise SnapshotBuildError(
+            "Yahoo account not connected for this league. Please reconnect your Yahoo account."
+        )
+    # yahoo_token_expires_at is a timezone-aware DB column; comparing it
+    # against a naive datetime.utcnow() raises "can't compare offset-naive
+    # and offset-aware datetimes" -- the exact same bug class already
+    # fixed in user_service.py's account-lockout check.
+    if (
+        user_league.yahoo_token_expires_at
+        and user_league.yahoo_token_expires_at < datetime.now(timezone.utc)
+    ):
+        raise SnapshotBuildError(
+            "Your Yahoo connection has expired. Please reconnect your Yahoo account."
+        )
+    return user_league.yahoo_access_token
+
+
 async def _build_sleeper_roster_analysis_snapshot(
     user_league: UserLeague, league_info: Dict[str, Any], ungraded: Dict[str, Any]
 ) -> Dict[str, Any]:
@@ -194,6 +218,135 @@ async def _build_sleeper_roster_analysis_snapshot(
     }
 
 
+# Yahoo's own real roster-slot codes for a starter vs. bench vs. IR player
+# (selected_position, confirmed live against a real 14-player roster --
+# "QB"/"RB"/"WR"/"TE"/"W/R/T"/"K"/"DEF" for starters, "BN" for bench,
+# "IR" for injured reserve) -- map to the BE/IR vocabulary grade_roster
+# and the ESPN/Sleeper builders above already use.
+_YAHOO_BENCH_SLOTS = {"BN"}
+_YAHOO_IR_SLOTS = {"IR", "IR+"}
+
+
+async def _build_yahoo_roster_analysis_snapshot(
+    user_league: UserLeague, league_info: Dict[str, Any], ungraded: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Real Yahoo roster composition + grade.
+
+    Mirrors the Sleeper builder above: Yahoo's own `get_team_roster` (see
+    yahoo_service.py) already returns real per-player name/position/team/
+    selected_position/status, but no real per-player weekly or season
+    projection (unlike ESPN's server-computed `projected_total_points`) --
+    `projected_points` is honestly left at 0.0 rather than inventing one,
+    same tradeoff already accepted for Sleeper. `grade_roster` degrades
+    gracefully to composition-only grading in that case.
+    """
+    if not user_league.team_id:
+        return {
+            "league_info": league_info,
+            "roster_analysis": {
+                "team_name": None,
+                "owner": None,
+                "total_players": 0,
+                **{
+                    **ungraded,
+                    "overall_grade": {
+                        **ungraded["overall_grade"],
+                        "description": "Your team is not identified for this league yet. Please reconnect your Yahoo account to auto-detect it, or set it via PUT /leagues/{league_id}/settings.",
+                    },
+                },
+            },
+        }
+
+    access_token = _require_yahoo_token(user_league)
+    team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
+    if not team_key:
+        raise SnapshotBuildError("Team ID not configured for this Yahoo league.")
+
+    roster_data = await yahoo_service.get_team_roster(access_token, team_key)
+    if "error" in roster_data:
+        raise SnapshotBuildError(roster_data["error"])
+
+    raw_players = roster_data.get("players", [])
+
+    def _lineup_slot(p: Dict[str, Any]) -> str:
+        slot = (p.get("selected_position") or "").upper()
+        if slot in _YAHOO_IR_SLOTS:
+            return "IR"
+        if slot in _YAHOO_BENCH_SLOTS:
+            return "BE"
+        return slot or "BE"
+
+    # Yahoo's real injury status abbreviations (O/Q/D/IR/PUP/...) come back
+    # as None for a healthy player -- normalize to the same "ACTIVE"
+    # sentinel the ESPN/Sleeper builders use so _HEALTHY_STATUSES matches.
+    players = [
+        {
+            "name": p.get("name") or "Unknown Player",
+            "position": p.get("position") or "UNKNOWN",
+            "team": p.get("team"),
+            "lineup_slot": _lineup_slot(p),
+            "projected_points": 0.0,
+            "injury_status": p.get("status") or "ACTIVE",
+        }
+        for p in raw_players
+    ]
+    starting_lineup = [p for p in players if p["lineup_slot"] not in ("BE", "IR")]
+    bench_players = [p for p in players if p["lineup_slot"] in ("BE", "IR")]
+
+    injury_concerns = [
+        {"player": p["name"], "position": p["position"], "team": p["team"], "status": p["injury_status"]}
+        for p in players
+        if (p["injury_status"] or "").upper() not in _HEALTHY_STATUSES
+    ]
+
+    league_settings = None
+    if user_league.league_key:
+        yahoo_settings = await yahoo_service.get_league_settings(access_token, user_league.league_key)
+        if "error" not in yahoo_settings and yahoo_settings.get("starters"):
+            league_settings = {"starters": yahoo_settings["starters"]}
+
+    grading = grade_roster(players, league_settings)
+
+    # Real team display info -- get_team_roster's own team lookup already
+    # has name/manager for exactly this team (it fetched the roster via
+    # this team's own team_key), so reuse it rather than a second call.
+    team_name = None
+    owner = None
+    teams = await yahoo_service.get_league_teams(access_token, user_league.league_key)
+    if isinstance(teams, list) and teams and not (isinstance(teams[0], dict) and "error" in teams[0]):
+        my_team = next((t for t in teams if str(t.get("team_id")) == str(user_league.team_id)), None)
+        if my_team:
+            team_name = my_team.get("name")
+            owner = my_team.get("manager")
+
+    return {
+        "league_info": league_info,
+        "roster_analysis": {
+            "team_name": team_name,
+            "owner": owner,
+            "roster_size": len(players),
+            "total_players": len(players),
+            "composition": {
+                "starting_lineup": starting_lineup,
+                "bench_players": bench_players,
+                "composition_score": grading["composition_score"],
+            },
+            "overall_grade": {
+                "grade": grading["grade"],
+                "score": grading["composition_score"],
+                "description": "Composition grade based on this league's real roster-slot requirements. No real per-player projection is available from Yahoo's roster data, so this reflects real roster construction only, not player quality.",
+                "player_count": len(players),
+            },
+            "strengths_weaknesses": {
+                "strengths": grading["strengths"],
+                "weaknesses": grading["weaknesses"],
+            },
+            "injury_concerns": injury_concerns,
+            "players": players,
+        },
+    }
+
+
 async def build_roster_analysis_snapshot(user_league: UserLeague) -> Dict[str, Any]:
     league_info = _league_info(user_league)
 
@@ -209,6 +362,9 @@ async def build_roster_analysis_snapshot(user_league: UserLeague) -> Dict[str, A
 
     if league_info["platform"] == "SLEEPER":
         return await _build_sleeper_roster_analysis_snapshot(user_league, league_info, ungraded)
+
+    if league_info["platform"] == "YAHOO":
+        return await _build_yahoo_roster_analysis_snapshot(user_league, league_info, ungraded)
 
     if league_info["platform"] != "ESPN":
         return {
@@ -324,27 +480,9 @@ async def build_standings_snapshot(user_league: UserLeague) -> Dict[str, Any]:
         return {**base, "teams": standings}
 
     if platform == "YAHOO":
-        if not user_league.yahoo_access_token:
-            raise SnapshotBuildError(
-                "Yahoo account not connected for this league. Please reconnect your Yahoo account."
-            )
-        # yahoo_token_expires_at is a timezone-aware DB column; comparing it
-        # against a naive datetime.utcnow() raises "can't compare
-        # offset-naive and offset-aware datetimes" -- the exact same bug
-        # class already fixed in user_service.py's account-lockout check.
-        # Confirmed live 2026-09-19 against a real freshly-connected Yahoo
-        # league (500 on /standings, first time this path was ever
-        # actually reachable -- previously every Yahoo call 403'd before
-        # getting this far).
-        if (
-            user_league.yahoo_token_expires_at
-            and user_league.yahoo_token_expires_at < datetime.now(timezone.utc)
-        ):
-            raise SnapshotBuildError(
-                "Your Yahoo connection has expired. Please reconnect your Yahoo account."
-            )
+        access_token = _require_yahoo_token(user_league)
         teams = await yahoo_service.get_league_teams(
-            user_league.yahoo_access_token, user_league.league_key
+            access_token, user_league.league_key
         )
         if teams and isinstance(teams, list) and "error" in teams[0]:
             raise SnapshotBuildError(teams[0]["error"])
