@@ -1,3 +1,84 @@
+# Handoff (2026-09-22, session 17) — Yahoo API unlocked + made real, ESPN/Yahoo parity push (in progress)
+
+**Status:** working tree clean, pushed to `main` (`281e0c1`). Backend 136
+tests pass; frontend build/lint clean (1 pre-existing unrelated
+useAuth.tsx lint error). `/goal feature parity between ESPN and Yahoo`
+is ACTIVE (Stop-hook enforced) — next session continues under it, don't
+clear unless parity is actually done.
+
+**Decision/finding:** Yahoo finally granted real Fantasy Sports API
+access this session (confirmed live, App ID `3sPY0hJG`, no `.env`
+change needed) after ~2.5 months blocked — see
+[[project_yahoo_fantasy_api_locked]] for full history. This was the
+FIRST time any real (non-403) Yahoo data ever flowed through this
+codebase, which exposed a long chain of real, previously-unreachable
+parsing/logic bugs, all found+fixed+live-verified against the founder's
+real "Pro Bowl Fantasy" league (team "Failing at Fantasy"):
+- Yahoo wraps every singular resource (game/league/team/user/player) as
+  a LIST (attrs + one dict per sub-resource), not a flat dict — new
+  `yahoo_service._flatten_resource()` (recursive) fixes this everywhere.
+- `team` resources need Yahoo's `;out=standings` param for win/loss/points.
+- Naive-vs-aware datetime crash on `yahoo_token_expires_at` (same bug
+  class as the already-documented account-lockout bug) — fixed in
+  `league_management_service.py` + `league_snapshots.py` + token-write
+  side + 2 test fixtures.
+- Frontend: Yahoo sends points as strings + real IEEE754 float drift —
+  new `formatPoints()` in LeagueDetailPage.tsx.
+- Real team auto-detection: guid-matching DOESN'T work (Yahoo masks
+  every manager's guid as literal `"--hidden--"`, including the
+  requester's own — always matched team #1 wrongly). Fixed using
+  Yahoo's real `is_owned_by_current_login` flag via new
+  `get_current_user_teams()`.
+- `get_team_roster`/`get_available_players` + 5 call sites were passing
+  bare `team_id` instead of the full Yahoo `team_key` — new
+  `build_team_key()` helper. 2 of those calls were also missing the
+  `access_token` arg entirely (guaranteed crash, dead until now).
+- `get_team_roster` returned an empty roster: real players are nested
+  under `roster["0"]["players"]`, not `roster["players"]`.
+- `eligible_positions` is a real list, not a dict — switched to Yahoo's
+  real `primary_position`/`display_position` fields.
+- **Real Yahoo roster analysis** shipped (was honest "not yet
+  implemented"): mirrors the existing Sleeper builder pattern, real
+  composition grade (B, 86.7) through the shared `grade_roster()`,
+  `projected_points` honestly 0.0 (Yahoo's roster endpoint has no real
+  per-player projection, same accepted tradeoff as Sleeper).
+
+**Parity gap map (from this session's audit):**
+- ✅ now real for Yahoo: connect, standings, waiver recommendations
+  (Sleeper-trending, personalized), roster analysis/grading, roster
+  import (post-draft).
+- ❌ still honest-stub, NOT yet built for Yahoo: **This Week** (matchup
+  scoreboard + lineup optimizer + start/sit confidence) — the single
+  biggest remaining gap, currently says "not implemented for YAHOO".
+- ⚠️ pre-existing, NOT Yahoo-specific, not touched this session:
+  Yahoo's trade-suggestions content is still the old AI-hallucinated
+  placeholder format (only ESPN's trade path was ever made real, a
+  separate earlier-session task); `league-aware-recommendations`'s
+  displayed `league_info` reads a legacy hardcoded file loader (same bug
+  class already fixed for `/standings`, just not this endpoint).
+
+**This Week / Yahoo — mid-investigation when session ended, promising:**
+Confirmed live (raw JSON captured) that Yahoo's `/league/{key}/scoreboard;week=N`
+DOES expose real team-level `team_projected_points` (e.g. "203.66") AND
+real `win_probability` (e.g. 0.67) per matchup — much better than
+assumed. Was checking whether real PER-PLAYER projections also exist
+(tried `/team/{key}/roster;week=N/players/stats` — request was sent but
+response wasn't inspected before the session ended) when interrupted to
+save progress. **Next step: finish checking that raw response** for a
+per-player projected-points field. If real per-player projections
+exist, a genuine Yahoo lineup optimizer + start/sit confidence (matching
+`this_week_service.py`'s ESPN logic) becomes buildable; if not, still
+worth shipping a real matchup scoreboard (opponent, real projected
+team totals, real win probability) for Yahoo even without the
+optimizer, rather than leaving the whole screen stubbed.
+
+**Also noted, not yet fixed:** the guid `"--hidden--"` masking discovery
+means any FUTURE Yahoo feature must not assume manager/user guids are
+usable for identity matching — only `is_owned_by_current_login` (or
+matching against the authenticated user's own team_key) is real.
+
+---
+
 # Handoff (2026-09-16, session 16) — optimizer v2, real trade finder, Sleeper roster analysis
 
 **Status:** working tree clean, pushed to `main` (`42d17fb`), Render
