@@ -132,11 +132,30 @@ async def connect_yahoo_league(
         user_service = UserService(db)
         connected_leagues = []
 
+        # Real "which team is mine, per league" -- one call for every
+        # league at once, keyed by Yahoo's own `is_owned_by_current_login`
+        # flag rather than any guid-matching (Yahoo masks manager guids as
+        # the literal string "--hidden--" for everyone, including the
+        # requester's own -- confirmed live, so that approach never
+        # actually works). Best-effort: a failure here just leaves every
+        # league's team_id unset, same as before this existed -- never
+        # blocks the connect itself.
+        my_teams_by_league: Dict[str, str] = {}
+        my_teams = await yahoo_service.get_current_user_teams(access_token, season=season)
+        if isinstance(my_teams, list) and my_teams and not (
+            isinstance(my_teams[0], dict) and "error" in my_teams[0]
+        ):
+            for t in my_teams:
+                if t.get("league_key") and t.get("team_id"):
+                    my_teams_by_league[t["league_key"]] = t["team_id"]
+
         for yl in yahoo_leagues:
             league_key = yl.get("league_key")
             league_id = yl.get("league_id")
             if not league_id:
                 continue
+
+            team_id = my_teams_by_league.get(league_key) if league_key else None
 
             user_league = user_service.add_user_league(
                 user_id=current_user.id,
@@ -151,6 +170,7 @@ async def connect_yahoo_league(
                     "yahoo_access_token": access_token,
                     "yahoo_refresh_token": refresh_token,
                     "yahoo_token_expires_at": expires_at,
+                    "team_id": team_id,
                 }
             )
 
@@ -164,6 +184,7 @@ async def connect_yahoo_league(
                 "platform": "YAHOO",
                 "league_size": user_league.league_size,
                 "scoring_format": user_league.scoring_format,
+                "team_id": user_league.team_id,
             })
 
         return {

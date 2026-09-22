@@ -286,7 +286,7 @@ class YahooFantasyService:
                                     "name": league.get("name"),
                                     "num_teams": league.get("num_teams"),
                                     "scoring_type": league.get("scoring_type"),
-                                    "league_type": league.get("league_type")
+                                    "league_type": league.get("league_type"),
                                 })
 
             return leagues
@@ -299,6 +299,65 @@ class YahooFantasyService:
             # one collection path being fussy (simpler calls succeed).
             await self._probe_fantasy_access(access_token)
             return [{"error": f"Failed to get leagues: {detail}"}]
+
+    async def get_current_user_teams(self, access_token: str, season: int = 2024) -> List[Dict[str, Any]]:
+        """Real "which team is mine, per league" -- no guessing/matching.
+
+        Yahoo's per-manager `guid` field is NOT usable for this: it comes
+        back as the literal masked string "--hidden--" for every manager
+        in a league's team list, confirmed live to include the
+        requester's own. The actual real signal Yahoo exposes is the
+        `is_owned_by_current_login` flag on a team resource, surfaced by
+        querying teams under the authenticated user
+        (`/users;use_login=1/.../teams`, server-side scoped to that user)
+        rather than a league's full team list. Confirmed live 2026-09-22.
+
+        Returns one entry per real team the user owns across their NFL
+        leagues this season: {league_key, team_key, team_id, team_name}.
+        """
+        if not access_token:
+            return [{"error": "Not authenticated"}]
+
+        try:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            url = f"{self.base_url}/users;use_login=1/games;game_keys=nfl/teams"
+
+            response = await self.client.get(url, headers=headers, params={"format": "json"})
+            response.raise_for_status()
+
+            data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+
+            my_teams = []
+            fantasy_content = data.get("fantasy_content", {})
+            user = self._flatten_resource(fantasy_content.get("users", {}).get("0", {}).get("user", {}))
+            games = user.get("games", {})
+
+            for game_key, game_data in games.items():
+                if isinstance(game_data, dict) and "game" in game_data:
+                    game = self._flatten_resource(game_data["game"])
+                    if game.get("code") == "nfl" and str(season) in str(game.get("season", "")):
+                        game_teams = game.get("teams", {})
+                        for team_key, team_data in game_teams.items():
+                            if isinstance(team_data, dict) and "team" in team_data:
+                                team = self._flatten_resource(team_data["team"])
+                                team_key_full = team.get("team_key") or ""
+                                # team_key is "{league_key}.t.{team_id}" --
+                                # derive the owning league_key by stripping
+                                # the ".t.N" suffix rather than a second
+                                # round trip to look it up.
+                                league_key = (
+                                    team_key_full.rsplit(".t.", 1)[0] if ".t." in team_key_full else None
+                                )
+                                my_teams.append({
+                                    "league_key": league_key,
+                                    "team_key": team_key_full,
+                                    "team_id": team.get("team_id"),
+                                    "team_name": team.get("name"),
+                                })
+
+            return my_teams
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            return [{"error": f"Failed to get your teams: {self._error_detail(e)}"}]
 
     async def _probe_fantasy_access(self, access_token: str) -> None:
         """Diagnostic: hit several Fantasy API endpoints and log status for
@@ -519,6 +578,13 @@ class YahooFantasyService:
                     # "managers" is a plain list (`[{"manager": {...}}]`),
                     # not the "0"/"count"-keyed collection style used
                     # elsewhere (games/leagues/teams) -- confirmed live.
+                    # NOTE: manager.guid is NOT usable to identify "my
+                    # team" -- Yahoo returns the literal masked string
+                    # "--hidden--" for every manager's guid in this
+                    # response, including (confirmed live) the requester's
+                    # own. Use get_current_user_teams() instead, which
+                    # relies on Yahoo's own real `is_owned_by_current_login`
+                    # flag rather than guid-matching.
                     manager_nickname = None
                     managers_raw = team.get("managers")
                     if isinstance(managers_raw, list) and managers_raw:
@@ -544,6 +610,22 @@ class YahooFantasyService:
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get teams: {self._error_detail(e)}"}]
 
+    @staticmethod
+    def build_team_key(league_key: Optional[str], team_id: Optional[str]) -> Optional[str]:
+        """Yahoo team resources are addressed by the full `team_key`
+        (`"{game}.l.{league}.t.{team_id}"`, e.g. `"470.l.652985.t.6"`), not
+        the bare numeric `team_id` `UserLeague.team_id` stores -- several
+        real call sites were passing the bare id straight to
+        get_team_roster's `team_key` param and 400ing "Missing Resource"
+        (confirmed live 2026-09-22, the first time a Yahoo `team_id` was
+        ever real rather than always-null behind the earlier 403 block).
+        Returns None if either input is missing, so callers degrade the
+        same honest way a missing team_id already does everywhere else.
+        """
+        if not league_key or not team_id:
+            return None
+        return f"{league_key}.t.{team_id}"
+
     async def get_team_roster(self, access_token: str, team_key: str, week: int = None) -> Dict[str, Any]:
         """Get roster for specific Yahoo team"""
         if not access_token:
@@ -565,18 +647,31 @@ class YahooFantasyService:
             roster_data = self._flatten_resource(team_data_flat.get("roster", {}))
 
             players = []
-            players_data = roster_data.get("players", {})
+            # The real player collection is nested one level deeper than it
+            # looks -- `roster` carries its own attrs (coverage_type, week,
+            # is_editable, ...) as direct keys, with the actual "players"
+            # collection tucked under a numeric "0" sub-key alongside them
+            # (Yahoo's per-coverage-instance indexing). Confirmed live
+            # 2026-09-22 against a real roster response -- roster.get(
+            # "players") directly was always empty.
+            players_data = roster_data.get("0", {}).get("players", {})
 
             for player_key, player_data in players_data.items():
                 if isinstance(player_data, dict) and "player" in player_data:
                     player = self._flatten_resource(player_data["player"])
+                    # eligible_positions is a real list (`[{"position": "QB"}, ...]`,
+                    # can carry more than one for flex-eligible players) --
+                    # `primary_position` is Yahoo's own single real value
+                    # for "this player's position", confirmed present on
+                    # the same live response.
+                    selected_position = self._flatten_resource(player.get("selected_position", {}))
                     players.append({
                         "player_key": player.get("player_key"),
                         "player_id": player.get("player_id"),
                         "name": player.get("name", {}).get("full"),
-                        "position": player.get("eligible_positions", {}).get("position"),
+                        "position": player.get("primary_position") or player.get("display_position"),
                         "team": player.get("editorial_team_abbr"),
-                        "selected_position": player.get("selected_position", {}).get("position"),
+                        "selected_position": selected_position.get("position"),
                         "status": player.get("status")
                     })
 
@@ -618,13 +713,17 @@ class YahooFantasyService:
             for player_key, player_data in players_data.items():
                 if isinstance(player_data, dict) and "player" in player_data:
                     player = self._flatten_resource(player_data["player"])
+                    # eligible_positions is a real list (`[{"position": "QB"}, ...]`),
+                    # not a dict -- same fix as get_team_roster's player
+                    # parsing, confirmed against the same live shape.
+                    percent_owned = self._flatten_resource(player.get("percent_owned", {}))
                     available_players.append({
                         "player_key": player.get("player_key"),
                         "player_id": player.get("player_id"),
                         "name": player.get("name", {}).get("full"),
-                        "position": player.get("eligible_positions", {}).get("position"),
+                        "position": player.get("primary_position") or player.get("display_position"),
                         "team": player.get("editorial_team_abbr"),
-                        "ownership_percentage": player.get("percent_owned", {}).get("value"),
+                        "ownership_percentage": percent_owned.get("value"),
                         "status": player.get("status")
                     })
 

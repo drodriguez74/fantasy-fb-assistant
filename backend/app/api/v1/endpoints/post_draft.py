@@ -204,7 +204,20 @@ async def import_roster_from_league(
                     detail="Team ID not set for this Yahoo league. Set it via PUT /leagues/{league_id}/settings first."
                 )
 
-            roster_data = await yahoo_service.get_team_roster(user_league.team_id)
+            # get_team_roster needs the real access_token + full team_key
+            # ("{league_key}.t.{team_id}"), not the bare team_id -- this
+            # call was passing team_id as the access_token positional arg
+            # (missing team_key entirely, a guaranteed TypeError). Confirmed
+            # live 2026-09-22, the first time this path was reachable with
+            # a real Yahoo connection at all.
+            team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
+            if not user_league.yahoo_access_token or not team_key:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."
+                )
+
+            roster_data = await yahoo_service.get_team_roster(user_league.yahoo_access_token, team_key)
 
             if "error" in roster_data:
                 raise HTTPException(status_code=400, detail=roster_data["error"])

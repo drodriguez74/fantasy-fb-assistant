@@ -31,7 +31,15 @@ def make_yahoo_league(**overrides):
         user_id=1,
         platform=PlatformType.YAHOO,
         league_id="1",
-        league_key=None,  # skip get_league_settings by default -> fallback lineup
+        # A real league_key is required even for tests that don't care
+        # about get_league_settings specifically -- yahoo_service.
+        # build_team_key needs it to address the roster call at all
+        # (confirmed live 2026-09-22: Yahoo team resources are addressed
+        # by the full "{league_key}.t.{team_id}" key, not a bare team_id).
+        # Individual tests that want the get_league_settings fallback path
+        # still get it here since fake_get_league_settings isn't mocked by
+        # default -- only TestYahooLeagueSettingsUsedWhenAvailable mocks it.
+        league_key="423.l.1",
         team_id="team_1",
         league_name="Test League",
         season="2024",
@@ -91,6 +99,13 @@ class TestDeterministicOverallGrade:
         async def fake_get_team_roster(access_token, team_id):
             return {"players": roster_players}
 
+        # Not the behavior under test here -- keep it offline/fast and
+        # exercise the same standard-lineup fallback this test always
+        # relied on (a real, unmocked call would otherwise hit the
+        # network now that league_key is set on the fixture).
+        async def fake_get_league_settings(access_token, league_key):
+            return {"error": "not mocked for this test"}
+
         # The AI mock claims every position group is an "A" -- if the old
         # bug (pure average of AI-assigned letter grades) were still
         # present, overall_grade would come back "A" too. The real,
@@ -100,6 +115,9 @@ class TestDeterministicOverallGrade:
 
         monkeypatch.setattr(
             lms_module.yahoo_service, "get_team_roster", fake_get_team_roster
+        )
+        monkeypatch.setattr(
+            lms_module.yahoo_service, "get_league_settings", fake_get_league_settings
         )
         monkeypatch.setattr(
             lms_module.ai_service, "_generate_with_fallback", fake_generate_with_fallback
@@ -171,12 +189,21 @@ class TestLeagueContextReachesPrompt:
         async def fake_get_team_roster(access_token, team_id):
             return {"players": roster_players}
 
+        # Not the behavior under test here -- keep it offline/fast rather
+        # than hitting the network now that league_key is set on the
+        # fixture.
+        async def fake_get_league_settings(access_token, league_key):
+            return {"error": "not mocked for this test"}
+
         captured_prompts = []
 
         async def fake_generate_with_fallback(prompt, prefer_fast_model=True):
             captured_prompts.append(prompt)
             return '{"grade": "B", "summary": "ok", "strengths": [], "concerns": [], "recommendations": []}'
 
+        monkeypatch.setattr(
+            lms_module.yahoo_service, "get_league_settings", fake_get_league_settings
+        )
         monkeypatch.setattr(
             lms_module.yahoo_service, "get_team_roster", fake_get_team_roster
         )

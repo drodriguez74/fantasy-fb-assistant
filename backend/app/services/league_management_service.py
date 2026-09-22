@@ -132,7 +132,10 @@ class LeagueManagementService:
                 return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
 
             # Get roster from Yahoo
-            roster_data = await yahoo_service.get_team_roster(access_token, league.team_id)
+            team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
+            if not team_key:
+                return {"error": "Team ID not configured"}
+            roster_data = await yahoo_service.get_team_roster(access_token, team_key)
 
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
@@ -702,7 +705,10 @@ class LeagueManagementService:
             if not access_token:
                 return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
 
-            roster_data = await yahoo_service.get_team_roster(access_token, league.team_id)
+            team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
+            if not team_key:
+                return {"error": "Team ID not configured"}
+            roster_data = await yahoo_service.get_team_roster(access_token, team_key)
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
 
@@ -867,7 +873,10 @@ class LeagueManagementService:
                 return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
 
             # Get user's roster
-            roster_data = await yahoo_service.get_team_roster(access_token, league.team_id)
+            team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
+            if not team_key:
+                return {"error": "Team ID not configured"}
+            roster_data = await yahoo_service.get_team_roster(access_token, team_key)
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
 
