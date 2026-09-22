@@ -75,6 +75,41 @@ class YahooFantasyService:
             logger.error(f"Yahoo API request failed: {e}")
         return str(e)
 
+    @staticmethod
+    def _flatten_resource(value: Any) -> Dict[str, Any]:
+        """Yahoo's Fantasy API represents a singular resource (game, league,
+        team, user, player, ...) as a single flat dict ONLY when nothing
+        else was requested alongside it. As soon as a sub-resource is
+        attached (e.g. a user's "games", a league's "settings"/"teams", a
+        team's "roster"), Yahoo instead returns a LIST: one dict carrying
+        the resource's own attributes, plus one further dict per attached
+        sub-resource. Every parser in this file was written assuming a
+        flat dict and 500'd with "'list' object has no attribute 'get'"
+        the first time real (non-403'd) Yahoo data actually flowed through
+        it -- confirmed live 2026-09-19 against a real connected league
+        (`fantasy_content.users.0.user` == `[{"guid": ...}, {"games": {...}}]`).
+        Known Yahoo API quirk -- the third-party `yfpy` library exists
+        largely to paper over exactly this. Merging is a safe no-op for an
+        already-flat dict.
+
+        Not always a flat list of dicts, either: a `team` resource comes
+        back as `[[{...}, {...}, [], {...}, ...]]` -- one outer element
+        that is ITSELF a list of tiny single-key attribute dicts, with `[]`
+        used as a placeholder for fields Yahoo didn't return. Confirmed
+        live against a real `/league/{key}/teams` response. Recurse into
+        any list element that is itself a list; silently skip anything
+        that's neither a dict nor a list (e.g. that `[]` placeholder).
+        """
+        if isinstance(value, list):
+            merged: Dict[str, Any] = {}
+            for item in value:
+                if isinstance(item, dict):
+                    merged.update(item)
+                elif isinstance(item, list):
+                    merged.update(YahooFantasyService._flatten_resource(item))
+            return merged
+        return value if isinstance(value, dict) else {}
+
     @property
     def client(self) -> httpx.AsyncClient:
         # See SleeperService.client for why this is lazy/loop-aware rather than
@@ -234,17 +269,17 @@ class YahooFantasyService:
 
             leagues = []
             fantasy_content = data.get("fantasy_content", {})
-            users = fantasy_content.get("users", {}).get("0", {}).get("user", {})
-            games = users.get("games", {})
+            user = self._flatten_resource(fantasy_content.get("users", {}).get("0", {}).get("user", {}))
+            games = user.get("games", {})
 
             for game_key, game_data in games.items():
                 if isinstance(game_data, dict) and "game" in game_data:
-                    game = game_data["game"]
-                    if game.get("code") == "nfl" and str(season) in game.get("season", ""):
+                    game = self._flatten_resource(game_data["game"])
+                    if game.get("code") == "nfl" and str(season) in str(game.get("season", "")):
                         game_leagues = game.get("leagues", {})
                         for league_key, league_data in game_leagues.items():
                             if isinstance(league_data, dict) and "league" in league_data:
-                                league = league_data["league"]
+                                league = self._flatten_resource(league_data["league"])
                                 leagues.append({
                                     "league_key": league.get("league_key"),
                                     "league_id": league.get("league_id"),
@@ -300,7 +335,7 @@ class YahooFantasyService:
 
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
-            league_data = data.get("fantasy_content", {}).get("league", {})
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
 
             return {
                 "league_key": league_data.get("league_key"),
@@ -363,8 +398,9 @@ class YahooFantasyService:
 
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
-            settings_data = data.get("fantasy_content", {}).get("league", {}).get("settings", {})
-            if not isinstance(settings_data, dict):
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            settings_data = self._flatten_resource(league_data.get("settings", {}))
+            if not settings_data:
                 return {"error": "League settings unavailable"}
 
             # Yahoo's flex slot is commonly "W/R/T" (RB/WR/TE-eligible) or,
@@ -458,7 +494,14 @@ class YahooFantasyService:
 
         try:
             headers = {"Authorization": f"Bearer {access_token}"}
-            url = f"{self.base_url}/league/{league_key}/teams"
+            # Plain /teams only returns team metadata (name, key, waiver
+            # priority, ...) -- no win/loss/points data at all. Yahoo's
+            # "out" parameter attaches the "standings" sub-resource
+            # (team_standings: outcome_totals + points_for/against) to
+            # each team in the same call. Confirmed necessary live: without
+            # it, every team came back with wins/losses/points_for/
+            # points_against == null.
+            url = f"{self.base_url}/league/{league_key}/teams;out=standings"
 
             response = await self.client.get(url, headers=headers, params={"format": "json"})
             response.raise_for_status()
@@ -466,20 +509,35 @@ class YahooFantasyService:
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
             teams = []
-            teams_data = data.get("fantasy_content", {}).get("league", {}).get("teams", {})
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            teams_data = league_data.get("teams", {})
 
             for team_key, team_data in teams_data.items():
                 if isinstance(team_data, dict) and "team" in team_data:
-                    team = team_data["team"]
+                    team = self._flatten_resource(team_data["team"])
+
+                    # "managers" is a plain list (`[{"manager": {...}}]`),
+                    # not the "0"/"count"-keyed collection style used
+                    # elsewhere (games/leagues/teams) -- confirmed live.
+                    manager_nickname = None
+                    managers_raw = team.get("managers")
+                    if isinstance(managers_raw, list) and managers_raw:
+                        first_manager = managers_raw[0]
+                        if isinstance(first_manager, dict):
+                            manager_nickname = first_manager.get("manager", {}).get("nickname")
+
+                    team_standings = self._flatten_resource(team.get("team_standings", {}))
+                    outcome_totals = team_standings.get("outcome_totals", {})
+
                     teams.append({
                         "team_key": team.get("team_key"),
                         "team_id": team.get("team_id"),
                         "name": team.get("name"),
-                        "manager": team.get("managers", {}).get("0", {}).get("manager", {}).get("nickname"),
-                        "wins": team.get("team_standings", {}).get("outcome_totals", {}).get("wins"),
-                        "losses": team.get("team_standings", {}).get("outcome_totals", {}).get("losses"),
-                        "points_for": team.get("team_standings", {}).get("points_for"),
-                        "points_against": team.get("team_standings", {}).get("points_against")
+                        "manager": manager_nickname,
+                        "wins": outcome_totals.get("wins"),
+                        "losses": outcome_totals.get("losses"),
+                        "points_for": team_standings.get("points_for"),
+                        "points_against": team_standings.get("points_against")
                     })
 
             return teams
@@ -503,14 +561,15 @@ class YahooFantasyService:
 
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
-            roster_data = data.get("fantasy_content", {}).get("team", {}).get("roster", {})
+            team_data_flat = self._flatten_resource(data.get("fantasy_content", {}).get("team", {}))
+            roster_data = self._flatten_resource(team_data_flat.get("roster", {}))
 
             players = []
             players_data = roster_data.get("players", {})
 
             for player_key, player_data in players_data.items():
                 if isinstance(player_data, dict) and "player" in player_data:
-                    player = player_data["player"]
+                    player = self._flatten_resource(player_data["player"])
                     players.append({
                         "player_key": player.get("player_key"),
                         "player_id": player.get("player_id"),
@@ -553,11 +612,12 @@ class YahooFantasyService:
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
             available_players = []
-            players_data = data.get("fantasy_content", {}).get("league", {}).get("players", {})
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            players_data = league_data.get("players", {})
 
             for player_key, player_data in players_data.items():
                 if isinstance(player_data, dict) and "player" in player_data:
-                    player = player_data["player"]
+                    player = self._flatten_resource(player_data["player"])
                     available_players.append({
                         "player_key": player.get("player_key"),
                         "player_id": player.get("player_id"),
@@ -587,7 +647,8 @@ class YahooFantasyService:
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
             draft_results = []
-            results_data = data.get("fantasy_content", {}).get("league", {}).get("draft_results", {})
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            results_data = league_data.get("draft_results", {})
 
             for pick_key, pick_data in results_data.items():
                 if isinstance(pick_data, dict) and "draft_result" in pick_data:
@@ -658,16 +719,17 @@ class YahooFantasyService:
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
             matchups = []
-            scoreboard = data.get("fantasy_content", {}).get("league", {}).get("scoreboard", {})
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            scoreboard = self._flatten_resource(league_data.get("scoreboard", {}))
             matchups_data = scoreboard.get("matchups", {})
 
             for matchup_key, matchup_data in matchups_data.items():
                 if isinstance(matchup_data, dict) and "matchup" in matchup_data:
-                    matchup = matchup_data["matchup"]
+                    matchup = self._flatten_resource(matchup_data["matchup"])
                     teams = matchup.get("teams", {})
 
-                    team1 = teams.get("0", {}).get("team", {})
-                    team2 = teams.get("1", {}).get("team", {})
+                    team1 = self._flatten_resource(teams.get("0", {}).get("team", {}))
+                    team2 = self._flatten_resource(teams.get("1", {}).get("team", {}))
 
                     matchups.append({
                         "week": week,

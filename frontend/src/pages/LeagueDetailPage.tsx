@@ -149,10 +149,11 @@ interface StandingsTeam {
   rank: number
   name?: string
   team_name?: string
-  wins?: number
-  losses?: number
-  points_for?: number
-  points_against?: number
+  wins?: number | string
+  losses?: number | string
+  // Yahoo sends these as strings (e.g. "458.55"), ESPN as numbers.
+  points_for?: number | string
+  points_against?: number | string
 }
 
 interface StandingsData {
@@ -636,6 +637,18 @@ export function LeagueDetailPage() {
       case 'F': return 'bg-danger-100 text-danger-800'
       default: return 'bg-surface-2 text-body'
     }
+  }
+
+  // Standings points_for/points_against come from whichever platform is
+  // connected -- ESPN gives clean numbers, but Yahoo's raw JSON floats
+  // (e.g. summed weekly scores) can carry IEEE754 drift like
+  // 274.54999999999995. Round for display rather than showing that
+  // straight through; a plain string (Yahoo also sometimes sends
+  // points_for as "458.55") is parsed first.
+  const formatPoints = (value?: number | string) => {
+    if (value == null) return '—'
+    const n = typeof value === 'string' ? parseFloat(value) : value
+    return Number.isFinite(n) ? n.toFixed(2) : '—'
   }
 
   // Real per-player status straight from the connected platform (ESPN's
@@ -1645,10 +1658,10 @@ export function LeagueDetailPage() {
                         {team.wins}-{team.losses}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
-                        {team.points_for}
+                        {formatPoints(team.points_for)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-body">
-                        {team.points_against}
+                        {formatPoints(team.points_against)}
                       </td>
                     </tr>
                   ))}

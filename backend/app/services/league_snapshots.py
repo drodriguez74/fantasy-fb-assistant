@@ -9,7 +9,7 @@ expected upstream failures -- the endpoint layer maps that to a 400.
 See app.services.snapshot_cache for the stale-while-revalidate wrapper and
 the kind -> (builder, ttl) registry.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict
 
 import asyncio
@@ -328,9 +328,17 @@ async def build_standings_snapshot(user_league: UserLeague) -> Dict[str, Any]:
             raise SnapshotBuildError(
                 "Yahoo account not connected for this league. Please reconnect your Yahoo account."
             )
+        # yahoo_token_expires_at is a timezone-aware DB column; comparing it
+        # against a naive datetime.utcnow() raises "can't compare
+        # offset-naive and offset-aware datetimes" -- the exact same bug
+        # class already fixed in user_service.py's account-lockout check.
+        # Confirmed live 2026-09-19 against a real freshly-connected Yahoo
+        # league (500 on /standings, first time this path was ever
+        # actually reachable -- previously every Yahoo call 403'd before
+        # getting this far).
         if (
             user_league.yahoo_token_expires_at
-            and user_league.yahoo_token_expires_at < datetime.utcnow()
+            and user_league.yahoo_token_expires_at < datetime.now(timezone.utc)
         ):
             raise SnapshotBuildError(
                 "Your Yahoo connection has expired. Please reconnect your Yahoo account."

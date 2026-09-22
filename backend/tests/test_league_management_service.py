@@ -16,7 +16,7 @@ external expert analysis of the same real roster:
      AI says.
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import pytest
@@ -38,7 +38,11 @@ def make_yahoo_league(**overrides):
         scoring_format="PPR",
         league_size=12,
         yahoo_access_token="fresh-token",
-        yahoo_token_expires_at=datetime.utcnow() + timedelta(hours=1),
+        # yahoo_token_expires_at is DateTime(timezone=True); a real Postgres
+        # round-trip always returns it aware, so this in-memory fixture
+        # must construct it aware too to actually exercise
+        # LeagueManagementService._get_yahoo_token's real comparison.
+        yahoo_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
     )
     defaults.update(overrides)
     return UserLeague(**defaults)

@@ -17,7 +17,7 @@ Covers:
 """
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
 import httpx
@@ -410,7 +410,12 @@ def test_league_management_service_rejects_expired_yahoo_token(setup_database):
             league_id="1",
             league_key="423.l.1",
             yahoo_access_token="stale-token",
-            yahoo_token_expires_at=datetime.utcnow() - timedelta(hours=1),
+            # yahoo_token_expires_at is DateTime(timezone=True) -- a real
+            # Postgres round-trip always returns it timezone-aware, so an
+            # in-memory-only fixture (never persisted/read back here) has
+            # to construct it aware too, or it doesn't actually exercise
+            # the real comparison _get_yahoo_token performs in production.
+            yahoo_token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
         assert service._get_yahoo_token(league) is None
     finally:
@@ -427,7 +432,7 @@ def test_league_management_service_accepts_valid_yahoo_token(setup_database):
             league_id="1",
             league_key="423.l.1",
             yahoo_access_token="fresh-token",
-            yahoo_token_expires_at=datetime.utcnow() + timedelta(hours=1),
+            yahoo_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
         assert service._get_yahoo_token(league) == "fresh-token"
     finally:

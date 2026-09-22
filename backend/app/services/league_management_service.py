@@ -10,7 +10,7 @@ from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
 from app.services import roster_grading
 from app.services import trade_finder_service
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
 import json
@@ -114,7 +114,10 @@ class LeagueManagementService:
         """
         if not league.yahoo_access_token:
             return None
-        if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.utcnow():
+        # Same naive/aware datetime bug already fixed in league_snapshots.py
+        # and (for a different column) user_service.py's account-lockout
+        # check -- yahoo_token_expires_at is timezone-aware.
+        if league.yahoo_token_expires_at and league.yahoo_token_expires_at < datetime.now(timezone.utc):
             return None
         return league.yahoo_access_token
 

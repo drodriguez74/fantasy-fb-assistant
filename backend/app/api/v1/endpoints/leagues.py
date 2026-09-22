@@ -13,7 +13,7 @@ from app.services.league_snapshots import SnapshotBuildError
 from app.schemas.user import UserLeagueCreate, UserLeagueResponse
 from app.services.user_service import UserService
 from app.core.config import settings
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 router = APIRouter()
 
@@ -105,7 +105,14 @@ async def connect_yahoo_league(
         expires_at = None
         if expires_in is not None:
             try:
-                expires_at = datetime.utcnow() + timedelta(seconds=int(expires_in))
+                # yahoo_token_expires_at is DateTime(timezone=True); write a
+                # timezone-aware value explicitly rather than relying on
+                # Postgres to correctly round-trip a naive one -- reads
+                # always come back aware, so writing naive here is what
+                # made the comparisons in league_management_service.py /
+                # league_snapshots.py raise "can't compare offset-naive
+                # and offset-aware datetimes".
+                expires_at = datetime.now(timezone.utc) + timedelta(seconds=int(expires_in))
             except (TypeError, ValueError):
                 expires_at = None
 
