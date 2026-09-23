@@ -725,6 +725,16 @@ class YahooFantasyService:
                     # for "this player's position", confirmed present on
                     # the same live response.
                     selected_position = self._flatten_resource(player.get("selected_position", {}))
+                    # Real per-player bye week -- confirmed live
+                    # (`{"bye_weeks": {"week": "14"}}` on this same player
+                    # resource, same field _get_week_lineup already reads
+                    # for its on_bye flag).
+                    bye_weeks = self._flatten_resource(player.get("bye_weeks", {}))
+                    try:
+                        bye_week = int(bye_weeks.get("week")) if bye_weeks.get("week") is not None else None
+                    except (TypeError, ValueError):
+                        bye_week = None
+
                     players.append({
                         "player_key": player.get("player_key"),
                         "player_id": player.get("player_id"),
@@ -732,7 +742,8 @@ class YahooFantasyService:
                         "position": player.get("primary_position") or player.get("display_position"),
                         "team": player.get("editorial_team_abbr"),
                         "selected_position": selected_position.get("position"),
-                        "status": player.get("status")
+                        "status": player.get("status"),
+                        "bye_week": bye_week,
                     })
 
             return {
@@ -742,6 +753,61 @@ class YahooFantasyService:
             }
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return {"error": f"Failed to get roster: {self._error_detail(e)}"}
+
+    async def get_bye_week_radar(self, access_token: str, league_key: str, team_key: str) -> Dict[str, Any]:
+        """Real upcoming-bye-week list for one Yahoo team's roster -- the
+        Yahoo equivalent of espn_service_enhanced.get_bye_week_radar.
+        Real per-player `bye_week` now comes straight off get_team_roster
+        (Yahoo's own `bye_weeks.week` field, confirmed live) -- no
+        week-clamping bug to work around here the way ESPN's box_scores
+        path had, since this doesn't go through a per-week box score at
+        all.
+        """
+        if not access_token:
+            return {"error": "Not authenticated"}
+
+        roster_data = await self.get_team_roster(access_token, team_key)
+        if "error" in roster_data:
+            return roster_data
+
+        league_info = await self.get_league_info(access_token, league_key)
+        current_week = league_info.get("current_week") if "error" not in league_info else None
+        try:
+            current_week = int(current_week) if current_week is not None else 1
+        except (TypeError, ValueError):
+            current_week = 1
+
+        team_name = None
+        team_id = None
+        teams = await self.get_league_teams(access_token, league_key)
+        if isinstance(teams, list) and teams and not (isinstance(teams[0], dict) and "error" in teams[0]):
+            my_team = next((t for t in teams if t.get("team_key") == team_key), None)
+            if my_team:
+                team_name = my_team.get("name")
+                team_id = my_team.get("team_id")
+
+        upcoming = []
+        for player in roster_data.get("players", []):
+            bye_week = player.get("bye_week")
+            if not bye_week or bye_week < current_week:
+                continue
+            upcoming.append({
+                "player_name": player.get("name"),
+                "position": player.get("position"),
+                "team": player.get("team"),
+                "bye_week": bye_week,
+                "weeks_until_bye": bye_week - current_week,
+                "lineup_slot": player.get("selected_position"),
+            })
+
+        upcoming.sort(key=lambda p: p["weeks_until_bye"])
+
+        return {
+            "team_id": team_id,
+            "team_name": team_name,
+            "current_week": current_week,
+            "upcoming_byes": upcoming,
+        }
 
     async def get_available_players(self, access_token: str, league_key: str, position: str = None, count: int = 25) -> List[Dict[str, Any]]:
         """Get available players in Yahoo league"""
@@ -1095,6 +1161,109 @@ class YahooFantasyService:
             })
 
         return lineup
+
+    async def get_team_matchup_history(
+        self, access_token: str, league_key: str, team_key: str, through_week: int
+    ) -> Dict[str, Any]:
+        """This team's real result every week of the season so far -- the
+        Yahoo equivalent of espn_service_enhanced.get_team_matchup_history.
+        One real scoreboard call per week (real team-level `team_points`,
+        Yahoo's own actual score once a week is played), same as that
+        method's one-call-per-week pattern. Cheap early in the season,
+        grows with it -- callers should cache this (see league_snapshots.py).
+        """
+        if not access_token:
+            return {"error": "Not authenticated"}
+
+        results: List[Dict[str, Any]] = []
+        for week in range(1, through_week + 1):
+            matchup = await self.get_week_matchup_summary(access_token, league_key, team_key, week)
+            if matchup is None:
+                continue
+
+            my = matchup["my_team"]
+            opp = matchup["opponent"]
+            my_score = float(my.get("live_score") or 0.0)
+            opp_score = float(opp.get("live_score") or 0.0)
+
+            if opp.get("team_id") is None:
+                result = "bye"
+            elif week == through_week and my_score == 0.0 and opp_score == 0.0:
+                # Not played yet -- same "no real score posted" signal
+                # get_team_matchup_history uses for ESPN.
+                result = "upcoming"
+            elif my_score > opp_score:
+                result = "win"
+            elif my_score < opp_score:
+                result = "loss"
+            else:
+                result = "tie"
+
+            results.append({
+                "week": week,
+                "opponent_team_id": opp.get("team_id"),
+                "opponent_name": opp.get("team_name") or "Bye",
+                "my_score": round(my_score, 1),
+                "opponent_score": round(opp_score, 1),
+                "result": result,
+            })
+
+        return {"through_week": through_week, "matchups": results}
+
+    async def get_week_matchup_summary(
+        self, access_token: str, league_key: str, team_key: str, week: int
+    ) -> Optional[Dict[str, Any]]:
+        """Real team-level matchup summary for one week -- the shared core
+        of get_week_matchup, without the (heavier) per-player lineup
+        fetches get_team_matchup_history doesn't need. Returns None (not
+        an error dict) when no matchup exists for this team/week (bye or
+        bad input), so callers can just skip that week.
+        """
+        if not access_token:
+            return None
+        try:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            url = f"{self.base_url}/league/{league_key}/scoreboard;week={week}"
+
+            response = await self.client.get(url, headers=headers, params={"format": "json"})
+            response.raise_for_status()
+
+            data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            scoreboard = self._flatten_resource(league_data.get("scoreboard", {}))
+            matchups_data = scoreboard.get("0", {}).get("matchups", {})
+
+            for matchup_key, matchup_data in matchups_data.items():
+                if not (isinstance(matchup_data, dict) and "matchup" in matchup_data):
+                    continue
+                matchup = self._flatten_resource(matchup_data["matchup"])
+                teams = matchup.get("0", {}).get("teams", {})
+                team_entries = [
+                    self._flatten_resource(t.get("team", {}))
+                    for t in teams.values()
+                    if isinstance(t, dict) and "team" in t
+                ]
+                mine = next((t for t in team_entries if t.get("team_key") == team_key), None)
+                if not mine:
+                    continue
+                opp = next((t for t in team_entries if t.get("team_key") != team_key), None)
+
+                def _summary(t: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+                    if not t:
+                        return {"team_id": None, "team_name": "Bye", "live_score": 0.0}
+                    points = self._flatten_resource(t.get("team_points", {}))
+                    try:
+                        live = round(float(points.get("total") or 0.0), 1)
+                    except (TypeError, ValueError):
+                        live = 0.0
+                    return {"team_id": t.get("team_id"), "team_name": t.get("name"), "live_score": live}
+
+                return {"my_team": _summary(mine), "opponent": _summary(opp)}
+
+            return None
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            return None
 
     async def close(self):
         """Close the HTTP client"""

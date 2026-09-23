@@ -558,6 +558,43 @@ async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str,
     }
 
 
+async def _build_yahoo_bye_week_radar_snapshot(
+    user_league: UserLeague, league_info: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Yahoo's real Bye Week Radar -- mirrors the ESPN builder below.
+    Yahoo's own `bye_weeks.week` per-player field (yahoo_service.
+    get_team_roster) needs no week-clamping workaround the way ESPN's
+    box_scores-based path did -- it isn't derived from a per-week call
+    at all."""
+    if not user_league.team_id:
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": "Your team isn't identified for this league yet. Please reconnect your Yahoo account to auto-detect it, or set it via PUT /leagues/{league_id}/settings.",
+        }
+
+    access_token = _require_yahoo_token(user_league)
+    team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
+    if not team_key:
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": "Your team isn't identified for this league yet. Set it via PUT /leagues/{league_id}/settings.",
+        }
+
+    radar = await yahoo_service.get_bye_week_radar(access_token, user_league.league_key, team_key)
+    if "error" in radar:
+        raise SnapshotBuildError(radar["error"])
+
+    return {
+        "league_info": league_info,
+        "supported": True,
+        "team_name": radar["team_name"],
+        "current_week": radar["current_week"],
+        "upcoming_byes": radar["upcoming_byes"],
+    }
+
+
 async def build_bye_week_radar_snapshot(user_league: UserLeague) -> Dict[str, Any]:
     """Real upcoming bye weeks for this team's roster.
 
@@ -568,6 +605,9 @@ async def build_bye_week_radar_snapshot(user_league: UserLeague) -> Dict[str, An
     builder instead crosses ESPN's real per-team bye-week schedule against
     the roster directly, with no such clamping."""
     league_info = _league_info(user_league)
+
+    if league_info["platform"] == "YAHOO":
+        return await _build_yahoo_bye_week_radar_snapshot(user_league, league_info)
 
     if league_info["platform"] != "ESPN":
         return {
@@ -601,11 +641,65 @@ async def build_bye_week_radar_snapshot(user_league: UserLeague) -> Dict[str, An
     }
 
 
+async def _build_yahoo_matchup_history_snapshot(
+    user_league: UserLeague, league_info: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Yahoo's real "Matchups" screen -- mirrors the ESPN builder below,
+    sourced from yahoo_service.get_team_matchup_history (real per-week
+    scoreboard data, same platform limitation as This Week: real team
+    totals, no real per-player breakdown needed here anyway)."""
+    if not user_league.team_id:
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": "Your team isn't identified for this league yet. Please reconnect your Yahoo account to auto-detect it, or set it via PUT /leagues/{league_id}/settings.",
+        }
+
+    access_token = _require_yahoo_token(user_league)
+    team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
+    if not team_key:
+        return {
+            "league_info": league_info,
+            "supported": False,
+            "detail": "Your team isn't identified for this league yet. Set it via PUT /leagues/{league_id}/settings.",
+        }
+
+    yahoo_league_info = await yahoo_service.get_league_info(access_token, user_league.league_key)
+    through_week = yahoo_league_info.get("current_week") if "error" not in yahoo_league_info else None
+    try:
+        through_week = int(through_week) if through_week is not None else None
+    except (TypeError, ValueError):
+        through_week = None
+    if through_week is None:
+        raise SnapshotBuildError("This league's current week isn't available yet.")
+
+    history = await yahoo_service.get_team_matchup_history(
+        access_token, user_league.league_key, team_key, through_week
+    )
+    if "error" in history:
+        raise SnapshotBuildError(history["error"])
+
+    wins = sum(1 for m in history["matchups"] if m["result"] == "win")
+    losses = sum(1 for m in history["matchups"] if m["result"] == "loss")
+    ties = sum(1 for m in history["matchups"] if m["result"] == "tie")
+
+    return {
+        "league_info": league_info,
+        "supported": True,
+        "through_week": history["through_week"],
+        "matchups": history["matchups"],
+        "record": {"wins": wins, "losses": losses, "ties": ties},
+    }
+
+
 async def build_matchup_history_snapshot(user_league: UserLeague) -> Dict[str, Any]:
     """The real "Matchups" screen: this team's actual result every week of
     the season so far, not just the current week (that's This Week's job).
     See espn_service_enhanced.get_team_matchup_history."""
     league_info = _league_info(user_league)
+
+    if league_info["platform"] == "YAHOO":
+        return await _build_yahoo_matchup_history_snapshot(user_league, league_info)
 
     if league_info["platform"] != "ESPN":
         return {

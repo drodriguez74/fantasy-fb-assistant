@@ -1,3 +1,35 @@
+# Handoff (2026-09-22, session 17 cont.) — Yahoo parity: This Week, scoring, bye radar, matchup history
+
+**Status:** committed to `main`, NOT pushed. Backend 136 tests pass. `/goal feature
+parity between ESPN and Yahoo` still ACTIVE.
+
+**Shipped since the entry below:** `65e80dc` real Yahoo This Week
+(scoreboard w/ Yahoo's own projected team totals + win probability, real
+lineup; no optimizer, stated honestly). `47f1c9b` real Yahoo scoring rules
+(`get_league_settings` had been always-failing), waiver position, bid
+tiers. Latest commit: Yahoo **Bye Week Radar** (real per-player
+`bye_weeks.week` off `get_team_roster`) + **Matchups history** (one
+scoreboard call per week via new `get_week_matchup_summary`); both
+builders return the exact ESPN response shape, so no frontend changes.
+
+**NOT live-verified:** the stored Yahoo token for league 4 (Pro Bowl
+Fantasy) had expired, so both builders only returned the honest "reconnect"
+error. Reconnect Yahoo, then hit `/leagues/4/bye-week-radar?refresh=1` and
+`/leagues/4/matchup-history?refresh=1` to confirm.
+
+**Real bug found, not fixed:** `yahoo_service.refresh_access_token` exists
+but has ZERO callers — Yahoo tokens last ~1h, so every Yahoo feature dies
+an hour after connecting until the user manually reconnects. Top priority
+for parity: auto-refresh in `_require_yahoo_token` (and the non-snapshot
+Yahoo paths) + persist the new token.
+
+**Remaining parity gaps:** token auto-refresh (above); lineup optimizer +
+start/sit confidence (needs per-player projections, still unconfirmed);
+Yahoo trade suggestions still AI-generated (ESPN's are real);
+`league-aware-recommendations` `league_info` from legacy file loader.
+
+---
+
 # Handoff (2026-09-22, session 17) — Yahoo API unlocked + made real, ESPN/Yahoo parity push (in progress)
 
 **Status:** working tree clean, pushed to `main` (`281e0c1`). Backend 136
