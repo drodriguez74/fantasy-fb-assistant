@@ -11,6 +11,7 @@ from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
 from app.services import roster_grading
 from app.services import trade_finder_service
+from app.services.weekly_projections import attach_projections, fetch_season_projections
 from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
@@ -872,61 +873,74 @@ class LeagueManagementService:
             return {"error": f"Failed to get waiver recommendations: {str(e)}"}
 
     async def _get_trade_recommendations(self, league: UserLeague) -> Dict[str, Any]:
-        """Get AI-powered trade recommendations"""
+        """Real, roster-grounded trade suggestions for a Yahoo league -- the
+        same trade_finder_service matcher the ESPN path uses.
+
+        This used to ask the AI for "3 realistic trade scenarios" knowing
+        only my roster and `len(teams)` -- the same fabrication the ESPN
+        path had before it was fixed: no visibility into anyone else's
+        roster, so the named players were guesses. Now every team's real
+        roster comes from one get_league_rosters call, and each player is
+        valued by Sleeper's full-season projection scored with this
+        league's real Yahoo rules (Yahoo publishes no per-player
+        projection; see weekly_projections.py). Players with no projection
+        are left out rather than valued at 0.
+        """
         try:
             access_token = await self._get_yahoo_token(league)
             if not access_token:
                 return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
-
-            # Get user's roster
-            team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
-            if not team_key:
+            if not league.team_id:
                 return {"error": "Team ID not configured"}
-            roster_data = await yahoo_service.get_team_roster(access_token, team_key)
-            if "error" in roster_data:
-                return {"error": roster_data["error"]}
 
-            # Get league teams for potential trade partners
-            teams = await yahoo_service.get_league_teams(access_token, league.league_key)
-            if "error" in teams:
-                return {"error": teams["error"]}
+            rosters, settings_result, projection_rows = await asyncio.gather(
+                yahoo_service.get_league_rosters(access_token, league.league_key),
+                yahoo_service.get_league_settings(access_token, league.league_key),
+                fetch_season_projections(league.season),
+            )
+            if rosters and "error" in rosters[0]:
+                return {"error": rosters[0]["error"]}
+            if not projection_rows:
+                return {"error": "Player projections couldn't be loaded right now, so trade values aren't available. Try again shortly."}
 
-            # Generate trade analysis
-            analysis_prompt = f"""
-            Analyze potential trades for this fantasy team:
-            
-            My Roster: {roster_data.get('players', [])}
-            League Teams: {len(teams)} teams
-            
-            Suggest 3 realistic trade scenarios considering:
-            1. Position needs and surpluses
-            2. Player values and trends
-            3. Team contexts
-            
-            Format as JSON array with: target_player, offer_players, reasoning, likelihood
-            """
+            scoring_rules = settings_result.get("scoring_rules") if "error" not in settings_result else None
+            stat_values = settings_result.get("stat_values") if "error" not in settings_result else None
 
-            # Suggesting real trades across multiple rosters is
-            # consequential and benefits from stronger reasoning -- deep
-            # model tier, with automatic fallback.
-            ai_response = await ai_service._generate_with_fallback(analysis_prompt, prefer_fast_model=False)
-
-            try:
-                trade_suggestions = json.loads(ai_response)
-            except:
-                trade_suggestions = [
+            teams = []
+            for team in rosters:
+                roster = [
                     {
-                        "target_player": "High-value player",
-                        "offer_players": ["Surplus player"],
-                        "reasoning": "Address position need",
-                        "likelihood": "Medium"
+                        "name": p.get("name"),
+                        "position": p.get("position"),
+                        "team": p.get("team"),
+                        "lineup_slot": p.get("selected_position"),
+                        "projected_points": None,
                     }
+                    for p in team.get("players", [])
                 ]
+                attach_projections(roster, projection_rows, scoring_rules, stat_values)
+                teams.append({
+                    "team_id": team.get("team_id"),
+                    "team_name": team.get("team_name"),
+                    "roster": [p for p in roster if p.get("projected_points") is not None],
+                })
 
+            suggestions = trade_finder_service.find_trade_suggestions(
+                my_team_id=league.team_id,
+                teams=teams,
+            )
+
+            trade_end_date = settings_result.get("trade_end_date") if "error" not in settings_result else None
             return {
-                "suggestions": trade_suggestions,
-                "trade_deadline": "Week 13",  # Standard fantasy trade deadline
-                "updated_at": datetime.utcnow().isoformat()
+                "suggestions": suggestions,
+                # Yahoo's own real trade deadline for this league, when set.
+                "trade_deadline": trade_end_date or "Not set",
+                "updated_at": datetime.utcnow().isoformat(),
+                "basis": (
+                    "Real rostered players on real other teams' rosters, valued by Sleeper's "
+                    "season-long projection scored with this league's Yahoo scoring rules -- "
+                    "not AI-generated."
+                ),
             }
 
         except Exception as e:

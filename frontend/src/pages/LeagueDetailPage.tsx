@@ -122,15 +122,15 @@ interface TradePlayerRef {
 }
 
 interface TradeSuggestion {
-  // Real, roster-grounded suggestions (ESPN, trade_finder_service) --
+  // Real, roster-grounded suggestions (ESPN + Yahoo, trade_finder_service) --
   // every player named is a real rostered player on a real other team.
   team_id?: number
   team_name?: string
   you_send?: TradePlayerRef
   you_receive?: TradePlayerRef
   value_ratio?: number
-  // Legacy AI-generated scenarios (still used on the non-ESPN/Yahoo path,
-  // which has no real per-team roster visibility to ground suggestions in)
+  // Legacy AI-generated scenario shape -- no backend path produces it any
+  // more; kept so an old cached response still renders.
   target_player?: string
   offer_players?: string[]
   likelihood?: string
@@ -141,8 +141,8 @@ interface TradeRecommendation {
   suggestions: TradeSuggestion[]
   trade_deadline: string
   updated_at: string
-  // Present only on the real ESPN path -- distinguishes it from the
-  // legacy AI-generated Yahoo path in the UI.
+  // Present on the real roster-grounded path (ESPN + Yahoo) --
+  // distinguishes it from the legacy AI-generated shape in the UI.
   basis?: string
 }
 

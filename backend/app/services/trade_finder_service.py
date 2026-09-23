@@ -18,9 +18,9 @@ player on a real other team's real bench or starting lineup this week.
 from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
-# Same convention as this_week_service.py -- a lineup_slot of BE/IR/blank is
-# bench, anything else is a real current starting slot.
-BENCH_SLOTS = {"BE", "IR", "BENCH", ""}
+# Same convention as this_week_service.py -- a lineup_slot of BE/IR/blank
+# (or Yahoo's BN/IR+) is bench, anything else is a real current starting slot.
+BENCH_SLOTS = {"BE", "IR", "BENCH", "", "BN", "IR+"}
 
 # Minimum real projection gap before a swap counts as an actual upgrade --
 # without this, two players 0.1 pts apart on ESPN's own projection would
@@ -69,7 +69,8 @@ def find_trade_suggestions(
     `teams` is the league's real roster list (each item: team_id,
     team_name, roster -- roster entries need `position`, `lineup_slot`,
     `projected_points`, `name`, `team`; this is exactly what
-    `espn_service_enhanced.get_league_teams` already returns).
+    `espn_service_enhanced.get_league_teams` already returns, and what
+    league_management_service builds for Yahoo).
 
     For each other team, this looks for a real bench player of theirs who
     out-projects one of MY real starters at the same position (a genuine

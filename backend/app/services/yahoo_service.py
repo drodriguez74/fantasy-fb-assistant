@@ -563,6 +563,8 @@ class YahooFantasyService:
                 "scoring_rules": scoring_rules,
                 "stat_values": stat_values,
                 "uses_faab": uses_faab,
+                # Yahoo's own trade deadline ("YYYY-MM-DD"), when the league has one.
+                "trade_end_date": settings_data.get("trade_end_date") or None,
                 "source": "yahoo",
             }
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
@@ -696,6 +698,84 @@ class YahooFantasyService:
             return None
         return f"{league_key}.t.{team_id}"
 
+    def _parse_roster_players(self, roster_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Players from one already-flattened `roster` resource -- shared by
+        get_team_roster and get_league_rosters."""
+        players: List[Dict[str, Any]] = []
+        # The real player collection is nested one level deeper than it
+        # looks -- `roster` carries its own attrs (coverage_type, week,
+        # is_editable, ...) as direct keys, with the actual "players"
+        # collection tucked under a numeric "0" sub-key alongside them
+        # (Yahoo's per-coverage-instance indexing). Confirmed live
+        # 2026-09-22 against a real roster response -- roster.get(
+        # "players") directly was always empty.
+        players_data = roster_data.get("0", {}).get("players", {})
+
+        for player_key, player_data in players_data.items():
+            if isinstance(player_data, dict) and "player" in player_data:
+                player = self._flatten_resource(player_data["player"])
+                # eligible_positions is a real list (`[{"position": "QB"}, ...]`,
+                # can carry more than one for flex-eligible players) --
+                # `primary_position` is Yahoo's own single real value
+                # for "this player's position", confirmed present on
+                # the same live response.
+                selected_position = self._flatten_resource(player.get("selected_position", {}))
+                # Real per-player bye week -- confirmed live
+                # (`{"bye_weeks": {"week": "14"}}` on this same player
+                # resource, same field _get_week_lineup already reads
+                # for its on_bye flag).
+                bye_weeks = self._flatten_resource(player.get("bye_weeks", {}))
+                try:
+                    bye_week = int(bye_weeks.get("week")) if bye_weeks.get("week") is not None else None
+                except (TypeError, ValueError):
+                    bye_week = None
+
+                players.append({
+                    "player_key": player.get("player_key"),
+                    "player_id": player.get("player_id"),
+                    "name": player.get("name", {}).get("full"),
+                    "position": player.get("primary_position") or player.get("display_position"),
+                    "team": player.get("editorial_team_abbr"),
+                    "selected_position": selected_position.get("position"),
+                    "status": player.get("status"),
+                    "bye_week": bye_week,
+                })
+
+        return players
+
+    async def get_league_rosters(self, access_token: str, league_key: str) -> List[Dict[str, Any]]:
+        """Every team's current roster in one call (`/league/{key}/teams/
+        roster`, confirmed live: all teams, same roster shape as
+        get_team_roster). Returns [{team_id, team_key, team_name, players}],
+        or [{"error": ...}] on failure."""
+        if not access_token:
+            return [{"error": "Not authenticated"}]
+        try:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            url = f"{self.base_url}/league/{league_key}/teams/roster"
+            response = await self.client.get(url, headers=headers, params={"format": "json"})
+            response.raise_for_status()
+            data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            return [{"error": f"Failed to get league rosters: {self._error_detail(e)}"}]
+
+        league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+        teams_data = league_data.get("teams", {})
+        teams: List[Dict[str, Any]] = []
+        if isinstance(teams_data, dict):
+            for key, entry in teams_data.items():
+                if not (isinstance(entry, dict) and "team" in entry):
+                    continue
+                team = self._flatten_resource(entry["team"])
+                roster_data = self._flatten_resource(team.get("roster", {}))
+                teams.append({
+                    "team_id": team.get("team_id"),
+                    "team_key": team.get("team_key"),
+                    "team_name": team.get("name"),
+                    "players": self._parse_roster_players(roster_data),
+                })
+        return teams
+
     async def get_team_roster(self, access_token: str, team_key: str, week: int = None) -> Dict[str, Any]:
         """Get roster for specific Yahoo team"""
         if not access_token:
@@ -716,45 +796,7 @@ class YahooFantasyService:
             team_data_flat = self._flatten_resource(data.get("fantasy_content", {}).get("team", {}))
             roster_data = self._flatten_resource(team_data_flat.get("roster", {}))
 
-            players = []
-            # The real player collection is nested one level deeper than it
-            # looks -- `roster` carries its own attrs (coverage_type, week,
-            # is_editable, ...) as direct keys, with the actual "players"
-            # collection tucked under a numeric "0" sub-key alongside them
-            # (Yahoo's per-coverage-instance indexing). Confirmed live
-            # 2026-09-22 against a real roster response -- roster.get(
-            # "players") directly was always empty.
-            players_data = roster_data.get("0", {}).get("players", {})
-
-            for player_key, player_data in players_data.items():
-                if isinstance(player_data, dict) and "player" in player_data:
-                    player = self._flatten_resource(player_data["player"])
-                    # eligible_positions is a real list (`[{"position": "QB"}, ...]`,
-                    # can carry more than one for flex-eligible players) --
-                    # `primary_position` is Yahoo's own single real value
-                    # for "this player's position", confirmed present on
-                    # the same live response.
-                    selected_position = self._flatten_resource(player.get("selected_position", {}))
-                    # Real per-player bye week -- confirmed live
-                    # (`{"bye_weeks": {"week": "14"}}` on this same player
-                    # resource, same field _get_week_lineup already reads
-                    # for its on_bye flag).
-                    bye_weeks = self._flatten_resource(player.get("bye_weeks", {}))
-                    try:
-                        bye_week = int(bye_weeks.get("week")) if bye_weeks.get("week") is not None else None
-                    except (TypeError, ValueError):
-                        bye_week = None
-
-                    players.append({
-                        "player_key": player.get("player_key"),
-                        "player_id": player.get("player_id"),
-                        "name": player.get("name", {}).get("full"),
-                        "position": player.get("primary_position") or player.get("display_position"),
-                        "team": player.get("editorial_team_abbr"),
-                        "selected_position": selected_position.get("position"),
-                        "status": player.get("status"),
-                        "bye_week": bye_week,
-                    })
+            players = self._parse_roster_players(roster_data)
 
             return {
                 "team_key": team_key,

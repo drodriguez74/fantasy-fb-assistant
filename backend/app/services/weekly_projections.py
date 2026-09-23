@@ -38,6 +38,7 @@ logger = logging.getLogger(__name__)
 # The un-versioned host path -- `/v1/projections/...` returns only empty
 # per-player stubs (confirmed live), not real projections.
 _PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}/{week}"
+_SEASON_PROJECTIONS_URL = "https://api.sleeper.app/projections/nfl/{season}"
 _POSITIONS = ("QB", "RB", "WR", "TE", "K", "DEF")
 
 # Sleeper's own standard-scoring rates behind `pts_std`, per canonical
@@ -77,8 +78,9 @@ YAHOO_EXTRA_STATS: Dict[int, Tuple[Tuple[str, ...], float]] = {
 PROJECTION_SOURCE = "Sleeper (RotoWire) weekly projection"
 
 # Projections move through the week but not minute to minute; one feed
-# fetch per (season, week) every 30 min is plenty and keeps the league
-# page's parallel requests from each re-downloading ~2MB.
+# fetch per (season, week) -- week 0 meaning full season -- every 30 min is
+# plenty and keeps the league page's parallel requests from each
+# re-downloading 1-3MB.
 _CACHE_TTL_SECONDS = 1800
 _cache: Dict[Tuple[int, int], Tuple[float, List[Dict[str, Any]]]] = {}
 
@@ -87,23 +89,33 @@ async def fetch_weekly_projections(season: int, week: int) -> List[Dict[str, Any
     """Sleeper's real weekly projections for every skill position + K/DEF.
     Returns [] on any failure -- callers treat that as "no projections",
     never as a real zero."""
-    key = (int(season), int(week))
-    cached = _cache.get(key)
+    return await _fetch(_PROJECTIONS_URL.format(season=season, week=week), (int(season), int(week)))
+
+
+async def fetch_season_projections(season: int) -> List[Dict[str, Any]]:
+    """Sleeper's real full-season projections (same row shape, season-total
+    stat lines) -- the Yahoo counterpart to ESPN's season-long
+    `projected_total_points`, used for trade values."""
+    return await _fetch(_SEASON_PROJECTIONS_URL.format(season=season), (int(season), 0))
+
+
+async def _fetch(url: str, cache_key: Tuple[int, int]) -> List[Dict[str, Any]]:
+    cached = _cache.get(cache_key)
     if cached and time.monotonic() - cached[0] < _CACHE_TTL_SECONDS:
         return cached[1]
 
     params = [("season_type", "regular")] + [("position[]", p) for p in _POSITIONS]
     try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(_PROJECTIONS_URL.format(season=season, week=week), params=params)
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, params=params)
             response.raise_for_status()
             data = response.json()
     except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as e:
-        logger.warning("Sleeper weekly projections fetch failed (%s wk %s): %s", season, week, e)
+        logger.warning("Sleeper projections fetch failed (%s): %s", url, e)
         return []
 
     rows = [r for r in data if isinstance(r, dict) and isinstance(r.get("stats"), dict)] if isinstance(data, list) else []
-    _cache[key] = (time.monotonic(), rows)
+    _cache[cache_key] = (time.monotonic(), rows)
     return rows
 
 
