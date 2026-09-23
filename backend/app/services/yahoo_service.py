@@ -820,33 +820,221 @@ class YahooFantasyService:
             matchups = []
             league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
             scoreboard = self._flatten_resource(league_data.get("scoreboard", {}))
-            matchups_data = scoreboard.get("matchups", {})
+            # The real matchups collection is nested under a numeric "0"
+            # sub-key alongside scoreboard's own "week" attr -- same
+            # coverage-instance-indexing quirk as roster["0"]["players"].
+            # Confirmed live 2026-09-23 (this call previously always
+            # returned []).
+            matchups_data = scoreboard.get("0", {}).get("matchups", {})
 
             for matchup_key, matchup_data in matchups_data.items():
                 if isinstance(matchup_data, dict) and "matchup" in matchup_data:
                     matchup = self._flatten_resource(matchup_data["matchup"])
-                    teams = matchup.get("teams", {})
+                    # Real teams collection is likewise nested under "0",
+                    # not a direct "teams" key on the matchup.
+                    teams = matchup.get("0", {}).get("teams", {})
 
                     team1 = self._flatten_resource(teams.get("0", {}).get("team", {}))
                     team2 = self._flatten_resource(teams.get("1", {}).get("team", {}))
+                    team1_points = self._flatten_resource(team1.get("team_points", {}))
+                    team2_points = self._flatten_resource(team2.get("team_points", {}))
 
                     matchups.append({
                         "week": week,
                         "team1": {
                             "team_key": team1.get("team_key"),
                             "name": team1.get("name"),
-                            "points": team1.get("team_points", {}).get("total")
+                            "points": team1_points.get("total")
                         },
                         "team2": {
                             "team_key": team2.get("team_key"),
                             "name": team2.get("name"),
-                            "points": team2.get("team_points", {}).get("total")
+                            "points": team2_points.get("total")
                         }
                     })
 
             return matchups
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get matchups: {self._error_detail(e)}"}]
+
+    async def get_week_matchup(
+        self, access_token: str, league_key: str, team_key: str, week: int
+    ) -> Dict[str, Any]:
+        """Real weekly matchup for one Yahoo team -- the Yahoo equivalent of
+        espn_service_enhanced.get_week_matchup, which this_week_service.py
+        builds the "This Week" screen from. Matches its shape as closely
+        as Yahoo's real API allows, with one real, confirmed gap: Yahoo's
+        public API exposes real TEAM-level `team_projected_points` (its
+        own server-computed weekly projection) and real `win_probability`
+        per matchup, but genuinely no real PER-PLAYER projected points
+        anywhere (checked live: `player_stats`/`player_points` sub-
+        resources only ever carry real ACTUAL stats, never a projection;
+        `;out=stats` on a roster 400s; confirmed 2026-09-23). Every
+        player's `projected_points` here is honestly `None` --
+        this_week_service.py's YAHOO branch must not run ESPN's
+        points-only optimizer/start-sit logic against it, since an
+        all-None-projection "optimization" would be meaningless, not
+        real. `on_bye` IS real (Yahoo's own `bye_weeks.week` vs. the
+        requested week); `pro_opponent` is honestly None -- not exposed
+        on this resource.
+        """
+        if not access_token:
+            return {"error": "Not authenticated"}
+
+        try:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            url = f"{self.base_url}/league/{league_key}/scoreboard;week={week}"
+
+            response = await self.client.get(url, headers=headers, params={"format": "json"})
+            response.raise_for_status()
+
+            data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+
+            league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
+            scoreboard = self._flatten_resource(league_data.get("scoreboard", {}))
+            matchups_data = scoreboard.get("0", {}).get("matchups", {})
+
+            my_team_raw = None
+            opp_team_raw = None
+            for matchup_key, matchup_data in matchups_data.items():
+                if not (isinstance(matchup_data, dict) and "matchup" in matchup_data):
+                    continue
+                matchup = self._flatten_resource(matchup_data["matchup"])
+                teams = matchup.get("0", {}).get("teams", {})
+                team_entries = [
+                    self._flatten_resource(t.get("team", {}))
+                    for t in teams.values()
+                    if isinstance(t, dict) and "team" in t
+                ]
+                mine = next((t for t in team_entries if t.get("team_key") == team_key), None)
+                if mine:
+                    my_team_raw = mine
+                    opp_team_raw = next((t for t in team_entries if t.get("team_key") != team_key), None)
+                    break
+
+            if not my_team_raw:
+                return {"error": "No matchup found for this team this week"}
+
+            def _team_summary(t: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+                if not t:
+                    return {"team_id": None, "team_name": "Bye", "live_score": 0.0, "projected_score": 0.0}
+                points = self._flatten_resource(t.get("team_points", {}))
+                projected = self._flatten_resource(t.get("team_projected_points", {}))
+                try:
+                    live = round(float(points.get("total") or 0.0), 1)
+                except (TypeError, ValueError):
+                    live = 0.0
+                try:
+                    proj = round(float(projected.get("total") or 0.0), 1)
+                except (TypeError, ValueError):
+                    proj = 0.0
+                return {
+                    "team_id": t.get("team_id"),
+                    "team_name": t.get("name"),
+                    "live_score": live,
+                    "projected_score": proj,
+                }
+
+            win_probability = my_team_raw.get("win_probability")
+            try:
+                win_probability = float(win_probability) if win_probability is not None else None
+            except (TypeError, ValueError):
+                win_probability = None
+
+            my_lineup = await self._get_week_lineup(access_token, team_key, week)
+            opponent_lineup = (
+                await self._get_week_lineup(access_token, opp_team_raw["team_key"], week)
+                if opp_team_raw and opp_team_raw.get("team_key")
+                else []
+            )
+
+            return {
+                "week": week,
+                "my_team": _team_summary(my_team_raw),
+                "opponent": _team_summary(opp_team_raw),
+                "win_probability": win_probability,
+                "my_lineup": my_lineup,
+                "opponent_lineup": opponent_lineup,
+            }
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            return {"error": f"Failed to get week matchup: {self._error_detail(e)}"}
+
+    async def _get_week_lineup(self, access_token: str, team_key: str, week: int) -> List[Dict[str, Any]]:
+        """Real per-player weekly lineup for one Yahoo team: real name/
+        position/team/selected_position(slot)/status/actual points-so-far
+        (player_points) and a real on_bye flag (bye_weeks.week == week).
+        `projected_points` is honestly None -- see get_week_matchup's
+        docstring for why. Never raises; a fetch failure degrades to an
+        empty lineup (same best-effort pattern as this file's other
+        internal helpers), since a missing lineup for one side shouldn't
+        break the whole matchup view.
+        """
+        try:
+            headers = {"Authorization": f"Bearer {access_token}"}
+            url = f"{self.base_url}/team/{team_key}/roster;week={week}/players/stats"
+            response = await self.client.get(url, headers=headers, params={"format": "json"})
+            response.raise_for_status()
+        except (httpx.RequestError, httpx.HTTPStatusError):
+            return []
+
+        data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+        team_data_flat = self._flatten_resource(data.get("fantasy_content", {}).get("team", {}))
+        roster_data = self._flatten_resource(team_data_flat.get("roster", {}))
+        players_data = roster_data.get("0", {}).get("players", {})
+
+        lineup: List[Dict[str, Any]] = []
+        for player_key, player_data in players_data.items():
+            if not (isinstance(player_data, dict) and "player" in player_data):
+                continue
+            player = self._flatten_resource(player_data["player"])
+
+            selected_position = self._flatten_resource(player.get("selected_position", {}))
+            slot = (selected_position.get("position") or "").upper()
+
+            player_points = self._flatten_resource(player.get("player_points", {}))
+            try:
+                points = round(float(player_points.get("total") or 0.0), 1)
+            except (TypeError, ValueError):
+                points = 0.0
+
+            bye_weeks = self._flatten_resource(player.get("bye_weeks", {}))
+            try:
+                on_bye = str(bye_weeks.get("week")) == str(week)
+            except Exception:  # noqa: BLE001 - defensive, never fabricate a bye
+                on_bye = False
+
+            eligible_positions = player.get("eligible_positions") or []
+            eligible_slots = [
+                e.get("position") for e in eligible_positions if isinstance(e, dict) and e.get("position")
+            ]
+
+            lineup.append({
+                "player_id": player.get("player_id"),
+                "name": player.get("name", {}).get("full"),
+                "position": player.get("primary_position") or player.get("display_position"),
+                "slot_position": slot,
+                "team": player.get("editorial_team_abbr"),
+                # Not exposed on this resource -- honestly omitted rather
+                # than guessed.
+                "pro_opponent": None,
+                "injury_status": player.get("status") or "ACTIVE",
+                # No real per-player projection exists in Yahoo's public
+                # API -- see get_week_matchup's docstring. None (not 0),
+                # so callers can tell "no data" apart from "real zero".
+                "projected_points": None,
+                "points": points,
+                # Best-effort, derived from real signals only (never
+                # fabricated): a nonzero real score means the game has
+                # started/finished. A genuine 0-point game in progress or
+                # already finished can't be told apart from "hasn't
+                # played" this way -- an honest limitation, not a claim
+                # of certainty.
+                "game_played": 100 if points else 0,
+                "on_bye": on_bye,
+                "eligible_slots": eligible_slots,
+            })
+
+        return lineup
 
     async def close(self):
         """Close the HTTP client"""

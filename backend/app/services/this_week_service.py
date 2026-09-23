@@ -4,17 +4,31 @@ Bundles the real weekly matchup box score, both teams' records/standings,
 and a deterministic lineup-optimizer pass into one payload for
 GET /leagues/{id}/this-week.
 
-ESPN only today -- it is the only fully-wired platform (see
-espn_service_enhanced + CLAUDE.md "Multi-platform league integration").
-Other platforms get an honest `platform_supported: False` response rather
-than fabricated numbers, matching the pattern in
-leagues.py::get_roster_analysis.
+ESPN and Yahoo both real today (see espn_service_enhanced /
+yahoo_service + CLAUDE.md "Multi-platform league integration"). Sleeper
+gets an honest `platform_supported: False` response rather than
+fabricated numbers, matching the pattern in leagues.py::get_roster_analysis
+-- Sleeper's API exposes no real per-week box score at all (unlike ESPN
+and Yahoo, both of which do).
+
+ESPN and Yahoo are NOT full parity with each other on this screen: ESPN
+exposes a real per-player weekly PROJECTED points number
+(BoxPlayer.projected_points); Yahoo's public API genuinely does not
+(confirmed live 2026-09-23 -- see yahoo_service.get_week_matchup's
+docstring). The optimizer (`optimize_lineup`) and start/sit confidence
+(`start_sit_confidence`) both require a real per-player projection to
+mean anything, so the YAHOO branch below skips both rather than run
+them against all-None projections and produce a meaningless "optimal"
+claim -- the matchup scoreboard, real lineup, real team-level projected
+totals, and real win probability are all still real and shown.
 """
 import asyncio
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
+from app.services.yahoo_service import yahoo_service
 
 BENCH_SLOTS = {"BE", "IR", "BENCH"}
 # ESPN flex slot labels that accept any RB/WR/TE.
@@ -222,13 +236,17 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
         "league_size": league.league_size,
     }
 
+    if league_info["platform"] == "YAHOO":
+        return await _build_yahoo_this_week(league, league_info)
+
     if league_info["platform"] != "ESPN":
         return {
             "league_info": league_info,
             "platform_supported": False,
             "detail": (
-                f"The This Week screen is only available for ESPN leagues today. "
-                f"{league_info['platform']} support is tracked as a follow-up."
+                f"The This Week screen is only available for ESPN and Yahoo "
+                f"leagues today. {league_info['platform']} support is tracked "
+                f"as a follow-up."
             ),
         }
 
@@ -323,4 +341,128 @@ async def build_this_week(league: UserLeague) -> Dict[str, Any]:
         "optimization": optimization,
         "starter_injuries": injury_flags,
         "start_sit": start_sit,
+    }
+
+
+async def _build_yahoo_this_week(league: UserLeague, league_info: Dict[str, Any]) -> Dict[str, Any]:
+    """Yahoo's real "This Week": real opponent, real team-level projected
+    totals + win probability, real lineup with real actual points-so-far.
+
+    NOT real (Yahoo's public API genuinely doesn't expose it -- see
+    yahoo_service.get_week_matchup's docstring): per-player projected
+    points. `optimization` and `start_sit` are both honestly `None`
+    rather than computed against fabricated/zeroed projections --
+    LeagueDetailPage.tsx must render that as "not available for this
+    platform", never as "already optimal" (a different, false claim).
+    """
+    if not league.team_id:
+        return {
+            "league_info": league_info,
+            "platform_supported": True,
+            "detail": (
+                "Your team isn't identified for this league yet. Please "
+                "reconnect your Yahoo account to auto-detect it, or set it "
+                "from league settings."
+            ),
+        }
+
+    if not league.yahoo_access_token:
+        return {
+            "league_info": league_info,
+            "platform_supported": True,
+            "detail": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account.",
+        }
+    # yahoo_token_expires_at is a timezone-aware DB column; comparing it
+    # against a naive datetime.utcnow() raises "can't compare
+    # offset-naive and offset-aware datetimes" -- the exact same bug
+    # class already fixed in league_management_service.py /
+    # league_snapshots.py / user_service.py's account-lockout check.
+    if (
+        league.yahoo_token_expires_at
+        and league.yahoo_token_expires_at < datetime.now(timezone.utc)
+    ):
+        return {
+            "league_info": league_info,
+            "platform_supported": True,
+            "detail": "Your Yahoo connection has expired. Please reconnect your Yahoo account.",
+        }
+
+    access_token = league.yahoo_access_token
+    team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
+    if not team_key:
+        return {
+            "league_info": league_info,
+            "platform_supported": True,
+            "detail": "Your team isn't identified for this league yet. Set it from league settings.",
+        }
+
+    yahoo_league_info = await yahoo_service.get_league_info(access_token, league.league_key)
+    week = yahoo_league_info.get("current_week") if "error" not in yahoo_league_info else None
+    try:
+        week = int(week) if week is not None else None
+    except (TypeError, ValueError):
+        week = None
+    if week is None:
+        return {
+            "league_info": league_info,
+            "platform_supported": True,
+            "detail": "This week's matchup isn't available yet.",
+        }
+
+    matchup = await yahoo_service.get_week_matchup(access_token, league.league_key, team_key, week)
+    if "error" in matchup:
+        return {
+            "league_info": league_info,
+            "platform_supported": True,
+            "detail": (
+                "Your Yahoo connection is missing or has expired, or this week's "
+                "matchup isn't posted yet. Reconnect Yahoo and try again."
+            ),
+        }
+
+    my = matchup["my_team"]
+    opp = matchup["opponent"]
+    projected_margin = round((my.get("projected_score") or 0.0) - (opp.get("projected_score") or 0.0), 1)
+
+    lineup = matchup.get("my_lineup", [])
+    opponent_lineup = matchup.get("opponent_lineup", [])
+
+    injury_flags = [
+        {
+            "name": p.get("name"),
+            "position": p.get("position"),
+            "status": p.get("injury_status"),
+        }
+        for p in lineup
+        if _is_starter(p) and (p.get("injury_status") or "").upper() not in HEALTHY_STATUSES
+    ]
+
+    return {
+        "league_info": league_info,
+        "platform_supported": True,
+        "week": matchup.get("week"),
+        "matchup": {
+            "my_team": my,
+            "opponent": opp,
+            "projected_margin": projected_margin,
+            "favored": "my_team" if projected_margin > 0 else ("opponent" if projected_margin < 0 else "even"),
+            # Yahoo's own real server-computed win probability for this
+            # matchup -- ESPN's branch above has no equivalent field, so
+            # this is Yahoo-only, not a parity gap in the other direction.
+            "win_probability": matchup.get("win_probability"),
+        },
+        "lineup": lineup,
+        "opponent_lineup": opponent_lineup,
+        # Honestly unavailable -- see this function's docstring. Not `{}`
+        # or an empty-swaps dict, which would render as "already
+        # optimal", a real (false) claim this data can't support.
+        "optimization": None,
+        "starter_injuries": injury_flags,
+        "start_sit": [],
+        "projection_note": (
+            "Yahoo doesn't provide per-player projected points, so lineup "
+            "optimization and start/sit confidence aren't available for "
+            "this league -- real matchup totals and win probability are "
+            "Yahoo's own."
+        ),
     }

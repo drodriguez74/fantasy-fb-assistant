@@ -13,6 +13,7 @@ import {
   ArrowLeftIcon,
   ExclamationTriangleIcon,
   CheckCircleIcon,
+  InformationCircleIcon,
   ClockIcon,
   FireIcon,
   StarIcon,
@@ -217,20 +218,30 @@ interface ThisWeekData {
     opponent: ThisWeekMatchupSide
     projected_margin: number
     favored: 'my_team' | 'opponent' | 'even'
+    // Yahoo's own real server-computed win probability for this matchup
+    // -- ESPN has no equivalent field, so this is Yahoo-only.
+    win_probability?: number | null
   }
   lineup?: ThisWeekPlayer[]
   // The opponent's real lineup for this same matchup (same shape as
   // `lineup`) -- powers the side-by-side H2H view. Real ESPN box-score
   // data, same source as `lineup`.
   opponent_lineup?: ThisWeekPlayer[]
+  // `null` (not just an empty-swaps object) on platforms -- Yahoo today
+  // -- where no real per-player projection exists to optimize against;
+  // distinct from a real "already optimal" result (swaps: []).
   optimization?: {
     current_projected: number
     optimized_projected: number
     points_gained: number
     swaps: ThisWeekSwap[]
-  }
+  } | null
   starter_injuries?: { name: string; position?: string; status?: string }[]
   start_sit?: StartSitCall[]
+  // Present (and only meaningful) when optimization/start_sit are
+  // honestly unavailable for this platform -- explains why, e.g. Yahoo's
+  // lack of real per-player projections.
+  projection_note?: string
   _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
 }
 
@@ -1016,28 +1027,49 @@ export function LeagueDetailPage() {
                       {m.favored === 'even' ? 'EVEN MATCHUP' : ''}
                     </span>
                   </div>
+                  {/* Yahoo's own real server-computed win probability --
+                      no ESPN equivalent field, so this only ever renders
+                      for a Yahoo league. */}
+                  {m.win_probability != null && (
+                    <div className="text-center mt-1">
+                      <span className="stat-nums text-[10px] text-faint">
+                        {Math.round(m.win_probability * 100)}% win probability (platform-computed)
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* OPTIMIZE ACTION */}
               <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between px-4 sm:px-6 py-4 border-t border-hairline bg-surface-2">
-                <div className="flex items-center gap-3">
-                  <button
-                    onClick={() => setShowOptimal((v) => !v)}
-                    className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-volt text-sm font-medium"
-                  >
-                    <BoltIcon className="h-4 w-4" />
-                    <span>{showOptimal ? 'Hide optimal lineup' : 'Optimize lineup'}</span>
-                  </button>
+                {opt ? (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => setShowOptimal((v) => !v)}
+                        className="bg-volt text-volt-ink px-4 py-2 rounded-md hover:bg-volt-dark transition-colors flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-volt text-sm font-medium"
+                      >
+                        <BoltIcon className="h-4 w-4" />
+                        <span>{showOptimal ? 'Hide optimal lineup' : 'Optimize lineup'}</span>
+                      </button>
+                      <span className="stat-nums text-xs text-muted">
+                        {opt.swaps.length > 0 ? (
+                          <>Found <span className="text-accent-ink">{opt.swaps.length} upgrade{opt.swaps.length > 1 ? 's' : ''}</span> &mdash; projected <span className="text-accent-ink">+{opt.points_gained.toFixed(1)} pts</span> ({opt.current_projected.toFixed(1)} &rarr; {opt.optimized_projected.toFixed(1)})</>
+                        ) : (
+                          <>Your lineup is already the highest-projecting legal set ({opt.current_projected.toFixed(1)} pts).</>
+                        )}
+                      </span>
+                    </div>
+                    <DataConfidenceBadge level="computed" label={`${thisWeek.league_info?.platform || 'ESPN'} weekly proj`} />
+                  </>
+                ) : (
+                  // No optimizer button at all when there's nothing real to
+                  // toggle -- a disabled-looking action here would imply
+                  // one exists and just isn't ready, which isn't the case.
                   <span className="stat-nums text-xs text-muted">
-                    {opt && opt.swaps.length > 0 ? (
-                      <>Found <span className="text-accent-ink">{opt.swaps.length} upgrade{opt.swaps.length > 1 ? 's' : ''}</span> &mdash; projected <span className="text-accent-ink">+{opt.points_gained.toFixed(1)} pts</span> ({opt.current_projected.toFixed(1)} &rarr; {opt.optimized_projected.toFixed(1)})</>
-                    ) : (
-                      <>Your lineup is already the highest-projecting legal set ({opt?.current_projected.toFixed(1)} pts).</>
-                    )}
+                    {thisWeek.projection_note || 'Lineup optimization isn’t available for this platform.'}
                   </span>
-                </div>
-                <DataConfidenceBadge level="computed" label="ESPN weekly proj" />
+                )}
               </div>
             </div>
 
@@ -1141,7 +1173,7 @@ export function LeagueDetailPage() {
                       </div>
                     </div>
                   ))
-                ) : (
+                ) : opt ? (
                   <div className="border border-hairline bg-surface rounded-lg p-4">
                     <div className="flex items-center gap-2">
                       <CheckCircleIcon className="h-4 w-4 text-success-500" />
@@ -1149,6 +1181,20 @@ export function LeagueDetailPage() {
                     </div>
                     <p className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">
                       No bench player out-projects a current starter at a slot they&apos;re eligible for.
+                    </p>
+                  </div>
+                ) : (
+                  // opt === null: not a real "already optimal" result --
+                  // this platform (Yahoo today) has no real per-player
+                  // projection to optimize against at all. Distinct
+                  // message so this never reads as a false all-clear.
+                  <div className="border border-hairline bg-surface rounded-lg p-4">
+                    <div className="flex items-center gap-2">
+                      <InformationCircleIcon className="h-4 w-4 text-faint" />
+                      <span className="text-sm font-medium text-body">Optimizer not available</span>
+                    </div>
+                    <p className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">
+                      {thisWeek.projection_note || 'This platform doesn’t expose real per-player weekly projections, so lineup optimization isn’t available.'}
                     </p>
                   </div>
                 )}
