@@ -17,6 +17,7 @@ from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.yahoo_tokens import get_valid_yahoo_token
+from app.services.weekly_projections import attach_projections, fetch_season_projections
 from app.services.sleeper_service import sleeper_service
 from app.services.roster_grading import grade_roster
 from app.services.this_week_service import build_this_week as _build_this_week
@@ -227,13 +228,12 @@ async def _build_yahoo_roster_analysis_snapshot(
 ) -> Dict[str, Any]:
     """Real Yahoo roster composition + grade.
 
-    Mirrors the Sleeper builder above: Yahoo's own `get_team_roster` (see
-    yahoo_service.py) already returns real per-player name/position/team/
-    selected_position/status, but no real per-player weekly or season
-    projection (unlike ESPN's server-computed `projected_total_points`) --
-    `projected_points` is honestly left at 0.0 rather than inventing one,
-    same tradeoff already accepted for Sleeper. `grade_roster` degrades
-    gracefully to composition-only grading in that case.
+    Yahoo's own `get_team_roster` returns real per-player name/position/
+    team/selected_position/status but no projection. Season projections
+    come from Sleeper's feed scored with this league's rules (the same
+    values Yahoo trade suggestions use), so the grade covers starter
+    quality like ESPN's. If that feed is unavailable, `projected_points`
+    stays 0.0 and `grade_roster` falls back to composition-only grading.
     """
     if not user_league.team_id:
         return {
@@ -285,6 +285,27 @@ async def _build_yahoo_roster_analysis_snapshot(
         }
         for p in raw_players
     ]
+    league_settings = None
+    yahoo_settings, season_rows = await asyncio.gather(
+        yahoo_service.get_league_settings(access_token, user_league.league_key),
+        fetch_season_projections(user_league.season),
+    )
+    if "error" in yahoo_settings:
+        yahoo_settings = {}
+    if yahoo_settings.get("starters"):
+        league_settings = {"starters": yahoo_settings["starters"]}
+
+    # Season projections (Sleeper's, scored with this league's Yahoo rules
+    # -- see weekly_projections.py) let grade_roster rate starter quality,
+    # not just composition, like ESPN's. Unmatched players stay at 0.0.
+    projection_source = None
+    if season_rows:
+        attach_projections(players, season_rows, yahoo_settings.get("scoring_rules"), yahoo_settings.get("stat_values"))
+        for p in players:
+            if p["projected_points"] is None:
+                p["projected_points"] = 0.0
+        projection_source = "Sleeper season projection, scored with your league's rules"
+
     starting_lineup = [p for p in players if p["lineup_slot"] not in ("BE", "IR")]
     bench_players = [p for p in players if p["lineup_slot"] in ("BE", "IR")]
 
@@ -293,12 +314,6 @@ async def _build_yahoo_roster_analysis_snapshot(
         for p in players
         if (p["injury_status"] or "").upper() not in _HEALTHY_STATUSES
     ]
-
-    league_settings = None
-    if user_league.league_key:
-        yahoo_settings = await yahoo_service.get_league_settings(access_token, user_league.league_key)
-        if "error" not in yahoo_settings and yahoo_settings.get("starters"):
-            league_settings = {"starters": yahoo_settings["starters"]}
 
     grading = grade_roster(players, league_settings)
 
@@ -329,9 +344,18 @@ async def _build_yahoo_roster_analysis_snapshot(
             "overall_grade": {
                 "grade": grading["grade"],
                 "score": grading["composition_score"],
-                "description": "Composition grade based on this league's real roster-slot requirements. No real per-player projection is available from Yahoo's roster data, so this reflects real roster construction only, not player quality.",
+                "description": (
+                    "Composition grade based on this league's real roster-slot requirements. "
+                    "Starter quality uses Sleeper's season projections scored with your league's rules "
+                    "(Yahoo doesn't publish per-player projections)."
+                    if projection_source else
+                    "Composition grade based on this league's real roster-slot requirements. Season "
+                    "projections couldn't be loaded, so this reflects real roster construction only, "
+                    "not player quality."
+                ),
                 "player_count": len(players),
             },
+            "projection_source": projection_source,
             "strengths_weaknesses": {
                 "strengths": grading["strengths"],
                 "weaknesses": grading["weaknesses"],

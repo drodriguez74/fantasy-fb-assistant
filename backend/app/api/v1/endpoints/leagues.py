@@ -597,7 +597,7 @@ async def get_matchup_history(
 ):
     """This team's real result every week of the season so far -- the
     season schedule/history view. Distinct from /this-week (the live box
-    score for the CURRENT week only). ESPN only today.
+    score for the CURRENT week only). ESPN and Yahoo.
     """
     try:
         user_service = UserService(db)
@@ -862,9 +862,10 @@ async def get_this_week(
 
     Real weekly box-score matchup (both projected scores + every starter's
     weekly projection and pro opponent), both teams' standings records, and
-    a deterministic lineup-optimizer pass. ESPN only today -- other
-    platforms get an honest `platform_supported: false` rather than
-    fabricated data (see this_week_service).
+    a deterministic lineup-optimizer pass. ESPN and Yahoo (Yahoo's
+    per-player projections come from Sleeper -- see this_week_service);
+    Sleeper gets an honest `platform_supported: false` rather than
+    fabricated data.
     """
     try:
         user_service = UserService(db)

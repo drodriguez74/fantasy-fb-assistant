@@ -182,7 +182,7 @@ def _identify_strengths_weaknesses(
     intentionally distinct from the quality question. Falls back to
     `_FALLBACK_STARTERS` when no real per-league requirements are supplied.
 
-    `projected_points`, when real (ESPN only today -- see NFL_SEASON_GAMES's
+    `projected_points`, when real (ESPN; Yahoo via Sleeper season projections -- see NFL_SEASON_GAMES's
     docstring in grading.py), is a season-long total; divided by
     NFL_SEASON_GAMES before comparing against these weekly-shaped
     thresholds.

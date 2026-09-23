@@ -109,3 +109,39 @@ def test_yahoo_position_pressure_uses_league_rosters(monkeypatch):
     rb = out["position_pressure"]["RB"]
     assert rb["this_week"]["team_names"] == ["Thin"]
     assert rb["level"] == "high"
+
+
+def test_yahoo_roster_grade_uses_season_projections(monkeypatch):
+    async def token(ul):
+        return "tok"
+
+    async def roster(tok, team_key):
+        return {"players": [
+            {"name": "Josh Allen", "position": "QB", "team": "Buf", "selected_position": "QB", "status": None},
+            {"name": "Nobody Known", "position": "WR", "team": "Sea", "selected_position": "BN", "status": None},
+        ]}
+
+    async def settings(tok, key):
+        return {"starters": {"QB": 1}, "scoring_rules": None, "stat_values": {}}
+
+    async def teams(tok, key):
+        return [{"team_id": "1", "name": "Mine", "manager": "me"}]
+
+    async def season(s):
+        return [{"player": {"first_name": "Josh", "last_name": "Allen", "position": "QB", "team": "BUF"},
+                 "team": "BUF", "stats": {"pts_std": 350.0}}]
+
+    monkeypatch.setattr(league_snapshots, "_require_yahoo_token", token)
+    monkeypatch.setattr(yahoo_service, "get_team_roster", roster)
+    monkeypatch.setattr(yahoo_service, "get_league_settings", settings)
+    monkeypatch.setattr(yahoo_service, "get_league_teams", teams)
+    monkeypatch.setattr(league_snapshots, "fetch_season_projections", season)
+
+    ul = UserLeague(id=1, user_id=1, platform=PlatformType.YAHOO, league_id="1", league_key="461.l.1",
+                    team_id="1", season=2026)
+    ra = asyncio.run(league_snapshots.build_roster_analysis_snapshot(ul))["roster_analysis"]
+
+    by_name = {p["name"]: p["projected_points"] for p in ra["players"]}
+    assert by_name == {"Josh Allen": 350.0, "Nobody Known": 0.0}
+    assert ra["projection_source"]
+    assert "Sleeper's season projections" in ra["overall_grade"]["description"]
