@@ -7,7 +7,8 @@ test_league_management_service.py's docstring for the Yahoo-only history).
 This mirrors that file's patterns against the new ESPN helpers
 (_analyze_espn_roster, _analyze_espn_matchup, _get_espn_league_standings,
 _get_espn_waiver_recs, _get_espn_trade_recommendations), monkeypatching
-espn_service_enhanced instead of yahoo_service.
+espn_service_enhanced instead of yahoo_service. Waiver/trade logic itself
+is tested in test_league_value_model.py.
 """
 
 from unittest.mock import AsyncMock
@@ -108,6 +109,10 @@ class TestEspnComprehensiveAnalysisRouting:
         monkeypatch.setattr(lms_module.espn_service_enhanced, "get_standings", fake_get_standings)
         monkeypatch.setattr(lms_module.espn_service_enhanced, "get_league_teams", fake_get_league_teams)
         monkeypatch.setattr(lms_module.ai_service, "_generate_with_fallback", fake_generate_with_fallback)
+        # Waiver/trade advice has its own tests (test_league_value_model.py);
+        # this test is about routing.
+        monkeypatch.setattr(lms_module, "build_waiver_advice", AsyncMock(return_value={"recommendations": []}))
+        monkeypatch.setattr(lms_module, "build_trade_advice", AsyncMock(return_value={"suggestions": []}))
 
         service = LeagueManagementService(test_db_session)
         result = await service.get_comprehensive_league_analysis(user_id=1, league_id=league.id)
@@ -287,49 +292,68 @@ class TestEspnMatchupTeamShapeHandling:
 
 
 class TestEspnTradeRecommendationsAreRosterGrounded:
-    """_get_espn_trade_recommendations used to ask the AI to invent 3
-    scenarios knowing only `len(teams)` -- pure fabrication. It must now run
-    the real trade_finder_service over real rosters and never touch the AI.
-    """
+    """ESPN trade suggestions come from league_value_model over real ESPN
+    rosters -- never the AI -- and only when both lineups improve."""
+
+    @staticmethod
+    def _fake_espn(monkeypatch, teams):
+        async def get_league_teams(**kwargs):
+            return teams
+
+        async def get_available_players(**kwargs):
+            return []
+
+        async def get_settings(**kwargs):
+            return {"starters": {"RB": 1, "WR": 1}}
+
+        async def get_info(**kwargs):
+            return {"current_week": 3, "trade_deadline": "2026-11-25"}
+
+        monkeypatch.setattr(lms_module.espn_service_enhanced, "get_league_teams", get_league_teams)
+        monkeypatch.setattr(lms_module.espn_service_enhanced, "get_available_players", get_available_players)
+        monkeypatch.setattr(lms_module.espn_service_enhanced, "get_scoring_and_roster_settings", get_settings)
+        monkeypatch.setattr(lms_module.espn_service_enhanced, "get_league_info", get_info)
+        from app.services import league_value_data
+        monkeypatch.setattr(league_value_data, "_trending_by_name", AsyncMock(return_value={}))
 
     @pytest.mark.asyncio
     async def test_real_suggestion_uses_only_rostered_players(self, test_db_session, monkeypatch):
         league = make_espn_league()
 
-        async def fake_get_league_teams(**kwargs):
-            return [
-                {
-                    "team_id": 1,
-                    "team_name": "My Team",
-                    "roster": [
-                        {"name": "My Weak RB", "position": "RB", "lineup_slot": "RB", "projected_points": 8.0},
-                        {"name": "My Surplus WR", "position": "WR", "lineup_slot": "BE", "projected_points": 14.0},
-                    ],
-                },
-                {
-                    "team_id": 2,
-                    "team_name": "Rival Team",
-                    "roster": [
-                        {"name": "Their Weak WR", "position": "WR", "lineup_slot": "WR", "projected_points": 7.0},
-                        {"name": "Their Bench RB", "position": "RB", "lineup_slot": "BE", "projected_points": 15.0},
-                    ],
-                },
-            ]
+        def p(pid, name, pos, slot, pts):
+            return {"player_id": pid, "name": name, "position": pos, "lineup_slot": slot,
+                    "projected_points": pts, "injury_status": "ACTIVE", "stats": {}}
+
+        # I have two good WRs and a weak RB; they have two good RBs and a
+        # weak WR -- the swap improves both starting lineups.
+        self._fake_espn(monkeypatch, [
+            {"team_id": 1, "team_name": "My Team", "roster": [
+                p(1, "My Weak RB", "RB", "RB", 100.0),
+                p(2, "My WR1", "WR", "WR", 250.0),
+                p(3, "My Surplus WR", "WR", "BE", 220.0),
+            ]},
+            {"team_id": 2, "team_name": "Rival Team", "roster": [
+                p(4, "Their Weak WR", "WR", "WR", 90.0),
+                p(5, "Their RB1", "RB", "RB", 260.0),
+                p(6, "Their Bench RB", "RB", "BE", 210.0),
+            ]},
+        ])
 
         def fail_if_called(*_a, **_k):
             raise AssertionError("trade recommendations must not call the AI")
 
-        monkeypatch.setattr(lms_module.espn_service_enhanced, "get_league_teams", fake_get_league_teams)
         monkeypatch.setattr(lms_module.ai_service, "_generate_with_fallback", fail_if_called)
 
-        service = LeagueManagementService(test_db_session)
-        result = await service._get_espn_trade_recommendations(league)
+        result = await LeagueManagementService(test_db_session)._get_espn_trade_recommendations(league)
 
         assert "error" not in result
-        assert len(result["suggestions"]) == 1
         s = result["suggestions"][0]
-        assert s["you_receive"]["name"] == "Their Bench RB"
+        # My surplus WR for one of their RBs -- the deal that most improves
+        # both lineups (their RB1: their WR hole is worth more to them).
         assert s["you_send"]["name"] == "My Surplus WR"
+        assert s["you_receive"]["name"] in ("Their RB1", "Their Bench RB")
+        assert s["my_gain"] > 0 and s["their_gain"] > 0
+        assert result["trade_deadline"] == "2026-11-25"
 
     @pytest.mark.asyncio
     async def test_missing_team_id_returns_honest_error(self, test_db_session):
@@ -341,14 +365,9 @@ class TestEspnTradeRecommendationsAreRosterGrounded:
     @pytest.mark.asyncio
     async def test_league_teams_fetch_error_becomes_reconnect_message(self, test_db_session, monkeypatch):
         league = make_espn_league()
+        self._fake_espn(monkeypatch, [{"error": "bad credentials"}])
 
-        async def fake_get_league_teams(**kwargs):
-            return [{"error": "bad credentials"}]
-
-        monkeypatch.setattr(lms_module.espn_service_enhanced, "get_league_teams", fake_get_league_teams)
-
-        service = LeagueManagementService(test_db_session)
-        result = await service._get_espn_trade_recommendations(league)
+        result = await LeagueManagementService(test_db_session)._get_espn_trade_recommendations(league)
 
         assert "error" in result
         assert "reconnect" in result["error"].lower()

@@ -81,9 +81,19 @@ interface WaiverRecommendationItem {
     name: string
     position?: { value?: string }
     projected_points?: number
+    week_projection?: number
+    team?: string
+    ownership_percentage?: number | null
+    trending_adds?: number
   }
   reason?: string
   priority?: number
+  // league_value_model: "upgrade" (improves your team for the season),
+  // "streamer" (this week only), "watch" (best available at a weak spot,
+  // not yet a clear upgrade).
+  kind?: 'upgrade' | 'streamer' | 'watch'
+  season_gain?: number
+  week_gain?: number
   // Real answer to "at whose expense" -- the actual weakest bench player
   // at this position (or another FLEX-eligible one) on your real ESPN
   // roster, and the resulting real season-projected-points swing. null
@@ -107,9 +117,20 @@ interface WaiverRecommendationItem {
   } | null
 }
 
+interface TeamNeed {
+  position: string
+  my_starter_avg: number
+  league_median: number | null
+  rank: number
+  teams: number
+}
+
 interface WaiverRecommendation {
   recommendations: WaiverRecommendationItem[]
   position_needs: Record<string, number>
+  team_needs?: TeamNeed[]
+  watch_only?: boolean
+  basis?: string
   total_available: number
   updated_at: string
 }
@@ -127,7 +148,12 @@ interface TradeSuggestion {
   team_id?: number
   team_name?: string
   you_send?: TradePlayerRef
+  // Every player sent (2-for-1 deals); you_send is the first of these.
+  you_send_players?: TradePlayerRef[]
   you_receive?: TradePlayerRef
+  // Season team-value change for each side (league_value_model).
+  my_gain?: number
+  their_gain?: number
   value_ratio?: number
   // Legacy AI-generated scenario shape -- no backend path produces it any
   // more; kept so an old cached response still renders.
@@ -144,6 +170,7 @@ interface TradeRecommendation {
   // Present on the real roster-grounded path (ESPN + Yahoo) --
   // distinguishes it from the legacy AI-generated shape in the UI.
   basis?: string
+  team_needs?: TeamNeed[]
 }
 
 interface StandingsTeam {
@@ -344,6 +371,41 @@ function pairBySlot(mine: ThisWeekPlayer[], theirs: ThisWeekPlayer[]): H2HRow[] 
   return rows
 }
 
+function WaiverKindBadge({ kind }: { kind: 'upgrade' | 'streamer' | 'watch' }) {
+  const styles = {
+    upgrade: 'bg-success-100 text-success-800',
+    streamer: 'bg-warning-100 text-warning-800',
+    watch: 'bg-surface-2 text-muted',
+  } as const
+  const labels = { upgrade: 'Season upgrade', streamer: 'This week only', watch: 'Watch' } as const
+  return <span className={`stat-nums text-[10px] px-1.5 py-0.5 rounded ${styles[kind]}`}>{labels[kind]}</span>
+}
+
+// Where this team's starters rank against every team's starters, by
+// position (1 = best) -- the needs every waiver/trade call is aimed at.
+function TeamNeedsStrip({ needs }: { needs: TeamNeed[] }) {
+  return (
+    <div className="bg-surface rounded-lg border border-hairline p-4">
+      <div className="stat-nums text-[10px] tracking-wider text-muted mb-3">YOUR STARTERS VS THE LEAGUE</div>
+      <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+        {needs.map((n) => {
+          const weak = n.rank > (n.teams * 2) / 3
+          const strong = n.rank <= n.teams / 3
+          return (
+            <div key={n.position} className={`rounded-md border p-2 text-center ${weak ? 'border-danger-200 bg-danger-50' : strong ? 'border-success-200 bg-success-50' : 'border-hairline bg-surface-2'}`}>
+              <div className="text-xs font-semibold text-body">{n.position}</div>
+              <div className={`stat-nums text-sm font-semibold ${weak ? 'text-danger-700' : strong ? 'text-success-700' : 'text-body'}`}>
+                {n.rank}<span className="text-[10px] text-faint">/{n.teams}</span>
+              </div>
+              <div className="stat-nums text-[10px] text-faint">{n.my_starter_avg.toFixed(0)} vs {n.league_median?.toFixed(0) ?? '—'}</div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function LeagueDetailPage() {
   const { leagueId } = useParams()
   const navigate = useNavigate()
@@ -445,6 +507,9 @@ export function LeagueDetailPage() {
         setWaiverRecs({
           recommendations: waiverResponse.data.waiver_recommendations?.recommendations ?? [],
           position_needs: waiverResponse.data.waiver_recommendations?.position_needs ?? {},
+          team_needs: waiverResponse.data.waiver_recommendations?.team_needs,
+          watch_only: waiverResponse.data.waiver_recommendations?.watch_only,
+          basis: waiverResponse.data.waiver_recommendations?.basis,
           total_available: waiverResponse.data.waiver_recommendations?.total_available ?? 0,
           updated_at: waiverResponse.data.waiver_recommendations?.updated_at ?? new Date().toISOString()
         })
@@ -465,7 +530,8 @@ export function LeagueDetailPage() {
           suggestions: tradeResponse.data.trade_recommendations?.suggestions ?? [],
           trade_deadline: tradeResponse.data.trade_recommendations?.trade_deadline ?? "Week 13",
           updated_at: tradeResponse.data.trade_recommendations?.updated_at ?? new Date().toISOString(),
-          basis: tradeResponse.data.trade_recommendations?.basis
+          basis: tradeResponse.data.trade_recommendations?.basis,
+          team_needs: tradeResponse.data.trade_recommendations?.team_needs
         })
       })
       .catch((err) => {
@@ -1266,7 +1332,7 @@ export function LeagueDetailPage() {
                 {waiverRecs && waiverRecs.recommendations.length > 0 && (
                   <div className="border border-hairline bg-surface rounded-lg">
                     <div className="px-4 py-2.5 border-b border-hairline flex items-center justify-between">
-                      <span className="stat-nums text-[10px] tracking-wider text-muted">TOP WAIVER TARGET</span>
+                      <span className="stat-nums text-[10px] tracking-wider text-muted">{waiverRecs.watch_only ? 'WAIVER WATCH' : 'TOP WAIVER TARGET'}</span>
                       <button onClick={() => setActiveTab('waiver')} className="stat-nums text-[10px] text-accent-ink hover:underline">All &#9656;</button>
                     </div>
                     {(() => {
@@ -1294,10 +1360,13 @@ export function LeagueDetailPage() {
                                 Drop <span className="font-medium">{drop.name}</span>
                                 {drop.position ? ` (${drop.position}${drop.position_matched ? '' : ', flex-eligible'})` : ''} to make room.
                               </p>
-                              {delta != null && drop.projected_points != null && top.player.projected_points != null && (
+                              {delta != null && (
                                 <p className={`stat-nums text-[11px] mt-1 ${worthIt ? 'text-success-700' : 'text-danger-700'}`}>
-                                  {top.player.name} projects {top.player.projected_points.toFixed(0)} pts this season vs {drop.name}&apos;s {drop.projected_points.toFixed(0)}
-                                  {' '}&mdash; {worthIt ? `a +${delta.toFixed(0)} pt real upgrade` : `NOT a clear upgrade (${delta.toFixed(0)} pts)`}.
+                                  {top.kind === 'streamer'
+                                    ? `+${delta.toFixed(1)} pts to this week's lineup.`
+                                    : worthIt
+                                      ? `+${delta.toFixed(1)} projected season points for your team.`
+                                      : `Not a clear upgrade yet (${delta.toFixed(1)} pts).`}
                                 </p>
                               )}
                             </div>
@@ -1552,20 +1621,37 @@ export function LeagueDetailPage() {
 
       {activeTab === 'waiver' && waiverRecs && (
         <div className="space-y-6">
+          {waiverRecs.team_needs && waiverRecs.team_needs.length > 0 && <TeamNeedsStrip needs={waiverRecs.team_needs} />}
           <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-body mb-4">Waiver Wire Recommendations</h3>
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <h3 className="text-lg font-medium text-body">Waiver Wire Recommendations</h3>
+              <DataConfidenceBadge level="computed" label="Lineup impact" />
+            </div>
             <p className="text-sm text-muted mb-6">
-              Based on your roster needs and available players. {waiverRecs.total_available} targets identified.
+              {waiverRecs.watch_only
+                ? 'No free agent is a clear upgrade on your roster right now. Best available at your weakest spots:'
+                : waiverRecs.basis || 'Based on your roster needs and available players.'}
             </p>
-            
+
             <div className="space-y-4">
               {waiverRecs.recommendations.slice(0, 10).map((rec, index: number) => (
-                <div key={`waiver-${rec.player.name}-${index}`} className="border rounded-lg p-4 hover:bg-surface-2">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="font-medium text-body">{rec.player.name}</h4>
-                      <p className="text-sm text-muted">{rec.player.position?.value || 'UNKNOWN'}</p>
-                      <p className="text-sm text-accent-ink">{rec.reason}</p>
+                <div key={`waiver-${rec.player.name}-${index}`} className="border border-hairline rounded-lg p-4 hover:bg-surface-2">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`inline-flex items-center justify-center w-9 h-6 rounded text-[11px] font-semibold ${getPositionColor(rec.player.position?.value)}`}>
+                          {rec.player.position?.value || '—'}
+                        </span>
+                        <h4 className="font-medium text-body">{rec.player.name}</h4>
+                        {rec.player.team && <span className="stat-nums text-xs text-faint">{rec.player.team}</span>}
+                        {rec.kind && <WaiverKindBadge kind={rec.kind} />}
+                      </div>
+                      <p className="text-sm text-muted mt-2 leading-relaxed">{rec.reason}</p>
+                      {rec.drop_candidate && rec.kind !== 'watch' && (
+                        <p className="text-xs text-faint mt-1">
+                          Drop {rec.drop_candidate.name} ({rec.drop_candidate.position}, {rec.drop_candidate.projected_points?.toFixed(0)} proj)
+                        </p>
+                      )}
                       {rec.bid_tier && (
                         <p className="text-xs text-faint mt-1" title={rec.bid_tier.reasoning}>
                           {rec.bid_tier.bid_type === 'faab'
@@ -1576,14 +1662,20 @@ export function LeagueDetailPage() {
                         </p>
                       )}
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-body">
-                        Priority: {rec.priority}/3
-                      </div>
-                      {rec.player.projected_points && (
-                        <div className="text-xs text-muted">
-                          {rec.player.projected_points.toFixed(1)} proj pts
+                    <div className="text-right shrink-0 stat-nums">
+                      {rec.season_gain != null && rec.kind !== 'streamer' && (
+                        <div className={`text-sm font-semibold ${rec.season_gain >= 5 ? 'text-success-700' : 'text-muted'}`}>
+                          {rec.season_gain >= 0 ? '+' : ''}{rec.season_gain.toFixed(1)} season
                         </div>
+                      )}
+                      {rec.week_gain != null && (rec.kind === 'streamer' || rec.week_gain >= 2) && (
+                        <div className="text-sm font-semibold text-success-700">+{rec.week_gain.toFixed(1)} this week</div>
+                      )}
+                      {rec.player.projected_points != null && (
+                        <div className="text-xs text-muted">{rec.player.projected_points.toFixed(0)} proj</div>
+                      )}
+                      {rec.player.ownership_percentage != null && (
+                        <div className="text-xs text-faint">{Math.round(rec.player.ownership_percentage)}% owned</div>
                       )}
                     </div>
                   </div>
@@ -1605,6 +1697,7 @@ export function LeagueDetailPage() {
 
       {activeTab === 'trades' && tradeRecs && (
         <div className="space-y-6">
+          {tradeRecs.team_needs && tradeRecs.team_needs.length > 0 && <TeamNeedsStrip needs={tradeRecs.team_needs} />}
           <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
             <div className="flex items-start justify-between gap-3 mb-4">
               <h3 className="text-lg font-medium text-body">Trade Suggestions</h3>
@@ -1618,7 +1711,7 @@ export function LeagueDetailPage() {
             </p>
 
             {tradeRecs.suggestions.length === 0 && (
-              <p className="text-sm text-muted">No real two-way trade upgrades found against this league's current rosters right now.</p>
+              <p className="text-sm text-muted">No trade right now improves both your lineup and a partner's enough to be worth proposing.</p>
             )}
 
             <div className="space-y-4">
@@ -1631,8 +1724,12 @@ export function LeagueDetailPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
                         <h4 className="font-medium text-danger-700">You Send</h4>
-                        <p className="text-body">{suggestion.you_send.name} ({suggestion.you_send.position})</p>
-                        <p className="stat-nums text-xs text-muted">{suggestion.you_send.projected_points?.toFixed(1)} proj</p>
+                        {(suggestion.you_send_players ?? [suggestion.you_send]).map((p) => (
+                          <div key={p.name}>
+                            <p className="text-body">{p.name} ({p.position})</p>
+                            <p className="stat-nums text-xs text-muted">{p.projected_points?.toFixed(1)} proj</p>
+                          </div>
+                        ))}
                       </div>
                       <div>
                         <h4 className="font-medium text-success-700">You Receive</h4>
@@ -1641,6 +1738,14 @@ export function LeagueDetailPage() {
                       </div>
                     </div>
                     <div className="mt-3 pt-3 border-t border-hairline">
+                      {suggestion.my_gain != null && suggestion.their_gain != null && (
+                        <p className="stat-nums text-xs mb-1">
+                          <span className="text-success-700 font-semibold">You +{suggestion.my_gain.toFixed(0)}</span>
+                          <span className="text-faint"> · </span>
+                          <span className="text-body">Them +{suggestion.their_gain.toFixed(0)}</span>
+                          <span className="text-faint"> projected season points</span>
+                        </p>
+                      )}
                       <p className="text-sm text-muted">{suggestion.reasoning}</p>
                     </div>
                   </div>

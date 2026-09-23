@@ -3,7 +3,7 @@ from espn_api.football.constant import POSITION_MAP, PRO_TEAM_MAP
 from typing import Dict, List, Optional, Any, Union
 import asyncio
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 from functools import wraps
 from app.services.scoring_rules import scoring_rules_from_espn
@@ -175,6 +175,11 @@ class ESPNFantasyServiceEnhanced:
                 "league_name": getattr(settings, 'name', 'ESPN League') if settings else 'ESPN League',
                 "season": league.year if hasattr(league, 'year') else season,
                 "current_week": getattr(league, 'current_week', 1),
+                # espn_api's settings.trade_deadline is epoch ms (0 = none).
+                "trade_deadline": (
+                    datetime.fromtimestamp(settings.trade_deadline / 1000, tz=timezone.utc).date().isoformat()
+                    if settings and getattr(settings, 'trade_deadline', 0) else None
+                ),
                 "scoring_type": getattr(settings, 'scoring_type', 'STANDARD') if settings else 'STANDARD',
                 "team_count": len(teams) if teams else 0,
                 "roster_settings": {

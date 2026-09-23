@@ -80,6 +80,17 @@ interface WaiverRecommendation {
   } | null
 }
 
+// League Detail's lineup-impact waiver engine (league_value_model), shown
+// above the trending list when a league is selected.
+interface LineupImpactRec {
+  player: { name: string; position?: { value?: string }; team?: string; projected_points?: number }
+  kind?: 'upgrade' | 'streamer' | 'watch'
+  season_gain?: number
+  week_gain?: number
+  reason?: string
+  drop_candidate?: { name: string; position?: string } | null
+}
+
 interface ConnectedLeagueOption {
   id: number
   league_name: string | null
@@ -310,6 +321,7 @@ export function WaiverWirePage() {
   const [personalized, setPersonalized] = useState(false)
   const [waiverPosition, setWaiverPosition] = useState<WaiverPosition | null>(null)
   const [positionPressure, setPositionPressure] = useState<PositionPressure | null>(null)
+  const [lineupImpact, setLineupImpact] = useState<{ recs: LineupImpactRec[]; watchOnly: boolean } | null>(null)
 
   // Roster analyzer
   const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
@@ -389,6 +401,17 @@ export function WaiverWirePage() {
     leaguesApi.getPositionPressure(selectedLeagueId)
       .then((response) => setPositionPressure(response.data))
       .catch(() => setPositionPressure(null))
+  }, [selectedLeagueId])
+
+  useEffect(() => {
+    setLineupImpact(null)
+    if (selectedLeagueId === '') return
+    leaguesApi.getWaiverRecommendations(selectedLeagueId)
+      .then((response) => {
+        const w = response.data.waiver_recommendations
+        if (w && !w.error) setLineupImpact({ recs: w.recommendations ?? [], watchOnly: !!w.watch_only })
+      })
+      .catch(() => setLineupImpact(null))
   }, [selectedLeagueId])
 
   const loadTrendingPlayers = useCallback(async () => {
@@ -712,11 +735,45 @@ export function WaiverWirePage() {
                   <span className="text-muted"> &mdash; moves to the back after you win a claim</span>
                 </p>
               )}
-              <DataConfidenceBadge level="computed" label="ESPN" />
+              <DataConfidenceBadge level="computed" label="Your league" />
             </div>
           )}
           {selectedLeagueId !== '' && waiverPosition && !waiverPosition.supported && (
             <p className="text-xs text-faint">{waiverPosition.detail}</p>
+          )}
+
+          {selectedLeagueId !== '' && lineupImpact && lineupImpact.recs.length > 0 && (
+            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-base font-medium text-body">
+                    {lineupImpact.watchOnly ? 'No clear upgrade for your lineup yet' : 'Best for your lineup'}
+                  </h3>
+                  <p className="text-xs text-muted mt-0.5">
+                    Every free agent in this league, ranked by what he adds to your best starting lineup. The trending list below is league-wide demand.
+                  </p>
+                </div>
+                <DataConfidenceBadge level="computed" label="Lineup impact" />
+              </div>
+              <div className="space-y-2">
+                {lineupImpact.recs.slice(0, 3).map((rec) => (
+                  <div key={rec.player.name} className="flex items-start justify-between gap-3 border-t border-hairline pt-2">
+                    <div className="min-w-0">
+                      <p className="text-sm text-body">
+                        <span className="font-medium">{rec.player.name}</span>
+                        <span className="text-faint"> {rec.player.position?.value}{rec.player.team ? `, ${rec.player.team}` : ''}</span>
+                      </p>
+                      <p className="text-xs text-muted leading-relaxed">{rec.reason}</p>
+                    </div>
+                    <span className={`stat-nums text-sm font-semibold shrink-0 ${rec.kind === 'watch' ? 'text-muted' : 'text-success-700'}`}>
+                      {rec.kind === 'streamer'
+                        ? `+${(rec.week_gain ?? 0).toFixed(1)} wk`
+                        : `${(rec.season_gain ?? 0) >= 0 ? '+' : ''}${(rec.season_gain ?? 0).toFixed(1)}`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Recommendations List */}

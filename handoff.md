@@ -1,3 +1,47 @@
+# Handoff (2026-09-23, session 18) — waiver + trade engines rebuilt on lineup impact
+
+**Status:** committed to `main`, not pushed. Backend 172 tests pass;
+frontend build clean (lint: only the pre-existing useAuth.tsx error).
+`/goal` (waivers based on our needs + sensible trade opportunities) done.
+
+**Why rebuilt (baseline measured on both real leagues first):** waivers
+ranked Sleeper's GLOBAL trending list — 8 of Pro Bowl's top 10 projected
+below the weakest bench player. Trades compared raw points across positions
+(suggested a WR for a kicker) and repeatedly offered an IR player.
+
+**New engine (ESPN + Yahoo League Detail waiver/trade tabs):**
+- `league_value_model.py` (pure, tested): optimal lineup for the league's real
+  starter slots; replacement level = best free agent per position; team value
+  = lineup + 20% of top-4 bench VOR. Waivers = every real FA scored by
+  team-value gain after the best drop (season "upgrade") or this-week lineup
+  gain ("streamer"); if nothing clears +5, a labeled "watch" list at the
+  weakest positions. Trades = 1-for-1 and 2-for-1 deals ranked by my gain,
+  requiring the partner to gain ≥25% of mine (≥2) so they'd accept; never
+  request Out/IR players or anyone <5 VOR (take the free agent instead);
+  ≤1 per player, ≤2 per partner.
+- `league_value_data.py`: platform adapters (ESPN own season+week
+  projections; Yahoo via Sleeper projections; Yahoo K/DEF FA pages fetched
+  separately — the default 300 had zero defenses). Sleeper 24h trending adds
+  kept only as an urgency note.
+- `league_advice_service.py`: API shapes + plain-language reasons ("starts
+  over X", "takes Y's lineup spot"), team-needs table (my starters' rank vs
+  league per position), real ESPN trade deadline (was hardcoded "Week 13").
+- Deleted `trade_finder_service.py` + dead helpers. Frontend: needs strip,
+  kind badges, season/week gains, 2-for-1 trade cards with both sides'
+  gains; "Best for your lineup" section on the Waivers page when a league
+  is selected. Browser-verified on both leagues.
+
+**Live results:** Optis Titans — needs K 12/12, TE 11/12, RB 9/12; top trade
+McConkey + Fannin → Isaiah Likely (TE); no FA clears the bar (watch: K Trey
+Smack +4.8). Pro Bowl — RB 12/12 despite 6 RBs (quality, not count); trades
+consolidate depth into Dobbins / Jadarian Price (+58–61); waiver: Lions DEF +5.
+
+**Limits (honest):** season projections are full-season, not rest-of-season;
+a 2-for-1 doesn't credit the freed roster spot; weights (20% depth, 25%
+acceptance, +5 floor) are judgment calls worth tuning with results.
+
+---
+
 # Handoff (2026-09-23, session 17 end) — ESPN/Yahoo parity DONE
 
 **Status:** `main`, last commit `7937e90`; 3 commits not pushed at time of

@@ -1,11 +1,10 @@
-"""Tests for Yahoo's real trade suggestions (was AI-invented) and the
-league-wide roster fetch they're built on."""
+"""Tests for Yahoo's trade path (league_value_model over real Yahoo rosters)
+and the league-wide roster fetch it's built on."""
 import asyncio
 from unittest.mock import MagicMock
 
 from app.models.user_league import PlatformType, UserLeague
 from app.services import league_management_service as lms
-from app.services.trade_finder_service import find_trade_suggestions
 from app.services.yahoo_service import yahoo_service
 
 
@@ -15,7 +14,7 @@ def _row(first, last, team, position, pts):
 
 
 def _yp(name, team, position, slot):
-    return {"name": name, "team": team, "position": position, "selected_position": slot}
+    return {"player_key": name, "name": name, "team": team, "position": position, "selected_position": slot}
 
 
 def _league():
@@ -24,66 +23,51 @@ def _league():
 
 
 def _patch(monkeypatch, rosters, rows):
-    async def token(self, league):
-        return "tok"
+    from unittest.mock import AsyncMock
+    from app.services import league_value_data as lvd
 
-    async def get_rosters(tok, key):
-        return rosters
-
-    async def get_settings(tok, key):
-        return {"scoring_rules": None, "stat_values": {}, "trade_end_date": "2026-11-28"}
-
-    async def season(season):
-        return rows
-
-    monkeypatch.setattr(lms.LeagueManagementService, "_get_yahoo_token", token)
-    monkeypatch.setattr(yahoo_service, "get_league_rosters", get_rosters)
-    monkeypatch.setattr(yahoo_service, "get_league_settings", get_settings)
-    monkeypatch.setattr(lms, "fetch_season_projections", season)
+    monkeypatch.setattr(lvd, "get_valid_yahoo_token", AsyncMock(return_value="tok"))
+    monkeypatch.setattr(yahoo_service, "get_league_rosters", AsyncMock(return_value=rosters))
+    monkeypatch.setattr(yahoo_service, "get_available_players", AsyncMock(return_value=[]))
+    monkeypatch.setattr(yahoo_service, "get_league_settings", AsyncMock(return_value={
+        "starters": {"RB": 1, "WR": 1}, "scoring_rules": None, "stat_values": {}, "trade_end_date": "2026-11-28"}))
+    monkeypatch.setattr(yahoo_service, "get_league_info", AsyncMock(return_value={"current_week": "3"}))
+    monkeypatch.setattr(lvd, "fetch_season_projections", AsyncMock(return_value=rows))
+    monkeypatch.setattr(lvd, "fetch_weekly_projections", AsyncMock(return_value=[]))
+    monkeypatch.setattr(lvd, "_trending_by_name", AsyncMock(return_value={}))
 
 
 def test_yahoo_trades_name_real_rostered_players(monkeypatch):
     rosters = [
         {"team_id": "1", "team_name": "Mine", "players": [
-            _yp("My RB", "MIN", "RB", "RB"), _yp("My Bench WR", "DAL", "WR", "BN"),
-            _yp("My WR", "DAL", "WR", "WR")]},
+            _yp("My RB", "MIN", "RB", "RB"), _yp("My WR", "DAL", "WR", "WR"), _yp("My Bench WR", "DAL", "WR", "BN")]},
         {"team_id": "2", "team_name": "Theirs", "players": [
-            _yp("Their Bench RB", "SF", "RB", "BN"), _yp("Their WR", "SF", "WR", "WR"),
-            _yp("Their RB", "SF", "RB", "RB"), _yp("Unprojected Guy", "SF", "RB", "BN")]},
+            _yp("Their RB", "SF", "RB", "RB"), _yp("Their WR", "SF", "WR", "WR"), _yp("Their Bench RB", "SF", "RB", "BN"),
+            _yp("Unprojected Guy", "SF", "RB", "BN")]},
     ]
     rows = [
-        _row("My", "RB", "MIN", "RB", 100.0), _row("My Bench", "WR", "DAL", "WR", 190.0),
-        _row("My", "WR", "DAL", "WR", 200.0), _row("Their Bench", "RB", "SF", "RB", 180.0),
-        _row("Their", "WR", "SF", "WR", 120.0), _row("Their", "RB", "SF", "RB", 150.0),
+        _row("My", "RB", "MIN", "RB", 100.0), _row("My", "WR", "DAL", "WR", 250.0),
+        _row("My Bench", "WR", "DAL", "WR", 220.0), _row("Their", "RB", "SF", "RB", 260.0),
+        _row("Their", "WR", "SF", "WR", 90.0), _row("Their Bench", "RB", "SF", "RB", 210.0),
     ]
     _patch(monkeypatch, rosters, rows)
 
     out = asyncio.run(lms.LeagueManagementService(MagicMock())._get_trade_recommendations(_league()))
 
     assert out["trade_deadline"] == "2026-11-28"
-    assert "not AI-generated" in out["basis"]
-    [s] = out["suggestions"]
-    assert s["you_receive"]["name"] == "Their Bench RB"
+    assert "improves both teams" in out["basis"]
+    s = out["suggestions"][0]
     assert s["you_send"]["name"] == "My Bench WR"
+    assert s["you_receive"]["name"] in ("Their RB", "Their Bench RB")
+    assert s["my_gain"] > 0 and s["their_gain"] > 0
+    names = {p["name"] for p in s["you_send_players"]} | {s["you_receive"]["name"]}
+    assert "Unprojected Guy" not in names
 
 
 def test_yahoo_trades_error_when_projections_unavailable(monkeypatch):
     _patch(monkeypatch, [{"team_id": "1", "team_name": "Mine", "players": []}], [])
     out = asyncio.run(lms.LeagueManagementService(MagicMock())._get_trade_recommendations(_league()))
-    assert "error" in out and "projections" in out["error"]
-
-
-def test_trade_finder_treats_yahoo_bn_as_bench():
-    teams = [
-        {"team_id": "1", "team_name": "Mine", "roster": [
-            {"name": "A", "position": "RB", "lineup_slot": "RB", "projected_points": 100},
-            {"name": "B", "position": "WR", "lineup_slot": "BN", "projected_points": 190}]},
-        {"team_id": "2", "team_name": "Theirs", "roster": [
-            {"name": "C", "position": "RB", "lineup_slot": "BN", "projected_points": 180},
-            {"name": "D", "position": "WR", "lineup_slot": "WR", "projected_points": 120}]},
-    ]
-    [s] = find_trade_suggestions("1", teams)
-    assert (s["you_send"]["name"], s["you_receive"]["name"]) == ("B", "C")
+    assert "error" in out and "projections" in out["error"].lower()
 
 
 def test_get_league_rosters_parses_every_team(monkeypatch):

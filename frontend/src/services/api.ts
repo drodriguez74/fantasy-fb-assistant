@@ -143,6 +143,8 @@ export const leagues = {
   // from their own real rosters -- a per-league proxy for how contested a
   // waiver claim is likely to be, independent of global Sleeper demand.
   getPositionPressure: (leagueId: number) => api.get(`/leagues/${leagueId}/position-pressure`),
+  // Free agents ranked by lineup impact for this team (league_value_model).
+  getWaiverRecommendations: (leagueId: number) => api.get(`/leagues/${leagueId}/waiver-recommendations`),
 
   // This team's real result every week of the season so far -- the season
   // schedule/history view. Distinct from getThisWeek (current week only).

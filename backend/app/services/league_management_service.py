@@ -10,9 +10,8 @@ from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.ai_service import ai_service
 from app.services.player_data_service import PlayerDataService
 from app.services import roster_grading
-from app.services import trade_finder_service
-from app.services.weekly_projections import attach_projections, fetch_season_projections
-from app.services.yahoo_waiver_context import build_yahoo_waiver_context
+from app.services.league_advice_service import build_trade_advice, build_waiver_advice
+from app.services.league_value_data import LeagueDataError
 from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
@@ -637,388 +636,56 @@ class LeagueManagementService:
     # (confirmed live: top-of-list candidates showed 1/3 while
     # next-tier "high" candidates below them showed 3/3). urgent+high both
     # map to 3 (both are real buy signals), low+watch both map to 1.
-    _WAIVER_PRIORITY_SCORES = {"urgent": 3, "high": 3, "medium": 2, "low": 1, "watch": 1}
-
-    def _live_waiver_candidates_to_league_view(
-        self, candidates: List[Dict[str, Any]], roster_players: Optional[List[Dict[str, Any]]] = None
-    ) -> List[Dict[str, Any]]:
-        """Adapt WaiverWireService.get_live_trending_recommendations's dicts
-        into the {"player": {...}, "priority", "reason"} shape this
-        endpoint's response has always used (and the frontend already
-        renders), so swapping the underlying data source doesn't require a
-        frontend contract change.
-
-        When `roster_players` (the real, live ESPN roster) is supplied,
-        also attaches a real drop_candidate -- see
-        waiver_wire_service.pick_drop_candidate -- and the resulting real
-        projected-value delta, so "add this player" comes with an honest
-        answer to "at whose expense" rather than floating free of the
-        user's actual 18-man roster.
-        """
-        from app.services.waiver_wire_service import pick_drop_candidate
-
-        adapted = []
-        for c in candidates:
-            drop_candidate = None
-            value_delta = None
-            if roster_players:
-                drop_candidate = pick_drop_candidate(roster_players, c.get("position") or "")
-                add_proj = c.get("projected_points")
-                drop_proj = drop_candidate.get("projected_points") if drop_candidate else None
-                if isinstance(add_proj, (int, float)) and isinstance(drop_proj, (int, float)):
-                    value_delta = round(add_proj - drop_proj, 1)
-
-            adapted.append({
-                "player": {
-                    "name": c.get("player_name"),
-                    "position": {"value": c.get("position")},
-                    "projected_points": c.get("projected_points"),
-                },
-                "priority": self._WAIVER_PRIORITY_SCORES.get(c.get("priority"), 1),
-                "reason": c.get("reason"),
-                "drop_candidate": drop_candidate,
-                "value_delta": value_delta,
-                "bid_tier": c.get("bid_tier"),
-            })
-        return adapted
-
     async def _get_league_specific_waiver_recs(self, league: UserLeague) -> Dict[str, Any]:
-        """Get waiver wire recommendations specific to league settings.
-
-        Sources candidates from WaiverWireService's live Sleeper
-        trending-add feed rather than the local `Player` table
-        (`self.player_service.get_trending_players`) -- that table has no
-        real ingestion pipeline and is empty/stale in a fresh deployment
-        (see WaiverWireService.get_live_trending_recommendations's
-        docstring), which made this endpoint's "Waiver Wire" tab show 0
-        targets for every league regardless of platform. Real per-league
-        roster-need weighting is passed through the same way the
-        standalone Waiver Wire page's personalization already does.
-        """
+        """Yahoo waiver recommendations -- league_advice_service ranks
+        every real free agent in this league by what he adds to this team's
+        best lineup after the best drop (was: Sleeper's global trending list,
+        which ignored this roster)."""
         try:
-            access_token = await self._get_yahoo_token(league)
-            if not access_token:
-                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
-
-            team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
-            if not team_key:
-                return {"error": "Team ID not configured"}
-            roster_data = await yahoo_service.get_team_roster(access_token, team_key)
-            if "error" in roster_data:
-                return {"error": roster_data["error"]}
-
-            # `lineup_slot` is the field name pick_drop_candidate (and the
-            # rest of the waiver code) reads; Yahoo's is `selected_position`.
-            roster_players = [
-                {**p, "lineup_slot": p.get("selected_position")} for p in roster_data.get("players", [])
-            ]
-            current_players = {(p.get("name") or "").lower() for p in roster_players}
-
-            league_settings = None
-            if league.league_key:
-                yahoo_settings = await yahoo_service.get_league_settings(access_token, league.league_key)
-                if "error" not in yahoo_settings and yahoo_settings.get("starters"):
-                    league_settings = yahoo_settings
-                    league_settings["team_count"] = league.league_size
-
-            position_needs = await self._analyze_position_needs(roster_players)
-
-            # Real per-league availability -- see the identical comment in
-            # _get_espn_waiver_recs. Best-effort: a fetch failure just means
-            # no availability filter is applied.
-            available_player_names = None
-            enrichment = None
-            team_bye_map = None
-            if league.league_key:
-                free_agents = await yahoo_service.get_available_players(access_token, league.league_key, count=300)
-                if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
-                    available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
-                else:
-                    free_agents = []
-                # Ownership%/season projection/this-week byes -- the Yahoo
-                # counterpart to _get_espn_waiver_recs's enrichment.
-                enrichment, team_bye_map = await build_yahoo_waiver_context(
-                    access_token, league.league_key, league.season, free_agents, league_settings
-                )
-
-            # Same season projections on my own roster, so the league view's
-            # drop candidate and value delta compare like with like (ESPN's
-            # roster carries its own season projection). Cached feed -- no
-            # second download.
-            season_rows = await fetch_season_projections(league.season)
-            if season_rows:
-                attach_projections(
-                    roster_players,
-                    season_rows,
-                    (league_settings or {}).get("scoring_rules"),
-                    (league_settings or {}).get("stat_values"),
-                )
-
-            # Real rolling-waiver rank for bid-tier suggestions -- mirrors
-            # _get_espn_waiver_recs below. Honestly None for a FAAB Yahoo
-            # league (get_waiver_position returns {"error": ...} there
-            # rather than a guessed budget).
-            waiver_position = None
-            if league.league_key and league.team_id:
-                waiver_position_result = await yahoo_service.get_waiver_position(
-                    access_token, league.league_key, league.team_id
-                )
-                if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result:
-                    waiver_position = waiver_position_result
-
-            from app.services.waiver_wire_service import WaiverWireService
-            waiver_service = WaiverWireService(self.db)
-            candidates = await waiver_service.get_live_trending_recommendations(
-                limit=30,
-                user_roster=roster_players,
-                league_settings=league_settings,
-                available_player_names=available_player_names,
-                espn_enrichment=enrichment,
-                team_bye_map=team_bye_map,
-                waiver_position=waiver_position,
-            )
-            candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]
-
-            filtered_recs = self._live_waiver_candidates_to_league_view(candidates, roster_players)
-
-            return {
-                "recommendations": filtered_recs[:10],
-                "position_needs": position_needs,
-                "total_available": len(filtered_recs),
-                "updated_at": datetime.utcnow().isoformat()
-            }
-
+            return await build_waiver_advice(league)
+        except LeagueDataError as e:
+            return {"error": str(e)}
         except Exception as e:
+            logger.exception("Waiver advice failed for league %s", league.id)
             return {"error": f"Failed to get waiver recommendations: {str(e)}"}
 
     async def _get_espn_waiver_recs(self, league: UserLeague) -> Dict[str, Any]:
-        """Get waiver wire recommendations for an ESPN league.
-
-        Mirrors _get_league_specific_waiver_recs -- same live-Sleeper-feed
-        source and roster-need weighting, only the roster fetch differs.
-        """
+        """ESPN waiver recommendations -- league_advice_service ranks
+        every real free agent in this league by what he adds to this team's
+        best lineup after the best drop (was: Sleeper's global trending list,
+        which ignored this roster)."""
         try:
-            if not league.team_id:
-                return {"error": "Team ID not configured"}
-
-            # Roster, league settings, the free-agent pool, and this team's
-            # real waiver standing are four independent ESPN reads (the
-            # free-agent pull is the slow one) -- fetch them concurrently.
-            roster_data, espn_settings, free_agents, waiver_position_result = await asyncio.gather(
-                espn_service_enhanced.get_team_roster(
-                    league_id=league.league_id,
-                    team_id=int(league.team_id),
-                    season=league.season,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2,
-                ),
-                espn_service_enhanced.get_scoring_and_roster_settings(
-                    league_id=league.league_id,
-                    season=league.season,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2,
-                ),
-                espn_service_enhanced.get_available_players(
-                    league_id=league.league_id,
-                    season=league.season,
-                    size=300,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2,
-                ),
-                espn_service_enhanced.get_waiver_position(
-                    league_id=league.league_id,
-                    team_id=league.team_id,
-                    season=league.season,
-                    swid=league.espn_swid,
-                    espn_s2=league.espn_s2,
-                ),
-            )
-            waiver_position = (
-                waiver_position_result
-                if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result
-                else None
-            )
-            if "error" in roster_data:
-                return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
-
-            roster_players = roster_data.get("players", [])
-            current_players = {(p.get("name") or "").lower() for p in roster_players}
-
-            league_settings = None
-            if "error" not in espn_settings and espn_settings.get("starters"):
-                league_settings = espn_settings
-                league_settings["team_count"] = league.league_size
-
-            position_needs = await self._analyze_position_needs(roster_players)
-
-            # Real per-league availability: Sleeper's global trending feed
-            # has no idea who's actually a free agent in THIS league (a
-            # player trending broadly on Sleeper can easily already be
-            # rostered by another team here -- confirmed live, a real ESPN
-            # league recommended a player another team had already added).
-            # Best-effort: a fetch failure just means no availability
-            # filter is applied, same fallback-to-unweighted pattern this
-            # method already uses elsewhere.
-            available_player_names = None
-            espn_enrichment = None
-            if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
-                available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
-                # Same free-agent fetch already made above -- real season
-                # projected points, not the flat None get_live_trending_
-                # recommendations otherwise leaves every candidate with
-                # (Sleeper's trending feed carries no projections at all).
-                espn_enrichment = {
-                    (p.get("name") or "").lower(): {
-                        "ownership_percentage": p.get("percent_owned"),
-                        "season_projected_points": p.get("projected_points"),
-                        "espn_player_id": p.get("player_id"),
-                        "team": p.get("team"),
-                    }
-                    for p in free_agents if p.get("name")
-                }
-
-            from app.services.waiver_wire_service import WaiverWireService
-            waiver_service = WaiverWireService(self.db)
-            candidates = await waiver_service.get_live_trending_recommendations(
-                limit=30,
-                user_roster=roster_players,
-                league_settings=league_settings,
-                available_player_names=available_player_names,
-                espn_enrichment=espn_enrichment,
-                waiver_position=waiver_position,
-            )
-            candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]
-
-            filtered_recs = self._live_waiver_candidates_to_league_view(candidates, roster_players)
-
-            return {
-                "recommendations": filtered_recs[:10],
-                "position_needs": position_needs,
-                "total_available": len(filtered_recs),
-                "updated_at": datetime.utcnow().isoformat()
-            }
-
+            return await build_waiver_advice(league)
+        except LeagueDataError as e:
+            return {"error": str(e)}
         except Exception as e:
+            logger.exception("Waiver advice failed for league %s", league.id)
             return {"error": f"Failed to get waiver recommendations: {str(e)}"}
 
     async def _get_trade_recommendations(self, league: UserLeague) -> Dict[str, Any]:
-        """Real, roster-grounded trade suggestions for a Yahoo league -- the
-        same trade_finder_service matcher the ESPN path uses.
-
-        This used to ask the AI for "3 realistic trade scenarios" knowing
-        only my roster and `len(teams)` -- the same fabrication the ESPN
-        path had before it was fixed: no visibility into anyone else's
-        roster, so the named players were guesses. Now every team's real
-        roster comes from one get_league_rosters call, and each player is
-        valued by Sleeper's full-season projection scored with this
-        league's real Yahoo rules (Yahoo publishes no per-player
-        projection; see weekly_projections.py). Players with no projection
-        are left out rather than valued at 0.
-        """
+        """Yahoo trade suggestions -- league_advice_service finds 1-for-1
+        and 2-for-1 deals that improve BOTH teams' best lineups (was: a
+        raw-points matcher that ignored positional scarcity, e.g. a WR for a
+        kicker)."""
         try:
-            access_token = await self._get_yahoo_token(league)
-            if not access_token:
-                return {"error": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."}
-            if not league.team_id:
-                return {"error": "Team ID not configured"}
-
-            rosters, settings_result, projection_rows = await asyncio.gather(
-                yahoo_service.get_league_rosters(access_token, league.league_key),
-                yahoo_service.get_league_settings(access_token, league.league_key),
-                fetch_season_projections(league.season),
-            )
-            if rosters and "error" in rosters[0]:
-                return {"error": rosters[0]["error"]}
-            if not projection_rows:
-                return {"error": "Player projections couldn't be loaded right now, so trade values aren't available. Try again shortly."}
-
-            scoring_rules = settings_result.get("scoring_rules") if "error" not in settings_result else None
-            stat_values = settings_result.get("stat_values") if "error" not in settings_result else None
-
-            teams = []
-            for team in rosters:
-                roster = [
-                    {
-                        "name": p.get("name"),
-                        "position": p.get("position"),
-                        "team": p.get("team"),
-                        "lineup_slot": p.get("selected_position"),
-                        "projected_points": None,
-                    }
-                    for p in team.get("players", [])
-                ]
-                attach_projections(roster, projection_rows, scoring_rules, stat_values)
-                teams.append({
-                    "team_id": team.get("team_id"),
-                    "team_name": team.get("team_name"),
-                    "roster": [p for p in roster if p.get("projected_points") is not None],
-                })
-
-            suggestions = trade_finder_service.find_trade_suggestions(
-                my_team_id=league.team_id,
-                teams=teams,
-            )
-
-            trade_end_date = settings_result.get("trade_end_date") if "error" not in settings_result else None
-            return {
-                "suggestions": suggestions,
-                # Yahoo's own real trade deadline for this league, when set.
-                "trade_deadline": trade_end_date or "Not set",
-                "updated_at": datetime.utcnow().isoformat(),
-                "basis": (
-                    "Real rostered players on real other teams' rosters, valued by Sleeper's "
-                    "season-long projection scored with this league's Yahoo scoring rules -- "
-                    "not AI-generated."
-                ),
-            }
-
+            return await build_trade_advice(league)
+        except LeagueDataError as e:
+            return {"error": str(e)}
         except Exception as e:
+            logger.exception("Trade advice failed for league %s", league.id)
             return {"error": f"Failed to get trade recommendations: {str(e)}"}
 
     async def _get_espn_trade_recommendations(self, league: UserLeague) -> Dict[str, Any]:
-        """Real, roster-grounded trade suggestions for an ESPN league.
-
-        Used to ask the AI to invent "3 realistic trade scenarios" knowing
-        only `len(teams)` -- with zero visibility into any other team's
-        actual roster, `target_player`/`offer_players` were free-form AI
-        guesses, not real players anyone could actually trade for. That's
-        fabrication, not a heuristic. `get_league_teams` already returns
-        every team's real roster (with each player's real lineup slot and
-        ESPN's own real season-long projection) in one call, so this now
-        runs `trade_finder_service.find_trade_suggestions` over real data
-        instead -- every player named in a suggestion is a real rostered
-        player, and every suggestion is a real two-way value swap, not an
-        AI-authored scenario.
-        """
+        """ESPN trade suggestions -- league_advice_service finds 1-for-1
+        and 2-for-1 deals that improve BOTH teams' best lineups (was: a
+        raw-points matcher that ignored positional scarcity, e.g. a WR for a
+        kicker)."""
         try:
-            if not league.team_id:
-                return {"error": "Team ID not configured"}
-
-            teams = await espn_service_enhanced.get_league_teams(
-                league_id=league.league_id,
-                season=league.season,
-                swid=league.espn_swid,
-                espn_s2=league.espn_s2,
-            )
-            if teams and isinstance(teams, list) and "error" in teams[0]:
-                return {"error": "Your ESPN connection is missing or has expired. Please reconnect your ESPN account."}
-
-            suggestions = trade_finder_service.find_trade_suggestions(
-                my_team_id=league.team_id,
-                teams=teams,
-            )
-
-            return {
-                "suggestions": suggestions,
-                "trade_deadline": "Week 13",  # Standard fantasy trade deadline
-                "updated_at": datetime.utcnow().isoformat(),
-                "basis": (
-                    "Real rostered players on real other teams' rosters, matched by ESPN's own "
-                    "season-long projection for this league's scoring -- not AI-generated."
-                ),
-            }
-
+            return await build_trade_advice(league)
+        except LeagueDataError as e:
+            return {"error": str(e)}
         except Exception as e:
+            logger.exception("Trade advice failed for league %s", league.id)
             return {"error": f"Failed to get trade recommendations: {str(e)}"}
 
     async def _check_roster_injuries(self, players: List[Dict]) -> List[Dict]:
@@ -1043,28 +710,6 @@ class LeagueManagementService:
                         })
         
         return injury_concerns
-
-    async def _analyze_position_needs(self, players: List[Dict]) -> Dict[str, int]:
-        """Analyze position needs (higher score = greater need)"""
-        position_counts = {}
-        for player in players:
-            pos = player.get("position", "")
-            position_counts[pos] = position_counts.get(pos, 0) + 1
-        
-        # Assign need scores (simplified logic)
-        needs = {}
-        ideal_counts = {"QB": 2, "RB": 4, "WR": 5, "TE": 2, "K": 1, "DEF": 1}
-        
-        for pos, ideal in ideal_counts.items():
-            current = position_counts.get(pos, 0)
-            if current < ideal:
-                needs[pos] = 3  # High need
-            elif current == ideal:
-                needs[pos] = 1  # Low need
-            else:
-                needs[pos] = 0  # No need
-        
-        return needs
 
     async def _get_current_week(self) -> int:
         """Get current NFL week (simplified)"""
