@@ -12,18 +12,21 @@ tiers. Latest commit: Yahoo **Bye Week Radar** (real per-player
 scoreboard call per week via new `get_week_matchup_summary`); both
 builders return the exact ESPN response shape, so no frontend changes.
 
-**NOT live-verified:** the stored Yahoo token for league 4 (Pro Bowl
-Fantasy) had expired, so both builders only returned the honest "reconnect"
-error. Reconnect Yahoo, then hit `/leagues/4/bye-week-radar?refresh=1` and
-`/leagues/4/matchup-history?refresh=1` to confirm.
+**Yahoo token renewal fixed (follow-up commit):** new
+`app/services/yahoo_tokens.get_valid_yahoo_token` is now the one place a
+stored Yahoo token is read. It renews via `refresh_access_token` when the
+token is within 2 min of expiry, saves the new pair to every one of the
+user's Yahoo leagues sharing it, and allows one renewal per user at a
+time (lock keyed per event loop, since snapshot background refreshes run
+their own `asyncio.run`). Every Yahoo call site goes through it:
+snapshot builders, `LeagueManagementService._get_yahoo_token` (now
+async), This Week, waiver position, waiver wire, post-draft, league
+scoring. 7 new tests (143 total pass). **Live-verified 2026-09-23:**
+league 4's expired token renewed and saved (new expiry +1h), then Bye
+Week Radar (real byes, e.g. Rashee Rice/Chiefs wk 5) and Matchups (0-2,
+wk 3 upcoming vs Angeles Gang Gang) both returned real data.
 
-**Real bug found, not fixed:** `yahoo_service.refresh_access_token` exists
-but has ZERO callers — Yahoo tokens last ~1h, so every Yahoo feature dies
-an hour after connecting until the user manually reconnects. Top priority
-for parity: auto-refresh in `_require_yahoo_token` (and the non-snapshot
-Yahoo paths) + persist the new token.
-
-**Remaining parity gaps:** token auto-refresh (above); lineup optimizer +
+**Remaining parity gaps:** lineup optimizer +
 start/sit confidence (needs per-player projections, still unconfirmed);
 Yahoo trade suggestions still AI-generated (ESPN's are real);
 `league-aware-recommendations` `league_info` from legacy file loader.

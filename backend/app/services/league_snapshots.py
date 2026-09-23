@@ -9,7 +9,6 @@ expected upstream failures -- the endpoint layer maps that to a 400.
 See app.services.snapshot_cache for the stale-while-revalidate wrapper and
 the kind -> (builder, ttl) registry.
 """
-from datetime import datetime, timezone
 from typing import Any, Dict
 
 import asyncio
@@ -17,6 +16,7 @@ import asyncio
 from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
+from app.services.yahoo_tokens import get_valid_yahoo_token
 from app.services.sleeper_service import sleeper_service
 from app.services.roster_grading import grade_roster
 from app.services.this_week_service import build_this_week as _build_this_week
@@ -49,28 +49,23 @@ async def build_this_week_snapshot(user_league: UserLeague) -> Dict[str, Any]:
 _HEALTHY_STATUSES = {"ACTIVE", "NORMAL", "HEALTHY", ""}
 
 
-def _require_yahoo_token(user_league: UserLeague) -> str:
-    """Real access-token + real expiry check, shared by every Yahoo
-    snapshot builder. Raises SnapshotBuildError (mapped to a 400) rather
-    than a raw exception -- same honest "reconnect" message used
-    everywhere else a missing/expired Yahoo token is handled.
+async def _require_yahoo_token(user_league: UserLeague) -> str:
+    """Usable Yahoo access token (renewed first if expired -- see
+    yahoo_tokens.get_valid_yahoo_token), shared by every Yahoo snapshot
+    builder. Raises SnapshotBuildError (mapped to a 400) rather than a raw
+    exception when there's nothing usable -- same honest "reconnect"
+    message used everywhere else.
     """
     if not user_league.yahoo_access_token:
         raise SnapshotBuildError(
             "Yahoo account not connected for this league. Please reconnect your Yahoo account."
         )
-    # yahoo_token_expires_at is a timezone-aware DB column; comparing it
-    # against a naive datetime.utcnow() raises "can't compare offset-naive
-    # and offset-aware datetimes" -- the exact same bug class already
-    # fixed in user_service.py's account-lockout check.
-    if (
-        user_league.yahoo_token_expires_at
-        and user_league.yahoo_token_expires_at < datetime.now(timezone.utc)
-    ):
+    access_token = await get_valid_yahoo_token(user_league)
+    if not access_token:
         raise SnapshotBuildError(
             "Your Yahoo connection has expired. Please reconnect your Yahoo account."
         )
-    return user_league.yahoo_access_token
+    return access_token
 
 
 async def _build_sleeper_roster_analysis_snapshot(
@@ -257,7 +252,7 @@ async def _build_yahoo_roster_analysis_snapshot(
             },
         }
 
-    access_token = _require_yahoo_token(user_league)
+    access_token = await _require_yahoo_token(user_league)
     team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
     if not team_key:
         raise SnapshotBuildError("Team ID not configured for this Yahoo league.")
@@ -480,7 +475,7 @@ async def build_standings_snapshot(user_league: UserLeague) -> Dict[str, Any]:
         return {**base, "teams": standings}
 
     if platform == "YAHOO":
-        access_token = _require_yahoo_token(user_league)
+        access_token = await _require_yahoo_token(user_league)
         teams = await yahoo_service.get_league_teams(
             access_token, user_league.league_key
         )
@@ -573,7 +568,7 @@ async def _build_yahoo_bye_week_radar_snapshot(
             "detail": "Your team isn't identified for this league yet. Please reconnect your Yahoo account to auto-detect it, or set it via PUT /leagues/{league_id}/settings.",
         }
 
-    access_token = _require_yahoo_token(user_league)
+    access_token = await _require_yahoo_token(user_league)
     team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
     if not team_key:
         return {
@@ -655,7 +650,7 @@ async def _build_yahoo_matchup_history_snapshot(
             "detail": "Your team isn't identified for this league yet. Please reconnect your Yahoo account to auto-detect it, or set it via PUT /leagues/{league_id}/settings.",
         }
 
-    access_token = _require_yahoo_token(user_league)
+    access_token = await _require_yahoo_token(user_league)
     team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
     if not team_key:
         return {

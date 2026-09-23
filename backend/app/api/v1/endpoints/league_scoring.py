@@ -23,6 +23,7 @@ from app.services.scoring_rules import describe_scoring_rules
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.sleeper_service import sleeper_service
 from app.services.yahoo_service import yahoo_service
+from app.services.yahoo_tokens import get_valid_yahoo_token
 
 logger = logging.getLogger(__name__)
 
@@ -244,9 +245,9 @@ async def get_league_scoring(
                         "scoring_type": None,
                         "source": "sleeper",
                     }
-            elif platform == "YAHOO" and user_league.yahoo_access_token and user_league.league_key:
+            elif platform == "YAHOO" and user_league.league_key and (yahoo_token := await get_valid_yahoo_token(user_league)):
                 yahoo_settings = await yahoo_service.get_league_settings(
-                    user_league.yahoo_access_token, user_league.league_key
+                    yahoo_token, user_league.league_key
                 )
                 if "error" not in yahoo_settings:
                     roster_settings = {
@@ -285,9 +286,9 @@ async def get_league_scoring(
                     parsed = sleeper_service.parse_league_settings(league_info)
                     if "error" not in parsed:
                         detected_scoring = parsed.get("scoring_rules")
-                elif platform == "YAHOO" and user_league.yahoo_access_token and user_league.league_key:
+                elif platform == "YAHOO" and user_league.league_key and (yahoo_token := await get_valid_yahoo_token(user_league)):
                     yahoo_settings = await yahoo_service.get_league_settings(
-                        user_league.yahoo_access_token, user_league.league_key
+                        yahoo_token, user_league.league_key
                     )
                     if "error" not in yahoo_settings:
                         detected_scoring = yahoo_settings.get("scoring_rules")

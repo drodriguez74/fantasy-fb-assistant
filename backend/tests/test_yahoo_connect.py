@@ -395,12 +395,12 @@ def test_league_management_service_rejects_missing_yahoo_token(setup_database):
         league = UserLeague(
             user_id=1, platform=PlatformType.YAHOO, league_id="1", league_key="423.l.1"
         )
-        assert service._get_yahoo_token(league) is None
+        assert asyncio.run(service._get_yahoo_token(league)) is None
     finally:
         db.close()
 
 
-def test_league_management_service_rejects_expired_yahoo_token(setup_database):
+def test_league_management_service_rejects_expired_yahoo_token_with_no_refresh_token(setup_database):
     db = TestingSessionLocal()
     try:
         service = LeagueManagementService(db)
@@ -417,7 +417,7 @@ def test_league_management_service_rejects_expired_yahoo_token(setup_database):
             # the real comparison _get_yahoo_token performs in production.
             yahoo_token_expires_at=datetime.now(timezone.utc) - timedelta(hours=1),
         )
-        assert service._get_yahoo_token(league) is None
+        assert asyncio.run(service._get_yahoo_token(league)) is None
     finally:
         db.close()
 
@@ -434,6 +434,6 @@ def test_league_management_service_accepts_valid_yahoo_token(setup_database):
             yahoo_access_token="fresh-token",
             yahoo_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
         )
-        assert service._get_yahoo_token(league) == "fresh-token"
+        assert asyncio.run(service._get_yahoo_token(league)) == "fresh-token"
     finally:
         db.close()

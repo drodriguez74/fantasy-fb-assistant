@@ -151,10 +151,13 @@ async def _fetch_connected_roster_and_settings(
             # fixed, Yahoo's roster endpoint 400s "Missing Resource" on a
             # bare id. Confirmed live 2026-09-22, the first time this path
             # was reachable with a real Yahoo connection at all.
+            from app.services.yahoo_tokens import get_valid_yahoo_token
+
             team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
-            if not user_league.yahoo_access_token or not team_key:
+            yahoo_token = await get_valid_yahoo_token(user_league)
+            if not yahoo_token or not team_key:
                 return None, None, None, None, None, None
-            roster_data = await yahoo_service.get_team_roster(user_league.yahoo_access_token, team_key)
+            roster_data = await yahoo_service.get_team_roster(yahoo_token, team_key)
             if "error" in roster_data:
                 return None, None, None, None, None, None
             roster_players = [
@@ -162,9 +165,9 @@ async def _fetch_connected_roster_and_settings(
                 for p in roster_data.get("players", [])
             ]
 
-            if user_league.yahoo_access_token and user_league.league_key:
+            if user_league.league_key:
                 free_agents = await yahoo_service.get_available_players(
-                    user_league.yahoo_access_token, user_league.league_key, count=300
+                    yahoo_token, user_league.league_key, count=300
                 )
                 if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                     available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
@@ -174,7 +177,7 @@ async def _fetch_connected_roster_and_settings(
                 # Yahoo league (yahoo_service.get_waiver_position returns
                 # {"error": ...} there rather than a guessed budget).
                 waiver_position_result = await yahoo_service.get_waiver_position(
-                    user_league.yahoo_access_token, user_league.league_key, user_league.team_id
+                    yahoo_token, user_league.league_key, user_league.team_id
                 )
                 if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result:
                     waiver_position = waiver_position_result

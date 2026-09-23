@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
 from app.services.yahoo_service import yahoo_service
+from app.services.yahoo_tokens import get_valid_yahoo_token
 from app.services.sleeper_service import sleeper_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.league_management_service import LeagueManagementService
@@ -529,21 +530,14 @@ async def get_waiver_position(
             }
 
         if platform == "YAHOO":
-            if not user_league.yahoo_access_token:
+            yahoo_token = await get_valid_yahoo_token(user_league)
+            if not yahoo_token:
                 return {
                     "supported": False,
                     "detail": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account.",
                 }
-            if (
-                user_league.yahoo_token_expires_at
-                and user_league.yahoo_token_expires_at < datetime.now(timezone.utc)
-            ):
-                return {
-                    "supported": False,
-                    "detail": "Your Yahoo connection has expired. Please reconnect your Yahoo account.",
-                }
             position = await yahoo_service.get_waiver_position(
-                user_league.yahoo_access_token, user_league.league_key, user_league.team_id
+                yahoo_token, user_league.league_key, user_league.team_id
             )
         else:
             position = await espn_service_enhanced.get_waiver_position(

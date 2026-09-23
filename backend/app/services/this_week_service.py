@@ -23,11 +23,11 @@ claim -- the matchup scoreboard, real lineup, real team-level projected
 totals, and real win probability are all still real and shown.
 """
 import asyncio
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
+from app.services.yahoo_tokens import get_valid_yahoo_token
 from app.services.yahoo_service import yahoo_service
 
 BENCH_SLOTS = {"BE", "IR", "BENCH"}
@@ -372,22 +372,15 @@ async def _build_yahoo_this_week(league: UserLeague, league_info: Dict[str, Any]
             "platform_supported": True,
             "detail": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account.",
         }
-    # yahoo_token_expires_at is a timezone-aware DB column; comparing it
-    # against a naive datetime.utcnow() raises "can't compare
-    # offset-naive and offset-aware datetimes" -- the exact same bug
-    # class already fixed in league_management_service.py /
-    # league_snapshots.py / user_service.py's account-lockout check.
-    if (
-        league.yahoo_token_expires_at
-        and league.yahoo_token_expires_at < datetime.now(timezone.utc)
-    ):
+    # Renews an expired token first (yahoo_tokens.get_valid_yahoo_token);
+    # None only when renewal genuinely failed.
+    access_token = await get_valid_yahoo_token(league)
+    if not access_token:
         return {
             "league_info": league_info,
             "platform_supported": True,
             "detail": "Your Yahoo connection has expired. Please reconnect your Yahoo account.",
         }
-
-    access_token = league.yahoo_access_token
     team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
     if not team_key:
         return {

@@ -18,6 +18,7 @@ from app.services.post_draft_analysis_service import PostDraftAnalysisService
 from app.services.sleeper_service import SleeperService
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
+from app.services.yahoo_tokens import get_valid_yahoo_token
 from app.services.user_service import UserService
 
 logger = logging.getLogger(__name__)
@@ -211,13 +212,14 @@ async def import_roster_from_league(
             # live 2026-09-22, the first time this path was reachable with
             # a real Yahoo connection at all.
             team_key = yahoo_service.build_team_key(user_league.league_key, user_league.team_id)
-            if not user_league.yahoo_access_token or not team_key:
+            yahoo_token = await get_valid_yahoo_token(user_league)
+            if not yahoo_token or not team_key:
                 raise HTTPException(
                     status_code=400,
                     detail="Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account."
                 )
 
-            roster_data = await yahoo_service.get_team_roster(user_league.yahoo_access_token, team_key)
+            roster_data = await yahoo_service.get_team_roster(yahoo_token, team_key)
 
             if "error" in roster_data:
                 raise HTTPException(status_code=400, detail=roster_data["error"])
