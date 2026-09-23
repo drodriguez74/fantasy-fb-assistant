@@ -117,3 +117,28 @@ def test_grade_roster_preserves_backward_compatible_keys():
     # New keys added alongside, not replacing, the old ones.
     for key in ("overall_score", "components", "bye_week_collisions"):
         assert key in result
+
+
+def test_flex_slots_are_covered_by_surplus_depth_first():
+    # A real Yahoo roster: 6 RBs for 1 RB slot, 1 TE for 1 TE slot, 2 FLEX.
+    # The RB surplus fills FLEX -- it must not read as "needs 3 TEs".
+    from app.services.roster_requirements import effective_position_requirements
+
+    reqs = effective_position_requirements(
+        {"QB": 1, "RB": 6, "WR": 4, "TE": 1},
+        {"starters": {"QB": 1, "RB": 1, "WR": 2, "TE": 1, "FLEX": 2}},
+    )
+    assert reqs["TE"] == 1
+    assert reqs["RB"] == 3
+    assert reqs["WR"] == 2
+
+
+def test_uncovered_flex_still_goes_to_thinnest_position():
+    from app.services.roster_requirements import effective_position_requirements
+
+    reqs = effective_position_requirements(
+        {"RB": 2, "WR": 1, "TE": 1},
+        {"starters": {"RB": 2, "WR": 2, "TE": 1, "FLEX": 1}},
+    )
+    # No surplus anywhere; WR is short by 1, so FLEX lands there.
+    assert reqs == {"RB": 2, "WR": 3, "TE": 1}

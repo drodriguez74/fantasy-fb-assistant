@@ -12,6 +12,7 @@ from app.services.player_data_service import PlayerDataService
 from app.services import roster_grading
 from app.services import trade_finder_service
 from app.services.weekly_projections import attach_projections, fetch_season_projections
+from app.services.yahoo_waiver_context import build_yahoo_waiver_context
 from datetime import datetime, timedelta, timezone
 import asyncio
 import logging
@@ -706,7 +707,11 @@ class LeagueManagementService:
             if "error" in roster_data:
                 return {"error": roster_data["error"]}
 
-            roster_players = roster_data.get("players", [])
+            # `lineup_slot` is the field name pick_drop_candidate (and the
+            # rest of the waiver code) reads; Yahoo's is `selected_position`.
+            roster_players = [
+                {**p, "lineup_slot": p.get("selected_position")} for p in roster_data.get("players", [])
+            ]
             current_players = {(p.get("name") or "").lower() for p in roster_players}
 
             league_settings = None
@@ -722,10 +727,32 @@ class LeagueManagementService:
             # _get_espn_waiver_recs. Best-effort: a fetch failure just means
             # no availability filter is applied.
             available_player_names = None
+            enrichment = None
+            team_bye_map = None
             if league.league_key:
                 free_agents = await yahoo_service.get_available_players(access_token, league.league_key, count=300)
                 if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                     available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
+                else:
+                    free_agents = []
+                # Ownership%/season projection/this-week byes -- the Yahoo
+                # counterpart to _get_espn_waiver_recs's enrichment.
+                enrichment, team_bye_map = await build_yahoo_waiver_context(
+                    access_token, league.league_key, league.season, free_agents, league_settings
+                )
+
+            # Same season projections on my own roster, so the league view's
+            # drop candidate and value delta compare like with like (ESPN's
+            # roster carries its own season projection). Cached feed -- no
+            # second download.
+            season_rows = await fetch_season_projections(league.season)
+            if season_rows:
+                attach_projections(
+                    roster_players,
+                    season_rows,
+                    (league_settings or {}).get("scoring_rules"),
+                    (league_settings or {}).get("stat_values"),
+                )
 
             # Real rolling-waiver rank for bid-tier suggestions -- mirrors
             # _get_espn_waiver_recs below. Honestly None for a FAAB Yahoo
@@ -746,6 +773,8 @@ class LeagueManagementService:
                 user_roster=roster_players,
                 league_settings=league_settings,
                 available_player_names=available_player_names,
+                espn_enrichment=enrichment,
+                team_bye_map=team_bye_map,
                 waiver_position=waiver_position,
             )
             candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]

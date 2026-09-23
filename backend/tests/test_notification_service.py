@@ -116,6 +116,45 @@ class TestGenerateWeeklyDigestForUser:
         assert notification.dedupe_key.startswith(f"weekly_digest:{league.id}:")
 
     @pytest.mark.asyncio
+    async def test_yahoo_league_gets_real_bye_week_content(self, test_db_session):
+        # Yahoo now has a real bye radar too; this-week and next-week byes
+        # are reported separately (they used to be lumped under "this week").
+        from datetime import timedelta
+
+        user = make_user(test_db_session)
+        league = UserLeague(
+            user_id=user.id,
+            platform=PlatformType.YAHOO,
+            league_id="77",
+            league_key="461.l.77",
+            team_id="3",
+            league_name="Yahoo Test League",
+            season=2026,
+            yahoo_access_token="tok",
+            yahoo_token_expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+        )
+        test_db_session.add(league)
+        test_db_session.commit()
+
+        radar = AsyncMock(return_value={"upcoming_byes": [
+            {"player_name": "Now Guy", "weeks_until_bye": 0},
+            {"player_name": "Soon Guy", "weeks_until_bye": 1},
+            {"player_name": "Later Guy", "weeks_until_bye": 4},
+        ]})
+        with patch(
+            "app.services.waiver_wire_service.WaiverWireService.get_live_trending_recommendations",
+            new=AsyncMock(return_value=[]),
+        ), patch("app.services.yahoo_service.yahoo_service.get_bye_week_radar", new=radar):
+            created = await generate_weekly_digest_for_user(test_db_session, user)
+
+        assert len(created) == 1
+        body = created[0].body
+        assert "On bye this week: Now Guy." in body
+        assert "On bye next week: Soon Guy." in body
+        assert "Later Guy" not in body
+        assert radar.await_args.args == ("tok", "461.l.77", "461.l.77.t.3")
+
+    @pytest.mark.asyncio
     async def test_no_real_content_skips_the_league_entirely(self, test_db_session):
         user = make_user(test_db_session)
         make_espn_league(test_db_session, user)

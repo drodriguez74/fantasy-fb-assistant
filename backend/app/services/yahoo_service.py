@@ -861,41 +861,48 @@ class YahooFantasyService:
             "upcoming_byes": upcoming,
         }
 
+    # Yahoo's players collection returns at most 25 per request, whatever
+    # `count` asks for (confirmed live 2026-09-23).
+    _PLAYERS_PAGE_SIZE = 25
+
     async def get_available_players(self, access_token: str, league_key: str, position: str = None, count: int = 25) -> List[Dict[str, Any]]:
-        """Get available players in Yahoo league"""
+        """Up to `count` available (free agent + waivers) players in a Yahoo
+        league, with real ownership %.
+
+        Filters go in Yahoo's matrix-param form (`;status=A;start=N;count=25`)
+        and pages are fetched in parallel, 25 at a time. This used to pass
+        them as query-string params with count=300 and got back one page of
+        25 -- so the waiver availability filter built from it treated every
+        free agent outside those 25 as unavailable. `out=percent_owned` is
+        needed for ownership; without it the field was always None.
+        """
         if not access_token:
             return [{"error": "Not authenticated"}]
 
-        try:
-            headers = {"Authorization": f"Bearer {access_token}"}
-            url = f"{self.base_url}/league/{league_key}/players"
+        headers = {"Authorization": f"Bearer {access_token}"}
+        position_param = f";position={position}" if position else ""
 
-            params = {
-                "format": "json",
-                "status": "A",  # Available players
-                "count": count
-            }
-
-            if position:
-                params["position"] = position
-
-            response = await self.client.get(url, headers=headers, params=params)
+        async def fetch_page(start: int) -> List[Dict[str, Any]]:
+            url = (
+                f"{self.base_url}/league/{league_key}/players;status=A{position_param}"
+                f";start={start};count={self._PLAYERS_PAGE_SIZE};out=percent_owned"
+            )
+            response = await self.client.get(url, headers=headers, params={"format": "json"})
             response.raise_for_status()
-
             data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
 
-            available_players = []
             league_data = self._flatten_resource(data.get("fantasy_content", {}).get("league", {}))
             players_data = league_data.get("players", {})
-
+            page: List[Dict[str, Any]] = []
+            if not isinstance(players_data, dict):
+                return page
             for player_key, player_data in players_data.items():
                 if isinstance(player_data, dict) and "player" in player_data:
                     player = self._flatten_resource(player_data["player"])
-                    # eligible_positions is a real list (`[{"position": "QB"}, ...]`),
-                    # not a dict -- same fix as get_team_roster's player
-                    # parsing, confirmed against the same live shape.
+                    # percent_owned is a list ([{coverage}, {"value": 10},
+                    # {"delta": ...}]) -- flattened like every other resource.
                     percent_owned = self._flatten_resource(player.get("percent_owned", {}))
-                    available_players.append({
+                    page.append({
                         "player_key": player.get("player_key"),
                         "player_id": player.get("player_id"),
                         "name": player.get("name", {}).get("full"),
@@ -904,10 +911,23 @@ class YahooFantasyService:
                         "ownership_percentage": percent_owned.get("value"),
                         "status": player.get("status")
                     })
+            return page
 
-            return available_players
+        starts = list(range(0, max(count, 1), self._PLAYERS_PAGE_SIZE))
+        try:
+            pages = await asyncio.gather(*(fetch_page(start) for start in starts))
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get available players: {self._error_detail(e)}"}]
+
+        available_players: List[Dict[str, Any]] = []
+        seen = set()
+        for page in pages:
+            for p in page:
+                if p["player_key"] in seen:
+                    continue
+                seen.add(p["player_key"])
+                available_players.append(p)
+        return available_players[:count]
 
     async def get_draft_results(self, access_token: str, league_key: str) -> List[Dict[str, Any]]:
         """Get draft results from Yahoo league"""

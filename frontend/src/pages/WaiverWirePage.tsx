@@ -56,7 +56,7 @@ interface WaiverRecommendation {
   // the list IS the top of that ranking by construction.
   rank?: number
   total_candidates?: number
-  // Real per-league signal (ESPN only, when a league is selected):
+  // Real per-league signal (ESPN/Yahoo, when a league is selected):
   // true/false from that team's actual current-week lineup, null/undefined
   // when not determinable (no league selected, or this team has zero
   // rostered players anywhere in the league to read a bye off of).

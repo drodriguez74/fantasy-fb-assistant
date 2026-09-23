@@ -498,11 +498,72 @@ async def build_standings_snapshot(user_league: UserLeague) -> Dict[str, Any]:
     raise SnapshotBuildError(f"Standings are not yet implemented for {platform} leagues.")
 
 
+async def _build_yahoo_position_pressure_snapshot(
+    user_league: UserLeague, league_info: Dict[str, Any]
+) -> Dict[str, Any]:
+    """Yahoo's waiver-competition signal -- same compute_position_pressure
+    as ESPN, fed from one get_league_rosters call. Each Yahoo roster
+    player already carries this week's real lineup slot, injury status,
+    and bye week, so the same rosters give both the season-depth and the
+    this-week signals (ESPN needs a separate week-lineups call)."""
+    access_token = await _require_yahoo_token(user_league)
+
+    rosters, settings, yahoo_league_info = await asyncio.gather(
+        yahoo_service.get_league_rosters(access_token, user_league.league_key),
+        yahoo_service.get_league_settings(access_token, user_league.league_key),
+        yahoo_service.get_league_info(access_token, user_league.league_key),
+    )
+    if rosters and "error" in rosters[0]:
+        raise SnapshotBuildError(rosters[0]["error"])
+    if "error" in settings:
+        settings = None
+    try:
+        current_week = int(yahoo_league_info.get("current_week")) if "error" not in yahoo_league_info else None
+    except (TypeError, ValueError):
+        current_week = None
+
+    teams = []
+    week_lineups = []
+    for team in rosters:
+        players = team.get("players", [])
+        teams.append({
+            "team_id": team.get("team_id"),
+            "team_name": team.get("team_name"),
+            "roster": [{"position": p.get("position")} for p in players],
+        })
+        week_lineups.append({
+            "team_id": team.get("team_id"),
+            "lineup": [
+                {
+                    "position": p.get("position"),
+                    "slot_position": (p.get("selected_position") or "").upper(),
+                    "injury_status": p.get("status") or "ACTIVE",
+                    "on_bye": current_week is not None and p.get("bye_week") == current_week,
+                }
+                for p in players
+            ],
+        })
+
+    pressure = compute_position_pressure(
+        teams, settings, exclude_team_id=user_league.team_id, week_lineups=week_lineups
+    )
+
+    return {
+        "league_info": league_info,
+        "supported": True,
+        "position_pressure": pressure,
+        "other_teams_considered": max(0, len(teams) - (1 if user_league.team_id else 0)),
+    }
+
+
 async def build_position_pressure_snapshot(user_league: UserLeague) -> Dict[str, Any]:
     """How thin the OTHER teams in this league are at each skill position,
     from their own real rosters -- see league_competition.py. Used to tell
     a waiver recommendation apart from a genuinely contested one."""
     league_info = _league_info(user_league)
+
+    if league_info["platform"] == "YAHOO":
+        return await _build_yahoo_position_pressure_snapshot(user_league, league_info)
 
     if league_info["platform"] != "ESPN":
         return {

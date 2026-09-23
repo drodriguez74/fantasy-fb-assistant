@@ -4,6 +4,7 @@ Waiver Wire API Endpoints
 RESTful endpoints for waiver wire recommendations, analysis, and weekly insights.
 """
 
+import asyncio
 import json
 import logging
 from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
@@ -49,11 +50,12 @@ async def _fetch_connected_roster_and_settings(
     live: a real ESPN league got recommended a player another team in that
     exact league had already rostered).
 
-    Fourth/fifth return values (ESPN only, None otherwise) are real
+    Fourth/fifth return values (ESPN and Yahoo, None otherwise) are real
     enrichment the live Sleeper-trending path has no source for on its
     own: `espn_enrichment` maps lower-cased name -> that free agent's real
-    ESPN ownership%/season-projected-points (from the same free-agent
-    fetch already made for `available_player_names` -- no extra call), and
+    ownership%/season-projected-points (ESPN: from the same free-agent
+    fetch already made for `available_player_names`; Yahoo: see
+    yahoo_waiver_context.py), and
     `team_bye_map` maps NFL team abbreviation -> whether that team is on a
     bye THIS week, derived from get_league_week_lineups's real per-player
     on_bye_week flags (a team's bye status is observable on any of its
@@ -61,7 +63,7 @@ async def _fetch_connected_roster_and_settings(
     rostered players in this league simply aren't covered, so this is
     honest-best-effort, not guaranteed complete).
 
-    Sixth return value (ESPN only, None otherwise): `waiver_position`, this
+    Sixth return value (ESPN and Yahoo, None otherwise): `waiver_position`, this
     team's real FAAB balance or rolling-priority rank (same data
     GET /leagues/{id}/waiver-position surfaces standalone), so
     WaiverWireService.compute_bid_tier can turn each recommendation's real
@@ -166,11 +168,26 @@ async def _fetch_connected_roster_and_settings(
             ]
 
             if user_league.league_key:
-                free_agents = await yahoo_service.get_available_players(
-                    yahoo_token, user_league.league_key, count=300
+                from app.services.yahoo_waiver_context import build_yahoo_waiver_context
+
+                free_agents, yahoo_settings = await asyncio.gather(
+                    yahoo_service.get_available_players(yahoo_token, user_league.league_key, count=300),
+                    yahoo_service.get_league_settings(yahoo_token, user_league.league_key),
                 )
                 if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                     available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
+                else:
+                    free_agents = []
+                # Same ownership%/season-projection/this-week-bye enrichment
+                # the ESPN branch builds (espn_enrichment is the shared
+                # parameter name, not ESPN-specific data here).
+                espn_enrichment, team_bye_map = await build_yahoo_waiver_context(
+                    yahoo_token,
+                    user_league.league_key,
+                    user_league.season,
+                    free_agents,
+                    yahoo_settings if "error" not in yahoo_settings else None,
+                )
 
                 # Real rolling-waiver rank for bid-tier suggestions --
                 # mirrors the ESPN branch above. Honestly None for a FAAB

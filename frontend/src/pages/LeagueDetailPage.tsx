@@ -95,7 +95,7 @@ interface WaiverRecommendationItem {
     position_matched: boolean
   } | null
   value_delta?: number | null
-  // Real, priority-aware claim suggestion (ESPN only) -- see
+  // Real, priority-aware claim suggestion (ESPN/Yahoo) -- see
   // WaiverWireService.compute_bid_tier. null/undefined when this team's
   // real waiver standing couldn't be determined.
   bid_tier?: {

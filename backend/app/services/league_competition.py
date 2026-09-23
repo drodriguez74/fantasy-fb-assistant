@@ -20,8 +20,8 @@ fabricated):
     that's thin all season might not act this week, but a team staring at
     an empty lineup slot Sunday almost certainly will.
 
-Neither is "Team X is bidding on Player Y" -- ESPN's API has no visibility
-into other teams' pending waiver claims, so that specific fact isn't
+Neither is "Team X is bidding on Player Y" -- neither ESPN's nor Yahoo's API
+has visibility into other teams' pending waiver claims, so that specific fact isn't
 knowable. Both ARE real, named, per-team facts ("Dart Vader's starting RB
 is on bye and their bench has no healthy RB") that add up to a legitimate,
 non-fabricated educated guess about who's likely to be competing for a
@@ -30,7 +30,7 @@ given position.
 from typing import Any, Dict, List, Optional
 
 from app.services.roster_requirements import effective_position_requirements
-from app.services.this_week_service import HEALTHY_STATUSES, _is_starter, _slot_accepts
+from app.services.this_week_service import HEALTHY_STATUSES, IR_SLOTS, _is_starter, _slot_accepts
 
 # Kicker/DEF benches are routinely 0 by design (most leagues stream them) --
 # "thin" has no real meaning there, so this signal only covers positions
@@ -55,7 +55,7 @@ def _team_season_need(roster: List[Dict[str, Any]], league_settings: Dict[str, A
 
 def _team_weekly_need(lineup: List[Dict[str, Any]]) -> Dict[str, bool]:
     starters = [p for p in lineup if _is_starter(p)]
-    bench = [p for p in lineup if not _is_starter(p) and (p.get("slot_position") or "").upper() != "IR"]
+    bench = [p for p in lineup if not _is_starter(p) and (p.get("slot_position") or "").upper() not in IR_SLOTS]
 
     need: Dict[str, bool] = {pos: False for pos in COMPETITION_POSITIONS}
     for starter in starters:

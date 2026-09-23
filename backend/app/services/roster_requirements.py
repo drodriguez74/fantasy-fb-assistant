@@ -18,15 +18,19 @@ def effective_position_requirements(
     league_settings: Dict[str, Any],
 ) -> Dict[str, int]:
     """Real per-position starter requirement for the connected league, with
-    FLEX slots folded into whichever of RB/WR/TE currently has the largest
-    shortfall against what's been rostered so far -- i.e. each FLEX slot
-    counts toward whichever position is thinnest at the time it's
-    considered, rather than being ignored or split evenly across all three
-    regardless of actual roster construction. This is a simplification
-    (real lineups don't pre-assign a FLEX slot to one position), but it's
-    an explicit, documented heuristic, not a fabrication -- and it only
-    affects RB/WR/TE; every other real starter requirement (QB/K/DEF/any
-    other slot the league carries) passes through unchanged.
+    FLEX slots folded into RB/WR/TE. Every other real starter requirement
+    (QB/K/DEF/any other slot the league carries) passes through unchanged.
+
+    FLEX slots are first credited to positions whose rostered depth already
+    exceeds their base requirement (largest surplus first) -- those players
+    are what actually fills FLEX. Only FLEX slots no surplus can cover fall
+    through to the thinnest position (largest shortfall), i.e. where the
+    roster really does need another body. Before, every FLEX slot went to
+    the thinnest position regardless of surplus: a real Yahoo roster with 6
+    RBs for 1 RB slot and 1 TE for 1 TE slot got both FLEX slots assigned
+    to TE and was told it needed 3 TEs. A simplification (real lineups
+    don't pre-assign a FLEX slot), but an explicit heuristic, not a
+    fabrication.
     """
     starters = dict(league_settings.get("starters", {}) or {})
     flex_count = starters.pop("FLEX", 0)
@@ -35,6 +39,14 @@ def effective_position_requirements(
         pos: starters.get(pos, 0) for pos in FLEX_ELIGIBLE_POSITIONS
     }
     for _ in range(flex_count):
+        surplus = {
+            pos: position_counts.get(pos, 0) - flex_eligible_requirements[pos]
+            for pos in FLEX_ELIGIBLE_POSITIONS
+        }
+        deepest = max(FLEX_ELIGIBLE_POSITIONS, key=lambda pos: surplus[pos])
+        if surplus[deepest] > 0:
+            flex_eligible_requirements[deepest] += 1
+            continue
         thinnest = max(
             FLEX_ELIGIBLE_POSITIONS,
             key=lambda pos: flex_eligible_requirements[pos] - position_counts.get(pos, 0),

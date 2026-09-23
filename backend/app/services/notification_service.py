@@ -22,7 +22,7 @@ Real event sources used: Sleeper's live trending-add feed (a player lands
 in the top decile of that feed's add-count ranking, "urgent" priority, only
 because real fantasy managers are actually adding them across real Sleeper
 leagues in the last 24 hours) and, for the weekly digest, each connected
-league's real live waiver recommendations and (ESPN only) real bye-week
+league's real live waiver recommendations and (ESPN/Yahoo) real bye-week
 radar -- never a synthetic or templated signal.
 """
 
@@ -192,32 +192,43 @@ async def generate_weekly_digest_for_user(db: Session, user: User) -> List[Notif
                 logger.warning(f"Weekly digest: waiver lookup failed for league {league.id}: {str(e)}")
 
             # Real upcoming bye-week risk on this team's own roster (ESPN
-            # only -- get_bye_week_radar has no Yahoo/Sleeper equivalent
-            # yet). Flags anything within the next 2 weeks so a digest sent
-            # any day this week still gives real advance notice.
-            if league.platform.value.upper() == "ESPN":
+            # and Yahoo -- Sleeper has no bye radar yet). Flags anything
+            # within the next 2 weeks so a digest sent any day this week
+            # still gives real advance notice.
+            platform = league.platform.value.upper()
+            if platform in ("ESPN", "YAHOO"):
                 try:
-                    from app.services.espn_service_enhanced import espn_service_enhanced
+                    radar = None
+                    if platform == "ESPN":
+                        from app.services.espn_service_enhanced import espn_service_enhanced
 
-                    radar = await espn_service_enhanced.get_bye_week_radar(
-                        league_id=league.league_id,
-                        team_id=int(league.team_id),
-                        season=league.season,
-                        swid=league.espn_swid,
-                        espn_s2=league.espn_s2,
-                    )
+                        radar = await espn_service_enhanced.get_bye_week_radar(
+                            league_id=league.league_id,
+                            team_id=int(league.team_id),
+                            season=league.season,
+                            swid=league.espn_swid,
+                            espn_s2=league.espn_s2,
+                        )
+                    else:
+                        from app.services.yahoo_service import yahoo_service
+                        from app.services.yahoo_tokens import get_valid_yahoo_token
+
+                        token = await get_valid_yahoo_token(league)
+                        team_key = yahoo_service.build_team_key(league.league_key, league.team_id)
+                        if token and team_key:
+                            radar = await yahoo_service.get_bye_week_radar(token, league.league_key, team_key)
+
                     if isinstance(radar, dict) and "error" not in radar:
-                        soon = [
+                        upcoming = [
                             p for p in radar.get("upcoming_byes", [])
                             if isinstance(p.get("weeks_until_bye"), int) and p["weeks_until_bye"] <= 1
                         ]
-                        if soon:
-                            names = ", ".join(p["player_name"] for p in soon)
-                            this_week = [p["player_name"] for p in soon if p["weeks_until_bye"] == 0]
-                            if this_week:
-                                body_parts.append(f"On bye this week: {names}.")
-                            else:
-                                body_parts.append(f"On bye next week: {names}.")
+                        this_week = [p["player_name"] for p in upcoming if p["weeks_until_bye"] == 0]
+                        next_week = [p["player_name"] for p in upcoming if p["weeks_until_bye"] == 1]
+                        if this_week:
+                            body_parts.append(f"On bye this week: {', '.join(this_week)}.")
+                        if next_week:
+                            body_parts.append(f"On bye next week: {', '.join(next_week)}.")
                 except Exception as e:
                     logger.warning(f"Weekly digest: bye-week radar failed for league {league.id}: {str(e)}")
 

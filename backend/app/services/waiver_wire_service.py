@@ -70,7 +70,8 @@ def pick_drop_candidate(roster_players: List[Dict[str, Any]], position: str) -> 
     already show) -- never a fabricated per-player value.
     """
     def is_bench(p: Dict[str, Any]) -> bool:
-        return (p.get("lineup_slot") or "").upper() in ("BE", "BENCH")
+        # ESPN's "BE"/"BENCH" and Yahoo's "BN".
+        return (p.get("lineup_slot") or "").upper() in ("BE", "BENCH", "BN")
 
     def value(p: Dict[str, Any]) -> float:
         return float(p.get("projected_points") or 0.0)
