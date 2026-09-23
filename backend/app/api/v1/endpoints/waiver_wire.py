@@ -169,6 +169,16 @@ async def _fetch_connected_roster_and_settings(
                 if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                     available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
 
+                # Real rolling-waiver rank for bid-tier suggestions --
+                # mirrors the ESPN branch above. Honestly None for a FAAB
+                # Yahoo league (yahoo_service.get_waiver_position returns
+                # {"error": ...} there rather than a guessed budget).
+                waiver_position_result = await yahoo_service.get_waiver_position(
+                    user_league.yahoo_access_token, user_league.league_key, user_league.team_id
+                )
+                if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result:
+                    waiver_position = waiver_position_result
+
         elif platform == "SLEEPER":
             from app.services.sleeper_service import SleeperService
 

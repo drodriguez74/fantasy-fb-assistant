@@ -150,6 +150,32 @@ ESPN_STAT_ID_MAP: Dict[int, Any] = {
 }
 
 
+# Yahoo's real stat_id -> (category, stat) mapping, confirmed live
+# 2026-09-23 against a real connected league's /league/{key}/settings
+# response: `settings.stat_modifiers.stats` carries only real
+# `stat_id`/`value` pairs (no name), but the same response's sibling
+# `settings.stat_categories.stats` collection carries the real
+# stat_id -> name/group mapping these entries were read off of and
+# verified against (e.g. stat_id 11 -> name "Receptions", group
+# "receiving"). Yahoo's stat_id scheme is a per-game (not per-league)
+# constant, the same basis ESPN_STAT_ID_MAP above already relies on.
+YAHOO_STAT_ID_MAP: Dict[int, Any] = {
+    2: ("passing", "completion"),
+    3: ("passing", "incompletion"),
+    4: ("passing", "yard"),
+    5: ("passing", "td"),
+    6: ("passing", "interception"),
+    8: ("rushing", "attempt"),
+    9: ("rushing", "yard"),
+    10: ("rushing", "td"),
+    11: ("receiving", "reception"),
+    12: ("receiving", "yard"),
+    13: ("receiving", "td"),
+    18: ("fumbles", "lost"),
+    78: ("receiving", "target"),
+}
+
+
 def scoring_rules_from_espn(scoring_format: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
     """Build the canonical scoring-rules shape from ESPN's real
     `Settings.scoring_format` list (see
@@ -165,6 +191,37 @@ def scoring_rules_from_espn(scoring_format: Optional[List[Dict[str, Any]]]) -> D
             continue
         category, stat = target
         rules[category][stat] = float(item.get("points") or 0.0)
+    return rules
+
+
+def scoring_rules_from_yahoo(stat_modifiers: Optional[List[Dict[str, Any]]]) -> Dict[str, Any]:
+    """Build the canonical scoring-rules shape from Yahoo's real
+    `settings.stat_modifiers.stats` list (see
+    yahoo_service.get_league_settings, which already reads this same
+    collection for points_per_reception via stat_id 11 -- this reads the
+    rest of it via YAHOO_STAT_ID_MAP instead of discarding it). Each
+    entry is `{"stat_id": N, "value": "X"}` -- no name on this
+    collection specifically, hence the separate confirmed id map above
+    rather than name-matching (which is what get_league_settings tried
+    before this and always silently found nothing, since this list
+    genuinely carries no name field).
+    """
+    rules = default_scoring_rules(source="yahoo")
+    for item in stat_modifiers or []:
+        if not isinstance(item, dict):
+            continue
+        try:
+            stat_id = int(item.get("stat_id"))
+        except (TypeError, ValueError):
+            continue
+        target = YAHOO_STAT_ID_MAP.get(stat_id)
+        if target is None:
+            continue
+        category, stat = target
+        try:
+            rules[category][stat] = float(item.get("value") or 0.0)
+        except (TypeError, ValueError):
+            continue
     return rules
 
 

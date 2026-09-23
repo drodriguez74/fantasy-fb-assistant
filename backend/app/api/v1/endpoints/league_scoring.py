@@ -22,6 +22,7 @@ from app.services.scoring_calculation_service import ScoringCalculationService
 from app.services.scoring_rules import describe_scoring_rules
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.sleeper_service import sleeper_service
+from app.services.yahoo_service import yahoo_service
 
 logger = logging.getLogger(__name__)
 
@@ -243,6 +244,19 @@ async def get_league_scoring(
                         "scoring_type": None,
                         "source": "sleeper",
                     }
+            elif platform == "YAHOO" and user_league.yahoo_access_token and user_league.league_key:
+                yahoo_settings = await yahoo_service.get_league_settings(
+                    user_league.yahoo_access_token, user_league.league_key
+                )
+                if "error" not in yahoo_settings:
+                    roster_settings = {
+                        "starters": yahoo_settings.get("starters"),
+                        "bench": yahoo_settings.get("bench"),
+                        "roster_size": yahoo_settings.get("roster_size"),
+                        "points_per_reception": yahoo_settings.get("points_per_reception"),
+                        "scoring_type": None,
+                        "source": "yahoo",
+                    }
         except Exception as roster_err:
             logger.warning(f"Roster-settings auto-detection failed for league {league_id}: {roster_err}")
 
@@ -271,6 +285,12 @@ async def get_league_scoring(
                     parsed = sleeper_service.parse_league_settings(league_info)
                     if "error" not in parsed:
                         detected_scoring = parsed.get("scoring_rules")
+                elif platform == "YAHOO" and user_league.yahoo_access_token and user_league.league_key:
+                    yahoo_settings = await yahoo_service.get_league_settings(
+                        user_league.yahoo_access_token, user_league.league_key
+                    )
+                    if "error" not in yahoo_settings:
+                        detected_scoring = yahoo_settings.get("scoring_rules")
             except Exception as detect_err:
                 logger.warning(f"Scoring auto-detection failed for league {league_id}: {detect_err}")
 

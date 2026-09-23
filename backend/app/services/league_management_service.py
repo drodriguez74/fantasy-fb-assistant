@@ -733,6 +733,18 @@ class LeagueManagementService:
                 if free_agents and not (isinstance(free_agents[0], dict) and "error" in free_agents[0]):
                     available_player_names = {(p.get("name") or "").lower() for p in free_agents if p.get("name")}
 
+            # Real rolling-waiver rank for bid-tier suggestions -- mirrors
+            # _get_espn_waiver_recs below. Honestly None for a FAAB Yahoo
+            # league (get_waiver_position returns {"error": ...} there
+            # rather than a guessed budget).
+            waiver_position = None
+            if league.league_key and league.team_id:
+                waiver_position_result = await yahoo_service.get_waiver_position(
+                    access_token, league.league_key, league.team_id
+                )
+                if isinstance(waiver_position_result, dict) and "error" not in waiver_position_result:
+                    waiver_position = waiver_position_result
+
             from app.services.waiver_wire_service import WaiverWireService
             waiver_service = WaiverWireService(self.db)
             candidates = await waiver_service.get_live_trending_recommendations(
@@ -740,6 +752,7 @@ class LeagueManagementService:
                 user_roster=roster_players,
                 league_settings=league_settings,
                 available_player_names=available_player_names,
+                waiver_position=waiver_position,
             )
             candidates = [c for c in candidates if (c.get("player_name") or "").lower() not in current_players]
 

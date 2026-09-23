@@ -6,6 +6,7 @@ from datetime import datetime
 import base64
 import json
 from app.core.config import settings
+from app.services.scoring_rules import scoring_rules_from_yahoo
 
 logger = logging.getLogger(__name__)
 
@@ -418,28 +419,28 @@ class YahooFantasyService:
         API resource from the base league info `get_league_info` above
         fetches, which doesn't carry any of this.
 
-        Per Yahoo's Fantasy Sports API (confirmed via the settings resource
-        field set several third-party API wrappers -- e.g. yfpy's Settings/
-        RosterPosition/StatModifiers/Stat model classes -- expose from real
-        Yahoo responses, since Yahoo's own developer docs are no longer
-        reachable): `settings.roster_positions` is a list of real slots,
-        each with a `position` label (e.g. "QB", "WR", "BN", "IR", or a
-        multi-eligible flex slot like "W/R/T" / superflex "Q/W/R/T") and a
-        `count`; `settings.stat_modifiers` is a list of real per-stat
-        scoring rules, each with a `name`/`display_name` (Yahoo's own
-        scoring-category label, e.g. "Receptions"/"Rec" -- see
-        help.yahoo.com's published scoring-category abbreviations) and a
-        `value`. Matched by name/display_name rather than a hardcoded
-        numeric stat_id: unlike ESPN's statId 53 (verified directly against
-        a real espn_api League.settings.scoring_format), no Yahoo stat_id
-        for receptions could be independently confirmed here, and guessing
-        a numeric id that turns out wrong would silently read some other
-        stat's value as points-per-reception -- matching the documented
-        name is the honest, verifiable option.
+        Real shapes, confirmed live 2026-09-23 against a real connected
+        league's /league/{key}/settings response (the first time this
+        method was ever checked against actual data rather than
+        third-party wrapper docs -- it was silently broken before this):
+        `settings.roster_positions` is a real PLAIN LIST of
+        `{"roster_position": {"position": ..., "count": ...}}` entries
+        (NOT the "0"/"1"/"count"-keyed collection style games/leagues/
+        teams/players use elsewhere in this file); `settings.
+        stat_modifiers.stats` is likewise a real plain list, but each
+        entry carries only `stat_id`/`value` -- no name/display_name at
+        all, despite this docstring previously claiming otherwise (that
+        claim was never actually verified against live data). Real names
+        come from a DIFFERENT sibling collection on this same response,
+        `settings.stat_categories.stats` (also a plain list), which is
+        where scoring_rules.YAHOO_STAT_ID_MAP's stat_id -> name mapping
+        was confirmed against -- see that module for the full canonical
+        cross-platform scoring_rules this method now also returns.
 
         Returns the same {starters, bench, roster_size,
         points_per_reception} shape sleeper_service.parse_league_settings /
-        espn_service_enhanced.get_scoring_and_roster_settings produce, so
+        espn_service_enhanced.get_scoring_and_roster_settings produce
+        (plus a `scoring_rules` key, matching ESPN's), so
         draft_assistant_service can treat all three platforms identically.
         Returns {"error": ...} on failure (missing/expired token, bad
         league_key, Yahoo outage) -- callers should fall back to generic
@@ -476,9 +477,11 @@ class YahooFantasyService:
             starters: Dict[str, int] = {}
             bench = 0
             roster_size = 0
-            raw_roster_positions = settings_data.get("roster_positions", {})
-            if isinstance(raw_roster_positions, dict):
-                for slot_key, slot_entry in raw_roster_positions.items():
+            # A real plain list, not the "0"/"count"-keyed collection
+            # style -- confirmed live (see this method's docstring).
+            raw_roster_positions = settings_data.get("roster_positions", [])
+            if isinstance(raw_roster_positions, list):
+                for slot_entry in raw_roster_positions:
                     if not (isinstance(slot_entry, dict) and "roster_position" in slot_entry):
                         continue
                     slot = slot_entry["roster_position"]
@@ -513,32 +516,43 @@ class YahooFantasyService:
 
                     starters[position] = starters.get(position, 0) + count
 
-            points_per_reception = 0.0
-            raw_stat_modifiers = settings_data.get("stat_modifiers", {})
-            if isinstance(raw_stat_modifiers, dict):
-                raw_stats = raw_stat_modifiers.get("stats", {})
-                if isinstance(raw_stats, dict):
-                    for stat_key, stat_entry in raw_stats.items():
-                        if not (isinstance(stat_entry, dict) and "stat" in stat_entry):
-                            continue
-                        stat = stat_entry["stat"]
-                        name = (stat.get("name") or "").strip().lower()
-                        display_name = (stat.get("display_name") or "").strip().lower()
-                        if name == "receptions" or display_name == "rec":
-                            try:
-                                points_per_reception = float(stat.get("value") or 0.0)
-                            except (TypeError, ValueError):
-                                points_per_reception = 0.0
-                            break
+            # Also a real plain list (settings_data["stat_modifiers"] is a
+            # dict with one "stats" key whose value is the list) -- each
+            # entry only carries stat_id/value, matched against the
+            # confirmed real id map in scoring_rules.py.
+            stat_modifiers_container = settings_data.get("stat_modifiers", {})
+            raw_stats = (
+                stat_modifiers_container.get("stats", [])
+                if isinstance(stat_modifiers_container, dict)
+                else []
+            )
+            flat_stats = [
+                entry["stat"] for entry in raw_stats
+                if isinstance(entry, dict) and isinstance(entry.get("stat"), dict)
+            ] if isinstance(raw_stats, list) else []
+
+            scoring_rules = scoring_rules_from_yahoo(flat_stats)
+            # Receptions is stat_id 11 (see scoring_rules.YAHOO_STAT_ID_MAP,
+            # confirmed live) -- read the same already-built canonical
+            # rules dict rather than re-scanning flat_stats a second time.
+            points_per_reception = scoring_rules.get("receiving", {}).get("reception", 0.0)
 
             if not starters and not bench:
                 return {"error": "League settings unavailable"}
+
+            # Real waiver system flag -- confirmed live: "0"/"1" (sometimes
+            # a real bool depending on response) on this same settings
+            # resource. Used by get_waiver_position below.
+            uses_faab = settings_data.get("uses_faab")
+            uses_faab = bool(int(uses_faab)) if isinstance(uses_faab, (int, str)) and str(uses_faab).strip() != "" else bool(uses_faab)
 
             return {
                 "starters": starters,
                 "bench": bench,
                 "roster_size": roster_size,
                 "points_per_reception": points_per_reception,
+                "scoring_rules": scoring_rules,
+                "uses_faab": uses_faab,
                 "source": "yahoo",
             }
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
@@ -603,12 +617,58 @@ class YahooFantasyService:
                         "wins": outcome_totals.get("wins"),
                         "losses": outcome_totals.get("losses"),
                         "points_for": team_standings.get("points_for"),
-                        "points_against": team_standings.get("points_against")
+                        "points_against": team_standings.get("points_against"),
+                        # Real rolling-waiver claim order (1 = first
+                        # priority) -- confirmed live on this same team
+                        # resource. Meaningless for a FAAB league (Yahoo
+                        # still returns it, but nobody uses it there).
+                        "waiver_priority": team.get("waiver_priority"),
                     })
 
             return teams
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             return [{"error": f"Failed to get teams: {self._error_detail(e)}"}]
+
+    async def get_waiver_position(self, access_token: str, league_key: str, team_id: str) -> Dict[str, Any]:
+        """This team's real standing to actually win a waiver claim --
+        the Yahoo equivalent of espn_service_enhanced.get_waiver_position.
+
+        Real for a rolling-priority Yahoo league (confirmed live
+        2026-09-23): `settings.uses_faab` (real "0"/"1" flag) plus each
+        team's real `waiver_priority` (1 = first claim priority),
+        surfaced via get_league_settings/get_league_teams. NOT built for
+        a FAAB Yahoo league -- this session's only real connected league
+        uses rolling priority (`uses_faab: 0`), so no real FAAB
+        budget/spend field name could be confirmed live the way
+        `waiver_priority` was; guessing one and getting it wrong would
+        silently show a fabricated-looking dollar amount, worse than an
+        honest gap. Returns `{"error": ...}` for a FAAB league rather
+        than a guessed number.
+        """
+        settings_data = await self.get_league_settings(access_token, league_key)
+        teams = await self.get_league_teams(access_token, league_key)
+        if isinstance(teams, list) and teams and isinstance(teams[0], dict) and "error" in teams[0]:
+            return {"error": teams[0]["error"]}
+
+        target_team = next((t for t in teams if str(t.get("team_id")) == str(team_id)), None)
+        if not target_team:
+            return {"error": f"Team {team_id} not found in league"}
+
+        uses_faab = settings_data.get("uses_faab") if "error" not in settings_data else None
+        if uses_faab:
+            return {
+                "error": (
+                    "This league uses Yahoo's FAAB waiver budget, which isn't "
+                    "confirmed real for Yahoo in this app yet -- rolling waiver "
+                    "priority is supported."
+                )
+            }
+
+        return {
+            "waiver_type": "priority",
+            "total_teams": len(teams),
+            "waiver_rank": target_team.get("waiver_priority"),
+        }
 
     @staticmethod
     def build_team_key(league_key: Optional[str], team_id: Optional[str]) -> Optional[str]:

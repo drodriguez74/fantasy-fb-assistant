@@ -505,8 +505,10 @@ async def get_waiver_position(
 ):
     """Where this user actually stands to win a waiver claim right now --
     FAAB balance or rolling priority rank, whichever this league's real
-    settings say it runs on. ESPN only today; other platforms get an
-    honest not-yet-implemented message rather than a fabricated number.
+    settings say it runs on. ESPN and Yahoo (rolling-priority leagues
+    only -- FAAB isn't confirmed real for Yahoo yet, see
+    yahoo_service.get_waiver_position) today; Sleeper gets an honest
+    not-yet-implemented message rather than a fabricated number.
     """
     try:
         user_service = UserService(db)
@@ -515,7 +517,7 @@ async def get_waiver_position(
             raise HTTPException(status_code=404, detail="League not found")
 
         platform = user_league.platform.value.upper()
-        if platform != "ESPN":
+        if platform not in ("ESPN", "YAHOO"):
             return {
                 "supported": False,
                 "detail": f"Waiver position isn't available for {platform} leagues yet.",
@@ -526,13 +528,31 @@ async def get_waiver_position(
                 "detail": "Your team isn't identified for this league yet. Set it via PUT /leagues/{league_id}/settings.",
             }
 
-        position = await espn_service_enhanced.get_waiver_position(
-            league_id=user_league.league_id,
-            team_id=user_league.team_id,
-            season=user_league.season,
-            swid=user_league.espn_swid,
-            espn_s2=user_league.espn_s2,
-        )
+        if platform == "YAHOO":
+            if not user_league.yahoo_access_token:
+                return {
+                    "supported": False,
+                    "detail": "Your Yahoo connection is missing or has expired. Please reconnect your Yahoo account.",
+                }
+            if (
+                user_league.yahoo_token_expires_at
+                and user_league.yahoo_token_expires_at < datetime.now(timezone.utc)
+            ):
+                return {
+                    "supported": False,
+                    "detail": "Your Yahoo connection has expired. Please reconnect your Yahoo account.",
+                }
+            position = await yahoo_service.get_waiver_position(
+                user_league.yahoo_access_token, user_league.league_key, user_league.team_id
+            )
+        else:
+            position = await espn_service_enhanced.get_waiver_position(
+                league_id=user_league.league_id,
+                team_id=user_league.team_id,
+                season=user_league.season,
+                swid=user_league.espn_swid,
+                espn_s2=user_league.espn_s2,
+            )
         if "error" in position:
             raise HTTPException(status_code=400, detail=position["error"])
 
