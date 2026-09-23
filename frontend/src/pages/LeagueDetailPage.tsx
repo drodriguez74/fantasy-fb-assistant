@@ -227,9 +227,9 @@ interface ThisWeekData {
   // `lineup`) -- powers the side-by-side H2H view. Real ESPN box-score
   // data, same source as `lineup`.
   opponent_lineup?: ThisWeekPlayer[]
-  // `null` (not just an empty-swaps object) on platforms -- Yahoo today
-  // -- where no real per-player projection exists to optimize against;
-  // distinct from a real "already optimal" result (swaps: []).
+  // `null` (not just an empty-swaps object) when no real per-player
+  // projection could be loaded to optimize against; distinct from a real
+  // "already optimal" result (swaps: []).
   optimization?: {
     current_projected: number
     optimized_projected: number
@@ -238,9 +238,11 @@ interface ThisWeekData {
   } | null
   starter_injuries?: { name: string; position?: string; status?: string }[]
   start_sit?: StartSitCall[]
-  // Present (and only meaningful) when optimization/start_sit are
-  // honestly unavailable for this platform -- explains why, e.g. Yahoo's
-  // lack of real per-player projections.
+  // Where per-player projections came from when they aren't the
+  // platform's own (Yahoo: Sleeper's weekly feed scored with the league's
+  // rules). Absent for ESPN, whose projections are its own.
+  projection_source?: string | null
+  // Explains the projection source, or why optimization is unavailable.
   projection_note?: string
   _cache?: { as_of: string; age_seconds: number; stale: boolean; source: string }
 }
@@ -1060,7 +1062,10 @@ export function LeagueDetailPage() {
                         )}
                       </span>
                     </div>
-                    <DataConfidenceBadge level="computed" label={`${thisWeek.league_info?.platform || 'ESPN'} weekly proj`} />
+                    <DataConfidenceBadge
+                      level="computed"
+                      label={thisWeek.projection_source ? 'Sleeper weekly proj' : `${thisWeek.league_info?.platform || 'ESPN'} weekly proj`}
+                    />
                   </>
                 ) : (
                   // No optimizer button at all when there's nothing real to
@@ -1071,6 +1076,11 @@ export function LeagueDetailPage() {
                   </span>
                 )}
               </div>
+              {opt && thisWeek.projection_source && thisWeek.projection_note && (
+                <p className="stat-nums text-[11px] text-faint px-4 sm:px-6 pb-4 bg-surface-2 leading-relaxed">
+                  {thisWeek.projection_note}
+                </p>
+              )}
             </div>
 
             {/* BODY: lineup + rail */}
@@ -1162,7 +1172,7 @@ export function LeagueDetailPage() {
                           </div>
                         )}
                         <div className="stat-nums text-[11px] text-muted mt-2 leading-relaxed">
-                          {s.start_in.name} projects {s.start_in.projected_points?.toFixed(1)} this week vs {s.bench_out.name}&apos;s {s.bench_out.projected_points?.toFixed(1)} &mdash; a {s.delta.toFixed(1)}-point swing on ESPN&apos;s own weekly projection.
+                          {s.start_in.name} projects {s.start_in.projected_points?.toFixed(1)} this week vs {s.bench_out.name}&apos;s {s.bench_out.projected_points?.toFixed(1)} &mdash; a {s.delta.toFixed(1)}-point swing on {thisWeek.projection_source ? 'Sleeper’s weekly projection, scored with your league’s rules' : `${thisWeek.league_info?.platform || 'ESPN'}’s own weekly projection`}.
                         </div>
                         <button
                           onClick={() => setShowOptimal(true)}

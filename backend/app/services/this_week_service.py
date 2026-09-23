@@ -11,16 +11,14 @@ fabricated numbers, matching the pattern in leagues.py::get_roster_analysis
 -- Sleeper's API exposes no real per-week box score at all (unlike ESPN
 and Yahoo, both of which do).
 
-ESPN and Yahoo are NOT full parity with each other on this screen: ESPN
-exposes a real per-player weekly PROJECTED points number
-(BoxPlayer.projected_points); Yahoo's public API genuinely does not
-(confirmed live 2026-09-23 -- see yahoo_service.get_week_matchup's
-docstring). The optimizer (`optimize_lineup`) and start/sit confidence
-(`start_sit_confidence`) both require a real per-player projection to
-mean anything, so the YAHOO branch below skips both rather than run
-them against all-None projections and produce a meaningless "optimal"
-claim -- the matchup scoreboard, real lineup, real team-level projected
-totals, and real win probability are all still real and shown.
+ESPN exposes a real per-player weekly projection (BoxPlayer.projected_
+points); Yahoo's public API genuinely does not (confirmed live 2026-09-23
+-- see yahoo_service.get_week_matchup's docstring). The YAHOO branch fills
+that gap from Sleeper's real weekly projections, scored with the league's
+own Yahoo scoring rules (see weekly_projections.py), and runs the same
+optimizer/start-sit logic over only the players that actually matched --
+an unmatched player is never treated as a 0-point projection. The
+scoreboard's team totals and win probability stay Yahoo's own.
 """
 import asyncio
 from typing import Any, Dict, List, Optional
@@ -28,11 +26,21 @@ from typing import Any, Dict, List, Optional
 from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_tokens import get_valid_yahoo_token
+from app.services.weekly_projections import (
+    PROJECTION_SOURCE,
+    attach_projections,
+    fetch_weekly_projections,
+)
 from app.services.yahoo_service import yahoo_service
 
-BENCH_SLOTS = {"BE", "IR", "BENCH"}
-# ESPN flex slot labels that accept any RB/WR/TE.
-FLEX_SLOTS = {"RB/WR/TE", "FLEX", "OP"}
+# ESPN bench/IR labels plus Yahoo's ("BN", "IR+") -- without Yahoo's, every
+# Yahoo bench player was treated as a starter.
+BENCH_SLOTS = {"BE", "IR", "BENCH", "BN", "IR+"}
+# Injured-reserve slots: not starters, and not startable bench options
+# either -- moving a player off IR takes a roster move, not a lineup swap.
+IR_SLOTS = {"IR", "IR+"}
+# Flex slot labels that accept any RB/WR/TE: ESPN's and Yahoo's "W/R/T".
+FLEX_SLOTS = {"RB/WR/TE", "FLEX", "OP", "W/R/T"}
 FLEX_ELIGIBLE_POSITIONS = {"RB", "WR", "TE"}
 HEALTHY_STATUSES = {"ACTIVE", "NORMAL", "HEALTHY", ""}
 
@@ -101,6 +109,7 @@ def optimize_lineup(lineup: List[Dict[str, Any]]) -> Dict[str, Any]:
         p
         for p in lineup
         if not _is_starter(p)
+        and (p.get("slot_position") or "").upper() not in IR_SLOTS
         and not p.get("on_bye")
         # a bench player whose game already finished can't help this week
         and float(p.get("game_played") or 0) < 100
@@ -176,6 +185,7 @@ def start_sit_confidence(lineup: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         p
         for p in lineup
         if not _is_starter(p)
+        and (p.get("slot_position") or "").upper() not in IR_SLOTS
         and not p.get("on_bye")
         and float(p.get("game_played") or 0) < 100
     ]
@@ -348,12 +358,11 @@ async def _build_yahoo_this_week(league: UserLeague, league_info: Dict[str, Any]
     """Yahoo's real "This Week": real opponent, real team-level projected
     totals + win probability, real lineup with real actual points-so-far.
 
-    NOT real (Yahoo's public API genuinely doesn't expose it -- see
-    yahoo_service.get_week_matchup's docstring): per-player projected
-    points. `optimization` and `start_sit` are both honestly `None`
-    rather than computed against fabricated/zeroed projections --
-    LeagueDetailPage.tsx must render that as "not available for this
-    platform", never as "already optimal" (a different, false claim).
+    Per-player projections come from Sleeper's weekly feed, scored with
+    this league's real Yahoo scoring rules (weekly_projections.py) --
+    Yahoo has none of its own. If that feed is unavailable, `optimization`
+    is `None` (never an empty-swaps "already optimal" result, which would
+    be a false claim) and `projection_note` says why.
     """
     if not league.team_id:
         return {
@@ -420,6 +429,48 @@ async def _build_yahoo_this_week(league: UserLeague, league_info: Dict[str, Any]
     lineup = matchup.get("my_lineup", [])
     opponent_lineup = matchup.get("opponent_lineup", [])
 
+    projection_rows, yahoo_settings = await asyncio.gather(
+        fetch_weekly_projections(league.season or yahoo_league_info.get("season") or 0, week),
+        yahoo_service.get_league_settings(access_token, league.league_key),
+    )
+    scoring_rules = yahoo_settings.get("scoring_rules") if "error" not in yahoo_settings else None
+    stat_values = yahoo_settings.get("stat_values") if "error" not in yahoo_settings else None
+
+    optimization = None
+    start_sit: List[Dict[str, Any]] = []
+    projection_source = None
+    if projection_rows:
+        unmatched = _attach_yahoo_projections(lineup, projection_rows, scoring_rules, stat_values)
+        _attach_yahoo_projections(opponent_lineup, projection_rows, scoring_rules, stat_values)
+        # Only players with a real projection take part -- an unmatched
+        # player treated as 0 would be "benched" by the optimizer for no
+        # real reason.
+        projected = [p for p in lineup if p.get("projected_points") is not None]
+        optimization = optimize_lineup(projected)
+        start_sit = start_sit_confidence(projected)
+        projection_source = PROJECTION_SOURCE + (
+            ", scored with your league's rules" if scoring_rules else ""
+        )
+        projection_note = (
+            "Per-player projections are Sleeper's (RotoWire) weekly numbers "
+            + ("scored with this league's real Yahoo scoring rules (K and DEF on standard scoring)"
+               if scoring_rules else "on standard scoring (this league's rules couldn't be loaded)")
+            + " -- Yahoo doesn't publish per-player projections. Matchup totals and win probability are Yahoo's own."
+        )
+        if unmatched:
+            projection_note += (
+                f" No projection found for {', '.join(unmatched)}, so "
+                + ("they aren't" if len(unmatched) > 1 else "that player isn't")
+                + " considered by the optimizer."
+            )
+    else:
+        projection_note = (
+            "Weekly player projections couldn't be loaded right now, so lineup "
+            "optimization and start/sit confidence aren't available -- Yahoo "
+            "doesn't publish per-player projections itself. Matchup totals and "
+            "win probability are Yahoo's own."
+        )
+
     injury_flags = [
         {
             "name": p.get("name"),
@@ -446,16 +497,28 @@ async def _build_yahoo_this_week(league: UserLeague, league_info: Dict[str, Any]
         },
         "lineup": lineup,
         "opponent_lineup": opponent_lineup,
-        # Honestly unavailable -- see this function's docstring. Not `{}`
-        # or an empty-swaps dict, which would render as "already
-        # optimal", a real (false) claim this data can't support.
-        "optimization": None,
+        "optimization": optimization,
         "starter_injuries": injury_flags,
-        "start_sit": [],
-        "projection_note": (
-            "Yahoo doesn't provide per-player projected points, so lineup "
-            "optimization and start/sit confidence aren't available for "
-            "this league -- real matchup totals and win probability are "
-            "Yahoo's own."
-        ),
+        "start_sit": start_sit,
+        "projection_source": projection_source,
+        "projection_note": projection_note,
     }
+
+
+def _attach_yahoo_projections(
+    lineup: List[Dict[str, Any]],
+    rows: List[Dict[str, Any]],
+    scoring_rules: Optional[Dict[str, Any]],
+    stat_values: Optional[Dict[int, float]],
+) -> List[str]:
+    """Bye-week players get a real 0 (they can't score) so the optimizer can
+    still suggest replacing a starter on bye; everyone else is matched
+    against the Sleeper feed. Returns unmatched names, leaving out IR-slotted
+    players -- they can't be started anyway, so a missing projection for
+    them changes nothing worth telling the user."""
+    for p in lineup:
+        if p.get("on_bye"):
+            p["projected_points"] = 0.0
+    unmatched = attach_projections([p for p in lineup if not p.get("on_bye")], rows, scoring_rules, stat_values)
+    ir_names = {p.get("name") for p in lineup if (p.get("slot_position") or "").upper() in IR_SLOTS}
+    return [n for n in unmatched if n not in ir_names]

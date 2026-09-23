@@ -536,6 +536,15 @@ class YahooFantasyService:
             # confirmed live) -- read the same already-built canonical
             # rules dict rather than re-scanning flat_stats a second time.
             points_per_reception = scoring_rules.get("receiving", {}).get("reception", 0.0)
+            # Every scored stat's raw value by Yahoo stat_id, including the
+            # ones the canonical rules don't model (first downs, 40+ yard
+            # plays, pick-sixes...) -- weekly_projections scores those too.
+            stat_values: Dict[int, float] = {}
+            for stat in flat_stats:
+                try:
+                    stat_values[int(stat.get("stat_id"))] = float(stat.get("value"))
+                except (TypeError, ValueError):
+                    continue
 
             if not starters and not bench:
                 return {"error": "League settings unavailable"}
@@ -552,6 +561,7 @@ class YahooFantasyService:
                 "roster_size": roster_size,
                 "points_per_reception": points_per_reception,
                 "scoring_rules": scoring_rules,
+                "stat_values": stat_values,
                 "uses_faab": uses_faab,
                 "source": "yahoo",
             }

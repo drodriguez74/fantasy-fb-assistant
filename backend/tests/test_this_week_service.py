@@ -129,3 +129,29 @@ def test_start_sit_confidence_risky_overrides_margin():
     ]
     calls = start_sit_confidence(lineup)
     assert calls[0]["tier"] == "risky"
+
+
+def test_yahoo_bench_and_flex_labels():
+    # Yahoo labels bench "BN" and flex "W/R/T" -- a BN player must not count
+    # as a starter, and a bench RB can fill W/R/T.
+    lineup = [
+        _p("Flex RB", "W/R/T", "RB", 8.0, eligible_slots=["RB", "W/R/T"]),
+        _p("Bench WR", "BN", "WR", 12.5, eligible_slots=["WR", "W/R/T"]),
+    ]
+    result = optimize_lineup(lineup)
+    assert result["current_projected"] == 8.0
+    assert [s["start_in"]["name"] for s in result["swaps"]] == ["Bench WR"]
+
+
+def test_ir_slotted_players_are_never_suggested_or_compared():
+    # Moving a player off IR is a roster move, not a lineup swap -- a
+    # healthy-looking IR projection must not drive a swap or a start/sit margin.
+    lineup = [
+        _p("Starter WR", "WR", "WR", 10.0),
+        _p("IR WR", "IR", "WR", 20.0),
+        _p("IR+ WR", "IR+", "WR", 22.0),
+    ]
+    assert optimize_lineup(lineup)["swaps"] == []
+    calls = start_sit_confidence(lineup)
+    assert calls[0]["tier"] == "locked"
+    assert calls[0]["best_bench_alternative"] is None
