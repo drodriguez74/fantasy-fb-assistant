@@ -95,7 +95,7 @@ Mounted at `/draft/live-draft` (not `/live-draft`), used by `LiveDraftPage.tsx` 
 
 ## Leagues (`/leagues`)
 
-Real per-user league connect/management, backed by `UserLeague` rows scoped to `current_user` (not the old shared `connected_league.json` file this subsystem partly still leans on in a couple of spots — see below).
+Real per-user league connect/management, backed by `UserLeague` rows scoped to `current_user`. (The old shared `connected_league.json` file and its `league_data_loader` are no longer read by any endpoint.)
 
 **Connect flows (all real, all wired to `LeaguesPage.tsx`):**
 - `GET /leagues/sleeper/teams?league_id=&username=` → lists rosters in a Sleeper league (no auth needed to look up — Sleeper's API is public) and suggests which team is yours if you pass a username.
@@ -112,8 +112,8 @@ Real per-user league connect/management, backed by `UserLeague` rows scoped to `
 **Analysis endpoints on a connected league (real, auth-scoped, wired):**
 - `GET /leagues/{league_id}/comprehensive-analysis`, `GET /leagues/{league_id}/waiver-recommendations`, `GET /leagues/{league_id}/trade-suggestions` — all three delegate to `LeagueManagementService.get_comprehensive_league_analysis`, which branches on `league.platform.value.upper()` (the correct enum-comparison pattern — an earlier, now-fixed bug compared the raw enum object directly against a string, which was always `False` and silently returned `{}` for every user on every platform).
 - `GET /leagues/{league_id}/insights` — real league metadata plus an honest "not yet computed" placeholder for start/sit and pickup-target advice (this used to return hardcoded specific-player picks like "start Lamar Jackson" for every league regardless of who actually owned it; that's been replaced with an honest empty state rather than fabricated advice).
-- `GET /leagues/{league_id}/roster-analysis` — **known-fabricated-data warning:** even for a real connected ESPN league, this endpoint hardcodes `composition_score: 85`, a fixed "B+" grade, canned strengths/weaknesses text, and a leftover dev team-name fallback (`"CMC-Allen Wrenches"`). It also hardcodes `team_id=1` and `season=2025` rather than using the connected league's real values. Treat this endpoint's output as a UI placeholder, not real analysis.
-- `GET /leagues/{league_id}/standings` — **known auth gap:** unlike every other route in this file, this one has no `current_user` dependency at all. For `league_id=1` it reads a hardcoded file path (`backend/connected_league.json`) off disk; for any other id it returns a static `{"league_name": "Demo League", "teams": []}` regardless of who's asking. Live, called by `LeagueDetailPage.tsx` — don't assume its response reflects the calling user's real league.
+- `GET /leagues/{league_id}/roster-analysis` — real roster grading (`roster_grading.grade_roster`) for ESPN, Yahoo, and Sleeper leagues, served through the snapshot cache (`?refresh=1` forces live).
+- `GET /leagues/{league_id}/standings` — real standings for the caller's own league (ESPN, Yahoo, Sleeper), served through the snapshot cache (`?refresh=1` forces live).
 - `GET /leagues/{league_id}/analysis`, `GET /leagues/{league_id}/matchups` — real (correct platform-enum comparison, Yahoo/ESPN roster+AI-analysis or matchup data), but **not called from the frontend today**.
 
 **Backend-only / debug, not wired:** `GET /leagues/yahoo/test-credentials`, `POST /leagues/yahoo/test-auth` (explicitly a debug endpoint per its own docstring), `GET /leagues/espn/diagnostics`.
@@ -134,7 +134,7 @@ A manual scoring-configuration override that the Draft Assistant honors ahead of
 - `GET /waiver-wire/trending?week=&season=&position=&trend_direction={up|down|both}&limit=` — auth required. Same real Sleeper-sourced signal, extended to cover drops too. `week`/`season` are accepted for URL consistency but don't actually scope the feed (Sleeper's trending endpoint is always "right now"). This was rebuilt this session — it used to query the never-populated `WaiverWireTrend` table and always return empty. Verified live.
 - `POST /waiver-wire/analyze-roster` — auth required. Body `{roster_player_ids, week?, season}`.
 - `POST /waiver-wire/generate-recommendations?week=&season=&force_refresh=` — auth required; runs synchronously if `force_refresh=true`, otherwise as a FastAPI background task.
-- `GET /waiver-wire/league-aware-recommendations/{league_id}` — real, reads league context via `app.utils.league_data_loader` (the older shared-file loader, not the per-user `UserLeague` table) — **not called from the frontend.**
+- `GET /waiver-wire/league-aware-recommendations/{league_id}` — real, scoped to the caller's own `UserLeague` (404 otherwise); `league_info` is that row's real name/platform/season. (It used to read the shared `connected_league.json` file via `league_data_loader`, now deleted.)
 
 **Removed this session:** `GET /waiver-wire/alerts` and `POST /waiver-wire/alerts/subscribe` no longer exist. Both queried/wrote tables (`WaiverWireAlert`) that nothing in the codebase ever populated (`/alerts/subscribe` was an explicit non-persisting stub). The Alerts tab in `WaiverWirePage.tsx` now reads the real in-app notification center (`GET /notifications/*` below) instead.
 

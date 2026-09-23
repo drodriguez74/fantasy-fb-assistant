@@ -664,7 +664,7 @@ async def get_league_insights(
     try:
         # Scope to the requesting user's own league. This endpoint used to
         # accept an optional/unused current_user, read connected_league.json
-        # (a single shared file, see app.utils.league_data_loader), and
+        # (a single shared file, via the since-deleted league_data_loader), and
         # return hardcoded specific-player advice ("Lamar Jackson" to
         # start, "Justice Hill"/"Rashod Bateman" to pick up) for every
         # league_id and every caller -- real or anonymous -- regardless of

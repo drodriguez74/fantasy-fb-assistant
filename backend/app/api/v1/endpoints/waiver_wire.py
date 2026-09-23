@@ -288,8 +288,19 @@ async def get_league_aware_waiver_recommendations(
     a hard requirement of the endpoint.
     """
     try:
-        from app.utils.league_data_loader import get_league_info
-        league_info = get_league_info(league_id)
+        # The caller's own real league -- this used to read a single shared
+        # file (app.utils.league_data_loader) that reported every league as
+        # an ESPN league, and made up a "Demo ESPN League" for any id but 1.
+        user_league = UserService(db).get_user_league(current_user.id, league_id)
+        if not user_league:
+            raise HTTPException(status_code=404, detail="League not found")
+        league_info = {
+            "id": user_league.id,
+            "name": user_league.league_name,
+            "platform": user_league.platform.value.upper(),
+            "scoring_format": user_league.scoring_format,
+            "season": user_league.season,
+        }
 
         waiver_service = WaiverWireService(db)
 
@@ -311,13 +322,7 @@ async def get_league_aware_waiver_recommendations(
         notify_trending_adds(db, current_user.id, recommendations)
 
         return {
-            "league_info": {
-                "id": league_info["id"],
-                "name": league_info["name"],
-                "platform": league_info["platform"],
-                "scoring_format": league_info["scoring_format"],
-                "season": league_info["season"]
-            },
+            "league_info": league_info,
             "week": week,
             "season": league_info["season"],
             "position_filter": position,
@@ -327,6 +332,8 @@ async def get_league_aware_waiver_recommendations(
             "generated_at": datetime.utcnow().isoformat()
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get league-aware waiver recommendations: {str(e)}")
 
