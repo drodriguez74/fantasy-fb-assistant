@@ -1,3 +1,56 @@
+# Handoff (2026-09-23, session 17 end) — ESPN/Yahoo parity DONE
+
+**Status:** `main`, last commit `7937e90`; 3 commits not pushed at time of
+writing (`9d0e111`, `a216409`, `7937e90`). Backend 167 tests pass; frontend
+build clean (lint: only the pre-existing useAuth.tsx error).
+`/goal feature parity between ESPN and Yahoo` is complete — every
+league-detail feature ESPN has now has a real Yahoo implementation.
+
+**Key decision: Yahoo per-player projections come from Sleeper.** Yahoo's
+API has none (confirmed live). New `app/services/weekly_projections.py`
+pulls Sleeper's public RotoWire-sourced feed (weekly and full-season; the
+un-versioned `api.sleeper.app/projections/nfl/...` path — `/v1/` returns
+empty stubs), matches by name+team (defenses by team), and scores with
+the league's real Yahoo rules: `pts_std` corrected per stat by
+`count * (league rate - Sleeper standard rate)`. Sleeper's standard rates
+were confirmed empirically (-1 per INT, not -2). Stats outside the
+canonical rules (first downs, 40+ yd plays, pick-sixes, 2-pt) are scored via
+`YAHOO_EXTRA_STATS` + a new `stat_values` map on `get_league_settings`.
+K/DEF stay on Sleeper standard (disclosed). Sanity-checked: Dak projects
+58-60 in this league vs real 38.1/71.0 actuals.
+
+**Shipped (this session, after the token-renewal commit):**
+- `939d201` Yahoo This Week optimizer + start/sit (weekly projections).
+  Fixed: Yahoo `BN`/`W/R/T` slot labels unrecognized (bench = starters);
+  IR players in the optimizer bench pool (ESPN too — suggested starting an
+  IR player).
+- `7a7cd06` Yahoo trades: real `trade_finder_service` over one
+  `get_league_rosters` call + season projections (was AI-invented); real
+  Yahoo trade deadline.
+- `9d0e111` league-aware waivers read the caller's real UserLeague;
+  deleted `app/utils/league_data_loader.py` (shared-file + fake demo data).
+- `a216409` Yahoo waiver parity. **Real bug:** `get_available_players` only
+  ever got 25 players (Yahoo caps pages at 25; filters must be matrix
+  params) — the availability filter dropped nearly every real free agent.
+  Now pages to 300 with real ownership %. Plus Yahoo waiver enrichment
+  (`yahoo_waiver_context.py`), drop candidates, position pressure, digest
+  byes. **Shared bug fixed:** `effective_position_requirements` sent every
+  FLEX slot to the thinnest position even when surplus depth covered it
+  (a 6-RB/1-TE roster was told it needed 3 TEs) — affects ESPN grading too.
+- `7937e90` Yahoo roster grade uses season projections (was composition-only).
+
+**Known limitations (honest, not bugs):** trade finder counts IR as bench,
+so an injured IR star can dominate trade suggestions (both platforms);
+Sleeper-projection coverage is ~all active players but a few (PUP etc.)
+go unmatched and are excluded from the optimizer, and the response says so.
+
+**Next (ranked backlog):** weekly recap + shareable card (needs a
+"shareable" design decision); consolidate the 3 analysis pages (audit
+real-vs-fabricated first). Sleeper This Week is still unsupported (no box
+score API) — Sleeper's projections feed could power a partial version.
+
+---
+
 # Handoff (2026-09-22, session 17 cont.) — Yahoo parity: This Week, scoring, bye radar, matchup history
 
 **Status:** committed to `main`, NOT pushed. Backend 136 tests pass. `/goal feature
