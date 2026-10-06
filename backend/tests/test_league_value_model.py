@@ -124,3 +124,31 @@ def test_depth_counts_only_above_replacement():
     # BenchWR (90) is replacement-level -> no depth value; RB3 (120) is 120
     # over an unknown (0) RB replacement -> 20% of it.
     assert m.team_value(roster(), STARTERS, levels) == round(base + 0.2 * 120, 2)
+
+
+def test_streaming_options_ranks_free_agents_by_edge_over_my_starter():
+    from app.services.league_value_model import streaming_options
+
+    mine = [
+        {"id": "m1", "name": "My DEF", "position": "D/ST", "season": 90, "week": 6.0, "slot": "D/ST"},
+        {"id": "m2", "name": "My WR", "position": "WR", "season": 150, "week": 12.0, "slot": "WR"},
+    ]
+    fas = [
+        {"id": "f1", "name": "Good DEF", "position": "DEF", "season": 80, "week": 9.5},
+        {"id": "f2", "name": "Bye DEF", "position": "DEF", "season": 95, "week": 0.0},
+        {"id": "f3", "name": "Hurt DEF", "position": "DEF", "season": 95, "week": 12.0, "injury_status": "OUT"},
+        {"id": "f4", "name": "Meh DEF", "position": "DEF", "season": 70, "week": 5.0},
+        {"id": "f5", "name": "A K", "position": "K", "season": 100, "week": 9.0},
+    ]
+    board = streaming_options(mine, fas, "DEF")
+
+    assert board["current"]["name"] == "My DEF"
+    assert [(o["player"]["name"], o["week_edge"]) for o in board["options"]] == [("Good DEF", 3.5), ("Meh DEF", -1.0)]
+
+
+def test_streaming_options_without_a_starter_measures_from_zero():
+    from app.services.league_value_model import streaming_options
+
+    board = streaming_options([], [{"id": "k", "name": "K1", "position": "K", "season": 1, "week": 7.0}], "K")
+    assert board["current"] is None
+    assert board["options"][0]["week_edge"] == 7.0

@@ -145,6 +145,9 @@ export const leagues = {
   getPositionPressure: (leagueId: number) => api.get(`/leagues/${leagueId}/position-pressure`),
   // Free agents ranked by lineup impact for this team (league_value_model).
   getWaiverRecommendations: (leagueId: number) => api.get(`/leagues/${leagueId}/waiver-recommendations`),
+  // DEF/K one-week streaming boards: this league's real free agents by this
+  // week's projection, edge measured against your own starter.
+  getStreaming: (leagueId: number) => api.get(`/leagues/${leagueId}/streaming`),
 
   // This team's real result every week of the season so far -- the season
   // schedule/history view. Distinct from getThisWeek (current week only).

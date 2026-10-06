@@ -326,6 +326,43 @@ def waiver_targets(
     return results[:limit]
 
 
+def streaming_options(
+    my_roster: List[Dict[str, Any]],
+    free_agents: List[Dict[str, Any]],
+    position: str,
+    limit: int = 5,
+) -> Dict[str, Any]:
+    """One-week streaming board for a single-starter spot (DEF, K): my best
+    available player there this week vs the free agents projecting highest
+    this week, each with its edge over mine. Unlike waiver_targets there's
+    no minimum gain -- this is the menu, so a "keep yours" answer shows as
+    every edge being <= 0. Out/IR and bye-week (0 projection) free agents
+    are left out; a bye-week starter of mine shows with 0 so every option
+    reads as an edge."""
+    pos = normalize_position(position)
+    mine = [
+        p for p in my_roster
+        if normalize_position(p.get("position")) == pos and not is_unavailable(p, "week")
+    ]
+    current = max(mine, key=lambda p: _value(p, "week"), default=None)
+    base = _value(current, "week") if current else 0.0
+    options = sorted(
+        (
+            fa for fa in free_agents
+            if normalize_position(fa.get("position")) == pos
+            and not is_unavailable(fa, "week")
+            and _value(fa, "week") > 0
+        ),
+        key=lambda fa: _value(fa, "week"),
+        reverse=True,
+    )[:limit]
+    return {
+        "position": pos,
+        "current": current,
+        "options": [{"player": fa, "week_edge": round(_value(fa, "week") - base, 1)} for fa in options],
+    }
+
+
 def watch_list(
     my_roster: List[Dict[str, Any]],
     free_agents: List[Dict[str, Any]],

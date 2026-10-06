@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '../hooks/useAuth'
 import { waiverWire, matchupAnalysis, notifications as notificationsApi, leagues as leaguesApi, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
@@ -200,6 +200,25 @@ interface PositionOutlook {
   error?: string
 }
 
+interface StreamingPlayer {
+  name: string
+  team?: string
+  position?: { value?: string }
+  week_projection?: number
+  ownership_percentage?: number | null
+  espn_player_id?: number | null
+}
+
+interface StreamingBoards {
+  current_week?: number | null
+  projection_source: string
+  boards: {
+    position: string
+    current: StreamingPlayer | null
+    options: { player: StreamingPlayer; week_edge: number }[]
+  }[]
+}
+
 type TabId = 'recommendations' | 'trending' | 'alerts' | 'streaming'
 
 interface LineupImpact {
@@ -376,6 +395,90 @@ function LeagueWaiverList({
   )
 }
 
+// This week's DEF/K streaming menu for the selected league: the user's own
+// starter, then the best free agents by this week's real projection.
+function StreamingBoardsView({ data, loading, error }: { data: StreamingBoards | null; loading: boolean; error: string }) {
+  if (loading) {
+    return (
+      <div className="bg-surface rounded-lg shadow p-6 text-center">
+        <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+        <p className="text-sm text-muted">Projecting this week's defenses and kickers...</p>
+      </div>
+    )
+  }
+  if (error || !data) {
+    return (
+      <div className="bg-surface rounded-lg shadow p-6 text-center">
+        <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+        <p className="text-sm text-muted">{error || 'No streaming data for this league right now.'}</p>
+      </div>
+    )
+  }
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-muted">
+        Week {data.current_week ?? '?'} projections ({data.projection_source}). Edge = their projection minus your starter's.
+      </p>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {data.boards.map((board) => {
+          const label = board.position === 'DEF' ? 'Defense' : 'Kicker'
+          const best = board.options[0]
+          return (
+            <div key={board.position} className="bg-surface rounded-lg border border-hairline p-4 sm:p-5">
+              <div className="flex items-start justify-between gap-3 mb-3">
+                <h3 className="text-base font-medium text-body">{label} — this week</h3>
+                <DataConfidenceBadge level="computed" label="Your league" />
+              </div>
+              <div className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 mb-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="stat-nums text-[10px] tracking-wider text-muted">YOURS</span>
+                  <span className="text-sm text-body truncate">{board.current?.name ?? `No healthy ${label.toLowerCase()}`}</span>
+                </div>
+                <span className="stat-nums text-sm text-body">
+                  {board.current ? (board.current.week_projection ?? 0).toFixed(1) : '—'}
+                  {board.current && (board.current.week_projection ?? 0) === 0 && <span className="text-xs text-danger-700"> bye/out</span>}
+                </span>
+              </div>
+              <p className="text-xs text-muted mb-2">
+                {best && best.week_edge >= 2
+                  ? `Stream ${best.player.name}: +${best.week_edge.toFixed(1)} over yours this week.`
+                  : best && best.week_edge > 0
+                    ? 'Marginal edges only -- keeping yours is fine.'
+                    : 'Keep yours -- nothing on the wire projects higher this week.'}
+              </p>
+              <div className="divide-y divide-hairline">
+                {board.options.map(({ player, week_edge }) => (
+                  <div key={player.name} className="flex items-center justify-between gap-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <PlayerAvatar
+                        playerId={player.espn_player_id ?? undefined}
+                        name={player.name}
+                        position={board.position}
+                        team={player.team}
+                        size={28}
+                      />
+                      <span className="text-sm text-body truncate">{player.name}</span>
+                      {player.ownership_percentage != null && (
+                        <span className="stat-nums text-[10px] text-faint shrink-0">{Math.round(player.ownership_percentage)}%</span>
+                      )}
+                    </div>
+                    <div className="stat-nums text-sm shrink-0 text-right">
+                      <span className="text-body">{(player.week_projection ?? 0).toFixed(1)}</span>
+                      <span className={`ml-3 inline-block w-12 font-semibold ${week_edge >= 2 ? 'text-success-700' : week_edge > 0 ? 'text-body' : 'text-muted'}`}>
+                        {week_edge > 0 ? '+' : ''}{week_edge.toFixed(1)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export function WaiverWirePage() {
   const { user } = useAuth()
   const [activeTab, setActiveTab] = useState<TabId>('recommendations')
@@ -410,6 +513,10 @@ export function WaiverWirePage() {
 
   // Defense/kicker streaming (matchup_analysis endpoints)
   const [streamingCurrentDefense, setStreamingCurrentDefense] = useState<string>('')
+  const autoDefenseRef = useRef('')
+  const [streamingBoards, setStreamingBoards] = useState<StreamingBoards | null>(null)
+  const [boardsLoading, setBoardsLoading] = useState(false)
+  const [boardsError, setBoardsError] = useState('')
   const [streamingData, setStreamingData] = useState<DefenseStreamingRecommendations | null>(null)
   const [kickerOutlook, setKickerOutlook] = useState<PositionOutlook | null>(null)
   const [streamingLoading, setStreamingLoading] = useState(false)
@@ -507,6 +614,12 @@ export function WaiverWirePage() {
         // The league's real current week beats the date-based guess the
         // picker starts on (it drives the Trending and Streaming tabs).
         if (typeof w.current_week === 'number') setCurrentWeek(w.current_week)
+        // Your real defense, so DEF streaming compares against it without
+        // typing. Replaces an earlier auto-fill, never what the user typed.
+        const mine: string = w.my_defense || ''
+        const previousAuto = autoDefenseRef.current  // read before the updater runs
+        autoDefenseRef.current = mine
+        setStreamingCurrentDefense((current) => (current === '' || current === previousAuto ? mine : current))
         setLineupImpact({
           recs: w.recommendations ?? [],
           watchOnly: !!w.watch_only,
@@ -606,11 +719,26 @@ export function WaiverWirePage() {
   }, [currentWeek, streamingCurrentDefense])
 
   useEffect(() => {
-    if (user && activeTab === 'streaming') {
+    if (user && activeTab === 'streaming' && selectedLeagueId === '') {
       loadStreamingTargets()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, activeTab, currentWeek])
+  }, [user, activeTab, currentWeek, selectedLeagueId])
+
+  useEffect(() => {
+    setStreamingBoards(null)
+    setBoardsError('')
+    if (activeTab !== 'streaming' || selectedLeagueId === '') return
+    let cancelled = false
+    setBoardsLoading(true)
+    leaguesApi.getStreaming(selectedLeagueId)
+      .then((response) => !cancelled && setStreamingBoards(response.data))
+      .catch((err) => !cancelled && setBoardsError(getErrorMessage(err, "Couldn't load streaming options for this league.")))
+      .finally(() => !cancelled && setBoardsLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [activeTab, selectedLeagueId, refreshKey])
 
   const getPriorityBadgeColor = (priority: string) => {
     const colors: Record<string, string> = {
@@ -1183,7 +1311,11 @@ export function WaiverWirePage() {
         </div>
       )}
 
-      {activeTab === 'streaming' && (
+      {activeTab === 'streaming' && selectedLeagueId !== '' && (
+        <StreamingBoardsView data={streamingBoards} loading={boardsLoading} error={boardsError} />
+      )}
+
+      {activeTab === 'streaming' && selectedLeagueId === '' && (
         <div className="space-y-6">
           <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
             <h3 className="text-lg font-medium text-body mb-1">Defense Streaming Targets — Week {currentWeek}</h3>

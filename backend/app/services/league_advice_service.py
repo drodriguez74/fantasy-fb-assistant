@@ -127,6 +127,15 @@ def _player_out(p: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _my_defense(players: List[Dict[str, Any]]) -> Optional[str]:
+    """NFL team abbreviation of this roster's defense (a starting one if
+    there are several) -- lets the DEF streaming view compare against it
+    without the user typing it in."""
+    defenses = [p for p in players if _pos(p) == "DEF" and p.get("team")]
+    defenses.sort(key=lambda p: p.get("slot") in ("BE", "BN", "IR", None))
+    return str(defenses[0]["team"]).upper() if defenses else None
+
+
 def _needs_out(needs: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {n["position"]: n["rank"] for n in needs}
 
@@ -177,11 +186,36 @@ async def build_waiver_advice(league: UserLeague, limit: int = 10) -> Dict[str, 
         "total_available": len(out) if not showing_watch else 0,
         "watch_only": showing_watch,
         "current_week": data.get("current_week"),
+        "my_defense": _my_defense(mine),
         "basis": (
             f"Every free agent in your league scored by what he adds to your best starting lineup "
             f"(and bench depth above replacement) after the best possible drop. Projections: "
             f"{data['projection_source']}."
         ),
+        "updated_at": datetime.utcnow().isoformat(),
+    }
+
+
+async def build_streaming_advice(league: UserLeague, limit: int = 5) -> Dict[str, Any]:
+    """DEF and K streaming boards for this league's real free agents, by
+    this week's projection against the user's own starter."""
+    data = await load_league_value_data(league)
+    mine = _my_team(data)["players"]
+    boards = []
+    for pos in ("DEF", "K"):
+        if not any(model.normalize_position(k) == pos and n for k, n in data["starters"].items()):
+            continue  # league doesn't start one
+        board = model.streaming_options(mine, data["free_agents"], pos, limit=limit)
+        current = board["current"]
+        boards.append({
+            "position": pos,
+            "current": _player_out(current) if current else None,
+            "options": [{"player": _player_out(o["player"]), "week_edge": o["week_edge"]} for o in board["options"]],
+        })
+    return {
+        "current_week": data.get("current_week"),
+        "boards": boards,
+        "projection_source": data["projection_source"],
         "updated_at": datetime.utcnow().isoformat(),
     }
 

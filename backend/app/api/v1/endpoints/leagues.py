@@ -825,6 +825,27 @@ async def get_waiver_recommendations(
         raise HTTPException(status_code=500, detail=f"Failed to get waiver recommendations: {str(e)}")
 
 
+@router.get("/{league_id}/streaming")
+async def get_streaming_options(
+    league_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """DEF and K one-week streaming boards from this league's real free
+    agents and this week's projections, each option's edge measured against
+    the user's own starter (ESPN and Yahoo)."""
+    from app.services.league_advice_service import build_streaming_advice
+    from app.services.league_value_data import LeagueDataError
+
+    user_league = UserService(db).get_user_league(current_user.id, league_id)
+    if not user_league:
+        raise HTTPException(status_code=404, detail="League not found")
+    try:
+        return await build_streaming_advice(user_league)
+    except LeagueDataError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
 @router.get("/{league_id}/trade-suggestions")
 async def get_trade_suggestions(
     league_id: int,
