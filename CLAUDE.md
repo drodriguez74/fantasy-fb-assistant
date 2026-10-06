@@ -49,7 +49,7 @@ Models are wired together in `app/models/__init__.py`, which imports every model
 
 ### Multi-platform league integration
 
-`LeagueManagementService` (`app/services/league_management_service.py`) is the entry point for league *analysis* (roster grading, matchups, standings, waiver/trade recommendations bundled into one response) and branches on `league.platform.value.upper()` (compare the resolved `.value`, never the raw `Enum` against a string literal — `UserLeague.platform` is a plain `enum.Enum`, and comparing it directly to `"YAHOO"`/`"ESPN"` is always `False`; this exact bug once made the whole analysis path silently return `{}` for every user). Today `get_comprehensive_league_analysis` only has a real Yahoo implementation — ESPN/Sleeper deliberately return an honest "not implemented for this platform yet" error rather than partial/fake data; building that out is real, tracked future work, not a quick fix.
+`LeagueManagementService` (`app/services/league_management_service.py`) is the entry point for league *analysis* (roster grading, matchups, standings, waiver/trade recommendations bundled into one response) and branches on `league.platform.value.upper()` (compare the resolved `.value`, never the raw `Enum` against a string literal — `UserLeague.platform` is a plain `enum.Enum`, and comparing it directly to `"YAHOO"`/`"ESPN"` is always `False`; this exact bug once made the whole analysis path silently return `{}` for every user). `get_comprehensive_league_analysis` has real Yahoo and ESPN implementations (ESPN since 2026-09-05). Sleeper deliberately returns an honest "not supported for this platform yet" error rather than partial or fake data; building it out is real, tracked future work, not a quick fix.
 
 Live Draft (`app/api/v1/endpoints/live_draft.py` → `draft_assistant_service.py`) is a separate integration across all three platforms, each with a different auth model: Sleeper needs no credentials (its player/draft data is public); ESPN needs a per-user `SWID`/`espn_s2` cookie pair, persisted via `POST /leagues/espn/connect` (paste-your-own-cookies, since ESPN has no OAuth for fantasy); Yahoo needs a per-user OAuth token, persisted via `POST /leagues/yahoo/connect`. All three store credentials on the connecting user's own `UserLeague` row — never on a shared/global service instance — and every platform service method takes the token/cookies as an explicit parameter rather than storing them on `self`.
 
@@ -58,6 +58,19 @@ Live Draft (`app/api/v1/endpoints/live_draft.py` → `draft_assistant_service.py
 **Mitigation shipped in the meantime**: a manual "Mark gone" button per available player on `LiveDraftPage.tsx` (`POST /live-draft/mark-drafted` → `DraftAssistantService.mark_player_drafted`), letting the user manually remove a player from the pool when ESPN's feed hasn't. Session-scoped `manually_drafted_player_ids`, re-applied as a filter on every recommendations refresh (necessary since `_refresh_draft_state` wholesale-replaces `available_players` from the live feed every ~10s via the websocket loop, which would otherwise silently undo a manual correction). Distinct from `/update-pick`, which means "I drafted this" — don't conflate the two.
 
 Sleeper's live-pick feed is confirmed architecturally sound (hits a real, publicly-documented, non-cached live endpoint). Yahoo's code has no caching bug either, but whether Yahoo's platform actually exposes in-progress picks (vs. only post-completion, ESPN's exact failure mode) is unverified — don't assume it's fine by default; verify against a real in-progress Yahoo draft before trusting it.
+
+### Waiver & trade engine
+
+In-season waiver and trade advice for ESPN/Yahoo leagues uses one valuation model.
+- `league_value_data.py` (platform adapters) loads real rosters, free agents, starter slots and projections.
+- `league_value_model.py` (pure, unit-tested) computes the optimal lineup, replacement level, and team value (lineup + 20% of bench value above replacement).
+- `league_advice_service.py` shapes the responses: waivers, DEF/K streaming boards, and trades.
+
+Endpoints: `GET /leagues/{id}/waiver-recommendations`, `/streaming`, `/trade-suggestions`. Both League Detail's Waiver tab and the Waivers page render waivers through the shared `components/waivers/LineupWaivers.tsx`.
+
+All values are **rest-of-season**. ESPN's `projected_total_points` already is. Yahoo has no per-player projections, so it sums Sleeper's weekly rows via `weekly_projections.fetch_rest_of_season_projections`. Never use Sleeper's season feed (`fetch_season_projections`) for mid-season value: it's a static preseason total that ignores injuries and games already played.
+
+The `/waiver-wire/*` routes (`WaiverWireService`) are the older league-wide Sleeper trending feed, kept only as the no-league view.
 
 ### AI content generation
 

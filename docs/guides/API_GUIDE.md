@@ -130,18 +130,28 @@ A manual scoring-configuration override that the Draft Assistant honors ahead of
 
 ## Waiver Wire (`/waiver-wire`)
 
+**The primary waiver advice lives under `/leagues/{id}`, not here.** For a connected ESPN/Yahoo league the app uses the lineup-impact engine (`league_value_model.py` via `league_advice_service.py`). The Waivers page auto-selects your league and leads with it:
+- `GET /leagues/{league_id}/waiver-recommendations` scores every real free agent by what it adds to your best starting lineup (plus weighted bench depth) after the best possible drop. Each rec has `kind` (`upgrade`/`streamer`/`watch`), `season_gain`, `week_gain`, `drop_candidate`, `bid_tier`, and `team_needs`. The response also carries `current_week` and `my_defense` (your DEF's NFL abbreviation).
+- `GET /leagues/{league_id}/streaming` returns DEF and K one-week boards: your starter vs. the top 5 free agents by this week's projection, each with `week_edge` over yours. Out and bye-week free agents are excluded.
+- Projections are rest-of-season: ESPN's own `projected_total_points` (already ROS); for Yahoo, Sleeper's weekly rows from the current week through the league's `end_week`, summed and scored with the league's rules. Sleeper's season feed is a static 18-game total, so it's never used for mid-season value.
+
+The `/waiver-wire` routes below are the league-wide Sleeper trending feed, shown when no league is selected and on the Trending tab.
+
+
 - `GET /waiver-wire/recommendations?week=&season=&position=&priority=&limit=` — auth required. **Real data, sourced from Sleeper's live trending-add feed** (`WaiverWireService.get_live_trending_recommendations`), not the local `WaiverWireRecommendation`/`WaiverWireTrend` tables (those have no ingestion pipeline and are always empty on a fresh deploy). As a side effect, also lazily creates in-app notifications for high-signal new trending adds. Verified live. Wired to `WaiverWirePage.tsx`.
 - `GET /waiver-wire/trending?week=&season=&position=&trend_direction={up|down|both}&limit=` — auth required. Same real Sleeper-sourced signal, extended to cover drops too. `week`/`season` are accepted for URL consistency but don't actually scope the feed (Sleeper's trending endpoint is always "right now"). This was rebuilt this session — it used to query the never-populated `WaiverWireTrend` table and always return empty. Verified live.
 - `GET /waiver-wire/league-aware-recommendations/{league_id}` — real, scoped to the caller's own `UserLeague` (404 otherwise); `league_info` is that row's real name/platform/season. (It used to read the shared `connected_league.json` file via `league_data_loader`, now deleted.)
 
-**Removed this session:** `GET /waiver-wire/alerts` and `POST /waiver-wire/alerts/subscribe` no longer exist. Both queried/wrote tables (`WaiverWireAlert`) that nothing in the codebase ever populated (`/alerts/subscribe` was an explicit non-persisting stub). The Alerts tab in `WaiverWirePage.tsx` now reads the real in-app notification center (`GET /notifications/*` below) instead.
+**Removed 2026-10-06:** `POST /waiver-wire/analyze-roster` (typed internal player IDs, season 2024 hardcoded, a made-up 0.5 drop score on missing data) and `POST /waiver-wire/generate-recommendations` (ran over the near-empty local Player table). Neither had a frontend caller left.
+
+**Removed earlier:** `GET /waiver-wire/alerts` and `POST /waiver-wire/alerts/subscribe` no longer exist. Both queried/wrote tables (`WaiverWireAlert`) that nothing in the codebase ever populated (`/alerts/subscribe` was an explicit non-persisting stub). The Alerts tab in `WaiverWirePage.tsx` now reads the real in-app notification center (`GET /notifications/*` below) instead.
 
 **Backend-only / not currently wired:** `GET /waiver-wire/recommendations/priority/{level}` (queries the empty `WaiverWireRecommendation` table directly — will return nothing on a fresh deploy), `GET /waiver-wire/player/{id}/evaluation`, `GET /waiver-wire/insights/weekly-summary`.
 
 ## Matchup Analysis (`/matchup-analysis`) — partially surfaced this session
 
-- `GET /matchup-analysis/defense-streaming/{week}?current_defense=` — auth required. Real defensive-streaming targets driven by `MatchupAnalysisService`/`WaiverWireService`, live NFL schedule + defensive rankings. Wired to `WaiverWirePage.tsx`.
-- `GET /matchup-analysis/position-outlook/{position}?weeks_ahead=` — auth required. Multi-week matchup outlook for a position. Wired to `WaiverWirePage.tsx`.
+- `GET /matchup-analysis/defense-streaming/{week}?current_defense=` — auth required. Driven by `MatchupAnalysisService`/`WaiverWireService` over local defensive-matchup tables. **As of 2026-10-06 these hold no current-season data:** targets come back empty, and `current_defense_analysis` is a 5.0 placeholder ("No recent defensive data available"). The Waivers page uses it only when no league is selected; with a league it uses `GET /leagues/{id}/streaming` instead.
+- `GET /matchup-analysis/position-outlook/{position}?weeks_ahead=` — auth required. Multi-week matchup outlook for a position. Same local tables; as of 2026-10-06 `K` returns `{"error": "No matchup data available for K"}`. Shown only in the no-league Streaming view.
 - `GET /matchup-analysis/current-week` — auth required. Returns `{current_week, season}` computed from the real current date, not hardcoded. Verified live (returned `{"current_week": 1, "season": 2026}`).
 
 **Backend-only / not currently wired:** `GET /matchup-analysis/player-matchups/{player_id}?weeks_ahead=`, `POST /matchup-analysis/roster-matchup-analysis`, `GET /matchup-analysis/player-vs-defense/{player_id}/{opponent_team}`.

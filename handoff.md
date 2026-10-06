@@ -1,7 +1,6 @@
 # Handoff (2026-10-06, session 19) — waiver goal: ROS values + league-first Waivers page
 
-**Status:** `main`, 3 commits not pushed (`2dce122`, `777a236`, `fdd089c`).
-Backend 174 tests pass; frontend build clean (lint: only the pre-existing
+**Status:** pushed to `main` (Render/Vercel auto-deploy). Backend 178 tests pass; frontend build clean (lint: only the pre-existing
 useAuth.tsx error). Browser-checked locally on both leagues, desktop and
 390px mobile.
 
@@ -34,11 +33,25 @@ analyze-roster`, `/generate-recommendations`) and the API_GUIDE lines.
 proj)". He's healthy on the bench, and Sleeper carries no projection for
 him at all, so 0 is the honest value.
 
+**`f239562` DEF/K Streaming tab rebuilt on real data.** The old tab read
+local matchup tables that hold no 2026 data. Every defense came back
+empty, yours got a placeholder 5.0, and kickers always showed nothing.
+The new `GET /leagues/{id}/streaming` (`league_value_model.
+streaming_options`) compares your DEF and K this week against the top 5
+free agents by this week's projection, each with its edge over yours and
+a stream/keep call. The tab uses it whenever a league is selected; the old
+view stays only for no-league. Live results, week 5: Optis Titans
+SEA 6.2 → Jets +2.6; Pro Bowl Chiefs on bye → Bengals +8.3; both kickers
+"keep yours". The waiver response also gained `my_defense`, which
+prefills the old view's DEF box. Docs: CLAUDE.md now has a "Waiver &
+trade engine" section (and the stale "comprehensive analysis is
+Yahoo-only" line is fixed); API_GUIDE's waiver section is rewritten.
+
 **Still open (judgment calls / non-waiver):** the weights (+5 waiver
 floor, 20% depth, 25% trade acceptance) are worth tuning against results.
-2-for-1 trades don't credit the freed roster spot. On the DEF/K Streaming
-tab you still type your current defense by hand; the lineup engine already
-covers DEF/K streamers for a selected league.
+2-for-1 trades don't credit the freed roster spot. The old `/matchup-analysis`
+DEF/K tables are empty for 2026; with streaming now running on league data
+they're a candidate for removal.
 
 ---
 
