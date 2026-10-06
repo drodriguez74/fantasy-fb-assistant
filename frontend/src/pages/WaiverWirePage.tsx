@@ -207,11 +207,24 @@ interface StreamingPlayer {
   week_projection?: number
   ownership_percentage?: number | null
   espn_player_id?: number | null
+  // This week's Vegas game context (odds_service.py); null on bye or when
+  // no odds key is configured.
+  vegas?: {
+    opponent: string
+    home: boolean
+    spread: number
+    game_total: number
+    team_implied_total: number
+    opponent_implied_total: number
+    // DEF: the opponent's implied total (lower is better); K: his team's.
+    key_number: number
+  } | null
 }
 
 interface StreamingBoards {
   current_week?: number | null
   projection_source: string
+  odds_source?: string | null
   boards: {
     position: string
     current: StreamingPlayer | null
@@ -395,6 +408,25 @@ function LeagueWaiverList({
   )
 }
 
+// Vegas context line for a DEF/K: who they play and the implied total that
+// matters (opponent's for a defense, own team's for a kicker), colored by
+// whether it helps.
+function VegasLine({ vegas, position }: { vegas: StreamingPlayer['vegas']; position: string }) {
+  if (!vegas) return null
+  const n = vegas.key_number
+  const good = position === 'DEF' ? n <= 19 : n >= 25
+  const bad = position === 'DEF' ? n >= 24 : n <= 19
+  const label = position === 'DEF' ? `${vegas.opponent} implied` : 'team implied'
+  return (
+    <span className="stat-nums text-[11px] text-faint">
+      {vegas.home ? 'vs' : '@'} {vegas.opponent} ·{' '}
+      <span className={good ? 'text-success-700' : bad ? 'text-danger-700' : 'text-muted'}>
+        {label} {n.toFixed(1)}
+      </span>
+    </span>
+  )
+}
+
 // This week's DEF/K streaming menu for the selected league: the user's own
 // starter, then the best free agents by this week's real projection.
 function StreamingBoardsView({ data, loading, error }: { data: StreamingBoards | null; loading: boolean; error: string }) {
@@ -418,6 +450,9 @@ function StreamingBoardsView({ data, loading, error }: { data: StreamingBoards |
     <div className="space-y-4">
       <p className="text-xs text-muted">
         Week {data.current_week ?? '?'} projections ({data.projection_source}). Edge = their projection minus your starter's.
+        {data.odds_source
+          ? ` Implied totals: ${data.odds_source} -- for a defense, lower opponent points is better; for a kicker, higher team points.`
+          : ''}
       </p>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {data.boards.map((board) => {
@@ -432,7 +467,10 @@ function StreamingBoardsView({ data, loading, error }: { data: StreamingBoards |
               <div className="flex items-center justify-between gap-3 rounded-md bg-surface-2 px-3 py-2 mb-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <span className="stat-nums text-[10px] tracking-wider text-muted">YOURS</span>
-                  <span className="text-sm text-body truncate">{board.current?.name ?? `No healthy ${label.toLowerCase()}`}</span>
+                  <div className="min-w-0">
+                    <div className="text-sm text-body truncate">{board.current?.name ?? `No healthy ${label.toLowerCase()}`}</div>
+                    {board.current && <VegasLine vegas={board.current.vegas} position={board.position} />}
+                  </div>
                 </div>
                 <span className="stat-nums text-sm text-body">
                   {board.current ? (board.current.week_projection ?? 0).toFixed(1) : '—'}
@@ -457,10 +495,15 @@ function StreamingBoardsView({ data, loading, error }: { data: StreamingBoards |
                         team={player.team}
                         size={28}
                       />
-                      <span className="text-sm text-body truncate">{player.name}</span>
-                      {player.ownership_percentage != null && (
-                        <span className="stat-nums text-[10px] text-faint shrink-0">{Math.round(player.ownership_percentage)}%</span>
-                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm text-body truncate">{player.name}</span>
+                          {player.ownership_percentage != null && (
+                            <span className="stat-nums text-[10px] text-faint shrink-0">{Math.round(player.ownership_percentage)}%</span>
+                          )}
+                        </div>
+                        <VegasLine vegas={player.vegas} position={board.position} />
+                      </div>
                     </div>
                     <div className="stat-nums text-sm shrink-0 text-right">
                       <span className="text-body">{(player.week_projection ?? 0).toFixed(1)}</span>

@@ -22,6 +22,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: ODDS_API_KEY
+        sync: false
       - key: CORS_ORIGINS
         value: https://fantasy-fb-assistant.vercel.app,http://localhost:3001,http://127.0.0.1:3001
       - key: SUPABASE_URL

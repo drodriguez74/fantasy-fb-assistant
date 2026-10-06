@@ -8,12 +8,14 @@ team_name/you_send/you_receive/reasoning) and add the numbers behind each
 call: season and this-week lineup gains, value over replacement, both
 sides' gains on a trade, and a per-position team-needs table.
 """
+import asyncio
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from app.models.user_league import UserLeague
 from app.services import league_value_model as model
+from app.services import odds_service
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.league_value_data import LeagueDataError, load_league_value_data
 from app.services.waiver_wire_service import WaiverWireService
@@ -196,11 +198,34 @@ async def build_waiver_advice(league: UserLeague, limit: int = 10) -> Dict[str, 
     }
 
 
+def _vegas(team: Optional[str], position: str, totals: Dict[str, Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """This week's game context for a DEF or K from implied team totals:
+    for a defense the number that matters is the opponent's implied total
+    (lower = better), for a kicker his own team's (higher = better)."""
+    game = totals.get(odds_service.normalize_team(team) or "")
+    if not game:
+        return None
+    return {
+        "opponent": game["opponent"],
+        "home": game["home"],
+        "spread": game["spread"],
+        "game_total": game["game_total"],
+        "team_implied_total": game["implied_total"],
+        "opponent_implied_total": game["opponent_implied_total"],
+        "key_number": game["opponent_implied_total"] if position == "DEF" else game["implied_total"],
+    }
+
+
 async def build_streaming_advice(league: UserLeague, limit: int = 5) -> Dict[str, Any]:
     """DEF and K streaming boards for this league's real free agents, by
-    this week's projection against the user's own starter."""
-    data = await load_league_value_data(league)
+    this week's projection against the user's own starter, each with Vegas
+    game context (implied totals) when ODDS_API_KEY is set."""
+    data, totals = await asyncio.gather(load_league_value_data(league), odds_service.get_implied_totals())
     mine = _my_team(data)["players"]
+
+    def out(p: Dict[str, Any], pos: str) -> Dict[str, Any]:
+        return {**_player_out(p), "vegas": _vegas(p.get("team"), pos, totals)}
+
     boards = []
     for pos in ("DEF", "K"):
         if not any(model.normalize_position(k) == pos and n for k, n in data["starters"].items()):
@@ -209,13 +234,14 @@ async def build_streaming_advice(league: UserLeague, limit: int = 5) -> Dict[str
         current = board["current"]
         boards.append({
             "position": pos,
-            "current": _player_out(current) if current else None,
-            "options": [{"player": _player_out(o["player"]), "week_edge": o["week_edge"]} for o in board["options"]],
+            "current": out(current, pos) if current else None,
+            "options": [{"player": out(o["player"], pos), "week_edge": o["week_edge"]} for o in board["options"]],
         })
     return {
         "current_week": data.get("current_week"),
         "boards": boards,
         "projection_source": data["projection_source"],
+        "odds_source": odds_service.SOURCE if totals else None,
         "updated_at": datetime.utcnow().isoformat(),
     }
 

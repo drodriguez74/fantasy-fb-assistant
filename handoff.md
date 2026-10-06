@@ -1,3 +1,31 @@
+# Handoff (2026-10-06, session 19 cont.) — Vegas implied totals on DEF/K streaming
+
+**Status:** committed and pushed to `main`. Backend 183 tests pass; frontend build clean.
+**Founder action needed:** add `ODDS_API_KEY` in Render → Environment. It's declared in
+render.yaml as `sync: false`, so the deployed backend shows no odds until it's set. The
+key was shared in chat; the founder plans to rotate it later. It lives only in
+gitignored `backend/.env`.
+
+**Built:** `app/services/odds_service.py`. The Odds API returns spreads and totals for all
+NFL games from DraftKings, FanDuel and Hard Rock Bet in one call (2 credits). Each team's
+implied total is (median total − its median spread) / 2. Only this NFL week's games count
+(before next Tuesday 10:00 UTC), so bye teams are absent. Cached 6h, which is about
+8 credits/day against the free tier's 500/month. With no key, odds are omitted.
+`GET /leagues/{id}/streaming` now carries `vegas` per DEF/K: the opponent's implied total
+for a defense, the team's own for a kicker. The Streaming tab shows it color-coded.
+
+**Live check (week 5):** 30 teams with lines (KC is on bye, matching its 0 projection).
+Bengals DEF @ MIA has MIA implied 17.5 and is also the top projection; Harrison Mevis
+(K) has team implied 28.5.
+
+**Next (odds):** player props (pass/rush/rec yards, receptions, anytime TD) → a
+market-based fantasy projection scored with league rules, shown beside ESPN/Sleeper on
+This Week start/sit. Props must be fetched one game per request (~15 games × markets),
+so plan around the cache and probably the $30/20K tier. Implied totals could also feed
+This Week as a game-environment tag.
+
+---
+
 # Handoff (2026-10-06, session 19) — waiver goal: ROS values + league-first Waivers page
 
 **Status:** pushed to `main` (Render/Vercel auto-deploy). Backend 178 tests pass; frontend build clean (lint: only the pre-existing
