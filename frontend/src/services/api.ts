@@ -261,25 +261,14 @@ export const historical = {
 
 // Waiver wire endpoints
 export const waiverWire = {
-  // `league_id` is optional and opt-in: pass the id of one of the user's
-  // connected leagues (from `leagues.getAll()`) to get real roster-need /
-  // bye-week / scoring-format personalization instead of the plain
-  // unweighted live trending feed -- see
-  // WaiverWireService.get_live_trending_recommendations.
+  // League-wide Sleeper trending adds (WaiverWireService.
+  // get_live_trending_recommendations). `league_id` filters to that league's
+  // real free agents and weights by roster need; the Waivers page uses the
+  // lineup-impact engine (leagues.getWaiverRecommendations) instead whenever
+  // a league is selected.
   getRecommendations: (params: { week: number; season?: number; position?: string; priority?: string; limit?: number; league_id?: number }) =>
     api.get('/waiver-wire/recommendations', { params }),
 
-  // Same live feed as getRecommendations, but always personalized against
-  // `leagueId`'s real connected roster + league settings when that roster
-  // can actually be fetched (falls back to unweighted otherwise -- see
-  // `personalized` in the response).
-  getLeagueAwareRecommendations: (leagueId: number, params: { week: number; position?: string; limit?: number }) =>
-    api.get(`/waiver-wire/league-aware-recommendations/${leagueId}`, { params }),
-
-
-  analyzeRoster: (data: { roster_player_ids: number[]; week?: number; season?: number }) =>
-    api.post('/waiver-wire/analyze-roster', data),
-  
   // Real-time snapshot from Sleeper's live trending add/drop feed (see
   // backend/app/services/waiver_wire_service.py::get_live_trending_players).
   // NOT a historical trend line -- WaiverWireTrend, the table this used to
@@ -287,8 +276,6 @@ export const waiverWire = {
   getTrending: (params: { week: number; season?: number; position?: string; trend_direction?: string; limit?: number }) =>
     api.get('/waiver-wire/trending', { params }),
 
-  generateRecommendations: (params: { week: number; season?: number; force_refresh?: boolean }) =>
-    api.post('/waiver-wire/generate-recommendations', null, { params }),
   // NOTE: getAlerts/subscribeToAlerts (GET/POST /waiver-wire/alerts*) were
   // removed -- both queried/wrote a table nothing in the backend ever
   // populated. The Alerts tab now reads the real in-app notification center

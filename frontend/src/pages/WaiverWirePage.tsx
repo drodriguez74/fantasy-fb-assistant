@@ -4,6 +4,7 @@ import { waiverWire, matchupAnalysis, notifications as notificationsApi, leagues
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { getPositionColor } from '../components/players/playerDisplay'
 import { PlayerAvatar } from '../components/players/PlayerAvatar'
+import { LineupWaiverCard, TeamNeedsStrip, type LineupWaiverRec, type TeamNeed } from '../components/waivers/LineupWaivers'
 import type { Notification } from '../types'
 import {
   PlusIcon,
@@ -13,9 +14,7 @@ import {
   ClockIcon,
   ArrowTrendingUpIcon,
   ArrowTrendingDownIcon,
-  CheckCircleIcon,
   BellIcon,
-  AdjustmentsHorizontalIcon,
   MagnifyingGlassIcon,
   ShieldCheckIcon,
   NoSymbolIcon
@@ -78,17 +77,6 @@ interface WaiverRecommendation {
     total_teams?: number | null
     reasoning?: string
   } | null
-}
-
-// League Detail's lineup-impact waiver engine (league_value_model), shown
-// above the trending list when a league is selected.
-interface LineupImpactRec {
-  player: { name: string; position?: { value?: string }; team?: string; projected_points?: number }
-  kind?: 'upgrade' | 'streamer' | 'watch'
-  season_gain?: number
-  week_gain?: number
-  reason?: string
-  drop_candidate?: { name: string; position?: string } | null
 }
 
 interface ConnectedLeagueOption {
@@ -163,26 +151,6 @@ interface TrendingPlayer {
   reason: string
 }
 
-interface RosterAddDropCandidate {
-  player_id: number
-  player_name: string
-  priority?: string
-  reason?: string
-  confidence?: number
-  projected_points?: number
-  drop_score?: number
-}
-
-interface AddDropAnalysis {
-  add_candidates?: RosterAddDropCandidate[]
-  drop_candidates?: RosterAddDropCandidate[]
-}
-
-// Shape of one entry in defense-streaming's `streaming_recommendations` /
-// `defenses_to_avoid` arrays (backend/app/services/matchup_analysis_service.py
-// via WaiverWireService.get_matchup_driven_defense_recommendations). Fields
-// vary slightly between the "enhanced" (ownership-aware) recommendations and
-// the plain avoid-list entries, so most are optional.
 interface DefenseStreamingTarget {
   player_id?: number
   team_name?: string
@@ -230,6 +198,26 @@ interface PositionOutlook {
   weekly_outlook: Record<string, PositionOutlookWeek>
   total_rankings_analyzed: number
   error?: string
+}
+
+type TabId = 'recommendations' | 'trending' | 'alerts' | 'streaming'
+
+interface LineupImpact {
+  recs: LineupWaiverRec[]
+  watchOnly: boolean
+  teamNeeds: TeamNeed[]
+  basis?: string
+}
+
+const LEAGUE_STORAGE_KEY = 'waivers.leagueId'
+
+function readStoredLeagueId(): number | null {
+  try {
+    const raw = localStorage.getItem(LEAGUE_STORAGE_KEY)
+    return raw ? parseInt(raw, 10) : null
+  } catch {
+    return null
+  }
 }
 
 // Helper function to get current NFL week
@@ -295,9 +283,102 @@ function getTeamAbbr(target: DefenseStreamingTarget): string {
   return target.team_abbreviation || target.team || '?'
 }
 
+// The lineup-impact list for the selected league: the same engine and card
+// as League Detail's Waiver tab, plus this page's competition signal
+// (other teams thin at the position).
+function LeagueWaiverList({
+  loading,
+  error,
+  impact,
+  position,
+  pressure,
+}: {
+  loading: boolean
+  error: string
+  impact: LineupImpact | null
+  position: string
+  pressure: PositionPressure | null
+}) {
+  if (loading) {
+    return (
+      <div className="bg-surface rounded-lg shadow p-6 text-center">
+        <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+        <p className="text-sm text-muted">Scoring every free agent against your lineup...</p>
+      </div>
+    )
+  }
+  if (error || !impact) {
+    return (
+      <div className="bg-surface rounded-lg shadow p-6 text-center">
+        <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+        <p className="text-sm text-muted">{error || 'No waiver advice for this league right now.'}</p>
+      </div>
+    )
+  }
+  const recs = position ? impact.recs.filter((r) => r.player.position?.value === position) : impact.recs
+  return (
+    <div className="space-y-4">
+      {impact.teamNeeds.length > 0 && <TeamNeedsStrip needs={impact.teamNeeds} />}
+      <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-6">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h3 className="text-base font-medium text-body">
+              {impact.watchOnly ? 'No clear upgrade for your lineup yet' : 'Best adds for your lineup'}
+            </h3>
+            {impact.watchOnly && (
+              <p className="text-xs text-muted mt-0.5">Best available at your weakest spots, worth watching.</p>
+            )}
+          </div>
+          <DataConfidenceBadge level="computed" label="Lineup impact" />
+        </div>
+        {recs.length === 0 ? (
+          <p className="text-sm text-muted">
+            {position ? `No ${position} on the wire improves your team right now.` : 'Nothing on the wire improves your team right now.'}
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {recs.map((rec) => {
+              const pos = rec.player.position?.value || ''
+              const competition = pressure?.supported ? pressure.position_pressure?.[pos] : undefined
+              const thin = competition && (competition.this_week.teams_in_need > 0 || competition.season.teams_in_need > 0)
+              return (
+                <LineupWaiverCard
+                  key={rec.player.name}
+                  rec={rec}
+                  badges={
+                    competition && rec.kind !== 'watch' ? (
+                      <span
+                        className={`stat-nums text-[10px] px-1.5 py-0.5 rounded ${COMPETITION_CLASS[competition.level]}`}
+                        title={`${competition.season.teams_in_need} of ${competition.season.total_teams} other teams look thin at ${pos} all season`}
+                      >
+                        {COMPETITION_LABEL[competition.level]}
+                      </span>
+                    ) : undefined
+                  }
+                >
+                  {thin && rec.kind !== 'watch' && (
+                    <p className="text-xs text-faint mt-1">
+                      {competition.this_week.teams_in_need > 0
+                        ? <>Also short at {pos} this week: <span className="text-body">{formatTeamNames(competition.this_week.team_names)}</span>. </>
+                        : null}
+                      {competition.season.teams_in_need > 0
+                        ? <>Thin at {pos} all season: <span className="text-body">{formatTeamNames(competition.season.team_names)}</span>.</>
+                        : null}
+                    </p>
+                  )}
+                </LineupWaiverCard>
+              )
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
 export function WaiverWirePage() {
   const { user } = useAuth()
-  const [activeTab, setActiveTab] = useState<'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming'>('recommendations')
+  const [activeTab, setActiveTab] = useState<TabId>('recommendations')
   const [recommendations, setRecommendations] = useState<WaiverRecommendation[]>([])
   const [trendingPlayers, setTrendingPlayers] = useState<TrendingPlayer[]>([])
   const [alerts, setAlerts] = useState<Notification[]>([])
@@ -318,14 +399,14 @@ export function WaiverWirePage() {
   // the only ones offered here.
   const [connectedLeagues, setConnectedLeagues] = useState<ConnectedLeagueOption[]>([])
   const [selectedLeagueId, setSelectedLeagueId] = useState<number | ''>('')
-  const [personalized, setPersonalized] = useState(false)
   const [waiverPosition, setWaiverPosition] = useState<WaiverPosition | null>(null)
   const [positionPressure, setPositionPressure] = useState<PositionPressure | null>(null)
-  const [lineupImpact, setLineupImpact] = useState<{ recs: LineupImpactRec[]; watchOnly: boolean } | null>(null)
-
-  // Roster analyzer
-  const [rosterPlayerIds, setRosterPlayerIds] = useState<string>('')
-  const [addDropAnalysis, setAddDropAnalysis] = useState<AddDropAnalysis | null>(null)
+  // The lineup-impact engine (GET /leagues/{id}/waiver-recommendations) --
+  // the primary list whenever a league is selected.
+  const [lineupImpact, setLineupImpact] = useState<LineupImpact | null>(null)
+  const [lineupLoading, setLineupLoading] = useState(false)
+  const [lineupError, setLineupError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
 
   // Defense/kicker streaming (matchup_analysis endpoints)
   const [streamingCurrentDefense, setStreamingCurrentDefense] = useState<string>('')
@@ -335,6 +416,9 @@ export function WaiverWirePage() {
   const [streamingError, setStreamingError] = useState('')
 
   const loadRecommendations = useCallback(async () => {
+    // With a league selected the lineup-impact engine is the list; the
+    // league-wide trending feed stays on the Trending tab.
+    if (selectedLeagueId !== '') return
     try {
       setLoading(true)
       setError('')
@@ -346,19 +430,16 @@ export function WaiverWirePage() {
       if (selectedPriority) {
         params.priority = selectedPriority
       }
-      if (selectedLeagueId !== '') {
-        params.league_id = selectedLeagueId
-      }
-
       const response = await waiverWire.getRecommendations(params)
       setRecommendations(response.data.recommendations || [])
-      setPersonalized(Boolean(response.data.personalized))
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to load waiver recommendations'))
     } finally {
       setLoading(false)
     }
-  }, [currentWeek, selectedPosition, selectedPriority, selectedLeagueId])
+    // refreshKey: the Refresh button re-runs this.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentWeek, selectedPosition, selectedPriority, selectedLeagueId, refreshKey])
 
   // Load the user's connected leagues once, to populate the personalization
   // dropdown. Only leagues with a team_id can have their roster fetched by
@@ -370,7 +451,13 @@ export function WaiverWirePage() {
     leaguesApi.getAll()
       .then((response) => {
         const all = (response.data || []) as ConnectedLeagueOption[]
-        setConnectedLeagues(all.filter((l) => !!l.team_id))
+        const usable = all.filter((l) => !!l.team_id)
+        setConnectedLeagues(usable)
+        // Default to the user's league (last one picked here, else the
+        // first) -- advice for your own roster beats the generic feed.
+        const remembered = readStoredLeagueId()
+        const pick = usable.find((l) => l.id === remembered) ?? usable[0]
+        if (pick) setSelectedLeagueId((current) => (current === '' ? pick.id : current))
       })
       .catch(() => setConnectedLeagues([]))
   }, [user])
@@ -405,14 +492,44 @@ export function WaiverWirePage() {
 
   useEffect(() => {
     setLineupImpact(null)
+    setLineupError('')
     if (selectedLeagueId === '') return
+    let cancelled = false
+    setLineupLoading(true)
     leaguesApi.getWaiverRecommendations(selectedLeagueId)
       .then((response) => {
+        if (cancelled) return
         const w = response.data.waiver_recommendations
-        if (w && !w.error) setLineupImpact({ recs: w.recommendations ?? [], watchOnly: !!w.watch_only })
+        if (!w || w.error) {
+          setLineupError(w?.error || response.data.error || "Couldn't score this league's free agents right now.")
+          return
+        }
+        // The league's real current week beats the date-based guess the
+        // picker starts on (it drives the Trending and Streaming tabs).
+        if (typeof w.current_week === 'number') setCurrentWeek(w.current_week)
+        setLineupImpact({
+          recs: w.recommendations ?? [],
+          watchOnly: !!w.watch_only,
+          teamNeeds: w.team_needs ?? [],
+          basis: w.basis,
+        })
       })
-      .catch(() => setLineupImpact(null))
-  }, [selectedLeagueId])
+      .catch((err) => !cancelled && setLineupError(getErrorMessage(err, "Couldn't score this league's free agents right now.")))
+      .finally(() => !cancelled && setLineupLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [selectedLeagueId, refreshKey])
+
+  const selectLeague = (id: number | '') => {
+    setSelectedLeagueId(id)
+    try {
+      if (id === '') localStorage.removeItem(LEAGUE_STORAGE_KEY)
+      else localStorage.setItem(LEAGUE_STORAGE_KEY, String(id))
+    } catch {
+      // Storage unavailable (private mode) -- the choice just isn't remembered.
+    }
+  }
 
   const loadTrendingPlayers = useCallback(async () => {
     try {
@@ -495,50 +612,6 @@ export function WaiverWirePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, activeTab, currentWeek])
 
-  const analyzeRoster = async () => {
-    try {
-      if (!rosterPlayerIds.trim()) {
-        setError('Please enter player IDs separated by commas')
-        return
-      }
-
-      setLoading(true)
-      setError('')
-
-      const playerIds = rosterPlayerIds.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
-
-      const response = await waiverWire.analyzeRoster({
-        roster_player_ids: playerIds,
-        week: currentWeek,
-        season: 2024
-      })
-
-      setAddDropAnalysis(response.data.roster_analysis)
-    } catch (err) {
-      setError(getErrorMessage(err, 'Failed to analyze roster'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const generateRecommendations = async () => {
-    try {
-      setLoading(true)
-      setError('')
-
-      await waiverWire.generateRecommendations({
-        week: currentWeek,
-        force_refresh: true
-      })
-
-      await loadRecommendations()
-    } catch (err) {
-      setError(getErrorMessage(err, 'Failed to generate recommendations'))
-    } finally {
-      setLoading(false)
-    }
-  }
-
   const getPriorityBadgeColor = (priority: string) => {
     const colors: Record<string, string> = {
       urgent: 'bg-danger-100 text-danger-800',
@@ -578,7 +651,6 @@ export function WaiverWirePage() {
     { id: 'trending', name: 'Trending', icon: FireIcon },
     { id: 'streaming', name: 'DEF/K Streaming', icon: ShieldCheckIcon },
     { id: 'alerts', name: 'Alerts', icon: BellIcon },
-    { id: 'analyzer', name: 'Roster Analyzer', icon: AdjustmentsHorizontalIcon },
   ]
 
   return (
@@ -606,8 +678,8 @@ export function WaiverWirePage() {
               </select>
             </div>
             <button
-              onClick={generateRecommendations}
-              disabled={loading}
+              onClick={() => setRefreshKey((k) => k + 1)}
+              disabled={loading || lineupLoading}
               className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark disabled:opacity-50 flex items-center space-x-2"
             >
               <ChartBarIcon className="h-4 w-4" />
@@ -640,7 +712,7 @@ export function WaiverWirePage() {
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as 'recommendations' | 'trending' | 'alerts' | 'analyzer' | 'streaming')}
+                onClick={() => setActiveTab(tab.id as TabId)}
                 className={`shrink-0 whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm flex items-center space-x-2 ${
                   activeTab === tab.id
                     ? 'border-accent-ink text-accent-ink'
@@ -674,8 +746,11 @@ export function WaiverWirePage() {
                   <option value="RB">Running Back</option>
                   <option value="WR">Wide Receiver</option>
                   <option value="TE">Tight End</option>
+                  {selectedLeagueId !== '' && <option value="K">Kicker</option>}
+                  {selectedLeagueId !== '' && <option value="DEF">Defense</option>}
                 </select>
               </div>
+              {selectedLeagueId === '' && (
               <div>
                 <label className="block text-sm font-medium text-body mb-1">Priority</label>
                 <select
@@ -691,14 +766,15 @@ export function WaiverWirePage() {
                   <option value="watch">Watch</option>
                 </select>
               </div>
+              )}
               <div>
-                <label className="block text-sm font-medium text-body mb-1">Personalize for</label>
+                <label className="block text-sm font-medium text-body mb-1">League</label>
                 <select
                   value={selectedLeagueId}
-                  onChange={(e) => setSelectedLeagueId(e.target.value ? parseInt(e.target.value) : '')}
+                  onChange={(e) => selectLeague(e.target.value ? parseInt(e.target.value) : '')}
                   className="rounded-md border-line focus:border-accent-ink focus:ring-volt"
                 >
-                  <option value="">Unweighted (no league)</option>
+                  <option value="">No league (league-wide trending)</option>
                   {connectedLeagues.map((league) => (
                     <option key={league.id} value={league.id}>
                       {league.league_name || `${league.platform} League`}
@@ -707,13 +783,13 @@ export function WaiverWirePage() {
                 </select>
               </div>
             </div>
-            {selectedLeagueId !== '' && (
-              <p className="text-xs text-muted">
-                {personalized
-                  ? 'Boosted/flagged using your real roster, starter requirements, and bye weeks for this league.'
-                  : "Couldn't fetch your roster for this league (no team set or a live fetch error) -- showing the unweighted feed instead."}
-              </p>
-            )}
+            <p className="text-xs text-muted">
+              {selectedLeagueId !== ''
+                ? lineupImpact?.basis || 'Every free agent in your league, scored by what he adds to your best starting lineup.'
+                : connectedLeagues.length > 0
+                  ? "League-wide Sleeper trending adds, not checked against your roster. Pick a league for advice built on your lineup."
+                  : "League-wide Sleeper trending adds. Connect a league to get advice built on your own lineup."}
+            </p>
           </div>
 
           {/* Waiver position -- real FAAB balance or priority rank for the
@@ -742,42 +818,18 @@ export function WaiverWirePage() {
             <p className="text-xs text-faint">{waiverPosition.detail}</p>
           )}
 
-          {selectedLeagueId !== '' && lineupImpact && lineupImpact.recs.length > 0 && (
-            <div className="bg-surface rounded-lg border border-hairline p-4 sm:p-5">
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div>
-                  <h3 className="text-base font-medium text-body">
-                    {lineupImpact.watchOnly ? 'No clear upgrade for your lineup yet' : 'Best for your lineup'}
-                  </h3>
-                  <p className="text-xs text-muted mt-0.5">
-                    Every free agent in this league, ranked by what he adds to your best starting lineup. The trending list below is league-wide demand.
-                  </p>
-                </div>
-                <DataConfidenceBadge level="computed" label="Lineup impact" />
-              </div>
-              <div className="space-y-2">
-                {lineupImpact.recs.slice(0, 3).map((rec) => (
-                  <div key={rec.player.name} className="flex items-start justify-between gap-3 border-t border-hairline pt-2">
-                    <div className="min-w-0">
-                      <p className="text-sm text-body">
-                        <span className="font-medium">{rec.player.name}</span>
-                        <span className="text-faint"> {rec.player.position?.value}{rec.player.team ? `, ${rec.player.team}` : ''}</span>
-                      </p>
-                      <p className="text-xs text-muted leading-relaxed">{rec.reason}</p>
-                    </div>
-                    <span className={`stat-nums text-sm font-semibold shrink-0 ${rec.kind === 'watch' ? 'text-muted' : 'text-success-700'}`}>
-                      {rec.kind === 'streamer'
-                        ? `+${(rec.week_gain ?? 0).toFixed(1)} wk`
-                        : `${(rec.season_gain ?? 0) >= 0 ? '+' : ''}${(rec.season_gain ?? 0).toFixed(1)}`}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+          {selectedLeagueId !== '' && (
+            <LeagueWaiverList
+              loading={lineupLoading}
+              error={lineupError}
+              impact={lineupImpact}
+              position={selectedPosition}
+              pressure={positionPressure}
+            />
           )}
 
-          {/* Recommendations List */}
-          {loading ? (
+          {/* League-wide trending list (no league selected) */}
+          {selectedLeagueId !== '' ? null : loading ? (
             <div className="bg-surface rounded-lg shadow p-6 text-center">
               <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
               <p className="text-sm text-muted">Scoring the wire...</p>
@@ -963,12 +1015,6 @@ export function WaiverWirePage() {
                         </div>
                       </div>
 
-                      <div className="sm:ml-4">
-                        <button className="w-full sm:w-auto bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark flex items-center justify-center space-x-2">
-                          <PlusIcon className="h-4 w-4" />
-                          <span>Add</span>
-                        </button>
-                      </div>
                     </div>
                   </div>
                 )
@@ -1339,94 +1385,6 @@ export function WaiverWirePage() {
         </div>
       )}
 
-      {activeTab === 'analyzer' && (
-        <div className="space-y-6">
-          <div className="bg-surface rounded-lg shadow p-4 sm:p-6">
-            <h3 className="text-lg font-medium text-body mb-4">Roster Add/Drop Analyzer</h3>
-            <p className="text-sm text-muted mb-4">
-              Enter your current roster player IDs to get personalized add/drop recommendations.
-            </p>
-
-            <div className="flex flex-wrap gap-4 mb-4">
-              <div className="flex-1">
-                <label className="block text-sm font-medium text-body mb-1">
-                  Player IDs (comma-separated)
-                </label>
-                <input
-                  type="text"
-                  value={rosterPlayerIds}
-                  onChange={(e) => setRosterPlayerIds(e.target.value)}
-                  placeholder="1, 2, 3, 4..."
-                  className="block w-full rounded-md border-line focus:border-accent-ink focus:ring-volt"
-                />
-                <p className="mt-1 text-xs text-muted">
-                  Example: 1, 2, 3, 4 (Josh Allen, Christian McCaffrey, Tyreek Hill, Travis Kelce)
-                </p>
-              </div>
-              <div className="flex items-end">
-                <button
-                  onClick={analyzeRoster}
-                  disabled={loading}
-                  className="bg-volt text-volt-ink px-4 py-2 rounded-lg hover:bg-volt-dark disabled:opacity-50 flex items-center space-x-2"
-                >
-                  <ChartBarIcon className="h-4 w-4" />
-                  <span>Analyze</span>
-                </button>
-              </div>
-            </div>
-
-            {addDropAnalysis && (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
-                {/* Add Candidates */}
-                <div>
-                  <h4 className="font-medium text-body mb-3">Top Add Candidates</h4>
-                  <div className="space-y-3">
-                    {addDropAnalysis.add_candidates?.slice(0, 5).map((player) => (
-                      <div key={player.player_id} className="border border-hairline rounded p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{player.player_name}</span>
-                          <span className={`px-2 py-1 rounded text-xs ${getPriorityBadgeColor(player.priority || '')}`}>
-                            {player.priority}
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted">{player.reason}</p>
-                        <div className="mt-2 text-xs text-muted">
-                          Confidence: <span className="font-stat tabular-nums">{((player.confidence ?? 0) * 100).toFixed(0)}%</span> •
-                          Projected: <span className="font-stat tabular-nums">{player.projected_points?.toFixed(1) || 'N/A'}</span> pts
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Drop Candidates */}
-                <div>
-                  <h4 className="font-medium text-body mb-3">Drop Candidates</h4>
-                  <div className="space-y-3">
-                    {addDropAnalysis.drop_candidates?.map((player) => (
-                      <div key={player.player_id} className="border border-danger-200 rounded p-3 bg-danger-50">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-medium">{player.player_name}</span>
-                          <span className="text-xs text-danger-600">
-                            Drop Score: <span className="font-stat tabular-nums">{((player.drop_score ?? 0) * 100).toFixed(0)}%</span>
-                          </span>
-                        </div>
-                        <p className="text-sm text-muted">{player.reason}</p>
-                      </div>
-                    ))}
-                    {(!addDropAnalysis.drop_candidates || addDropAnalysis.drop_candidates.length === 0) && (
-                      <div className="text-center py-4 text-muted">
-                        <CheckCircleIcon className="mx-auto h-8 w-8 text-success-500 mb-2" />
-                        <p className="text-sm">Your roster looks solid! No obvious drop candidates.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   )
 }

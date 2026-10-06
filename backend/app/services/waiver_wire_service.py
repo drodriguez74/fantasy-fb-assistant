@@ -699,7 +699,7 @@ class WaiverWireService:
     ) -> Optional[Dict[str, Any]]:
         """Evaluate a single player for waiver wire potential"""
 
-        # Real historical-performance query, mirroring _calculate_drop_score's
+        # Real historical-performance query, following the old drop-score query's
         # exact pattern -- this local historical data is known to be sparse,
         # so `recent_performances` will genuinely come back empty for most
         # players (that's expected and handled honestly below, not treated
@@ -1310,103 +1310,3 @@ class WaiverWireService:
             'week': rec.week,
             'season': rec.season
         }
-    
-    async def analyze_add_drop_candidates(
-        self, 
-        roster_player_ids: List[int],
-        week: int,
-        season: int = 2024
-    ) -> Dict[str, Any]:
-        """Analyze current roster for add/drop opportunities"""
-        try:
-            # Get current roster players
-            roster_players = self.db.query(Player).filter(
-                Player.id.in_(roster_player_ids)
-            ).all()
-            
-            # Get waiver recommendations
-            waiver_adds = await self.generate_weekly_recommendations(week, season, 20)
-            
-            # Analyze drop candidates from roster
-            drop_candidates = []
-            for player in roster_players:
-                drop_score = await self._calculate_drop_score(player, week, season)
-                if drop_score > 0.3:  # Worth considering dropping
-                    drop_candidates.append({
-                        'player_id': player.id,
-                        'player_name': player.name,
-                        'position': player.position.value,
-                        'drop_score': drop_score,
-                        'reason': await self._generate_drop_reason(player, drop_score)
-                    })
-            
-            # Sort drop candidates by score
-            drop_candidates.sort(key=lambda x: x['drop_score'], reverse=True)
-            
-            return {
-                'add_candidates': waiver_adds[:10],
-                'drop_candidates': drop_candidates[:5],
-                'analysis_date': datetime.now().isoformat(),
-                'week': week,
-                'season': season
-            }
-            
-        except Exception as e:
-            logger.error(f"Error analyzing add/drop candidates: {str(e)}")
-            return {'add_candidates': [], 'drop_candidates': []}
-    
-    async def _calculate_drop_score(self, player: Player, week: int, season: int) -> float:
-        """Calculate how droppable a player is (higher = more droppable)"""
-        # Get recent performance
-        recent_performances = self.db.query(PlayerHistoricalPerformance).filter(
-            and_(
-                PlayerHistoricalPerformance.player_id == player.id,
-                PlayerHistoricalPerformance.season == season,
-                PlayerHistoricalPerformance.week >= max(1, week - 4)
-            )
-        ).order_by(PlayerHistoricalPerformance.week.desc()).all()
-        
-        if not recent_performances:
-            return 0.5  # No data, moderate drop candidate
-        
-        # Poor recent performance
-        recent_avg = np.mean([p.fantasy_points_ppr or 0 for p in recent_performances])
-        position_benchmarks = {
-            Position.QB: 15.0,
-            Position.RB: 10.0,
-            Position.WR: 8.0,
-            Position.TE: 6.0
-        }
-        
-        benchmark = position_benchmarks.get(player.position, 8.0)
-        performance_score = max(0, 1 - (recent_avg / benchmark))
-        
-        # Injury concerns
-        injury_score = 0.3 if player.injury_status.value in ['Doubtful', 'Out', 'IR'] else 0
-        
-        # Low opportunity
-        opportunity_score = 0
-        if player.snap_count_percentage and player.snap_count_percentage < 50:
-            opportunity_score += 0.2
-        if player.target_share and player.target_share < 10:
-            opportunity_score += 0.2
-        
-        return min(1.0, performance_score + injury_score + opportunity_score)
-    
-    async def _generate_drop_reason(self, player: Player, drop_score: float) -> str:
-        """Generate reason why player might be droppable"""
-        reasons = []
-        
-        if drop_score > 0.7:
-            reasons.append("Poor recent performance")
-        
-        if player.injury_status.value in ['Doubtful', 'Out', 'IR']:
-            reasons.append(f"Injury concerns ({player.injury_status.value})")
-        
-        if player.snap_count_percentage and player.snap_count_percentage < 50:
-            reasons.append("Limited playing time")
-        
-        if not reasons:
-            reasons.append("Underperforming expectations")
-        
-        return ". ".join(reasons) + "."

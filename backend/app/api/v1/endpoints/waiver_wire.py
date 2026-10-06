@@ -7,11 +7,10 @@ RESTful endpoints for waiver wire recommendations, analysis, and weekly insights
 import asyncio
 import json
 import logging
-from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends, Query
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
@@ -355,12 +354,6 @@ async def get_league_aware_waiver_recommendations(
         raise HTTPException(status_code=500, detail=f"Failed to get league-aware waiver recommendations: {str(e)}")
 
 
-class WaiverAnalysisRequest(BaseModel):
-    roster_player_ids: List[int]
-    week: Optional[int] = None
-    season: int = 2025
-
-
 @router.get("/recommendations")
 async def get_waiver_recommendations(
     week: int = Query(..., description="NFL week number"),
@@ -472,42 +465,6 @@ async def get_recommendations_by_priority(
         raise HTTPException(status_code=500, detail=f"Failed to get priority recommendations: {str(e)}")
 
 
-@router.post("/analyze-roster")
-async def analyze_roster_moves(
-    request: WaiverAnalysisRequest,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Analyze current roster for optimal add/drop moves"""
-    try:
-        waiver_service = WaiverWireService(db)
-        
-        # Use current week if not specified
-        week = request.week or datetime.now().isocalendar()[1]
-        
-        analysis = await waiver_service.analyze_add_drop_candidates(
-            request.roster_player_ids,
-            week,
-            request.season
-        )
-        
-        return {
-            "roster_analysis": analysis,
-            "recommendations_summary": {
-                "add_count": len(analysis.get("add_candidates", [])),
-                "drop_count": len(analysis.get("drop_candidates", [])),
-                "priority_adds": len([
-                    rec for rec in analysis.get("add_candidates", [])
-                    if rec.get("priority") in ["urgent", "high"]
-                ])
-            },
-            "analyzed_at": datetime.utcnow().isoformat()
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to analyze roster: {str(e)}")
-
-
 @router.get("/trending")
 async def get_trending_players(
     week: int = Query(..., description="NFL week number (informational only -- see note below)"),
@@ -553,52 +510,6 @@ async def get_trending_players(
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get trending players: {str(e)}")
-
-
-@router.post("/generate-recommendations")
-async def generate_weekly_recommendations(
-    background_tasks: BackgroundTasks,
-    week: int = Query(..., description="NFL week number"),
-    season: int = Query(2025, description="NFL season"),
-    force_refresh: bool = Query(False, description="Force regeneration of recommendations"),
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """Generate or refresh waiver wire recommendations for a week"""
-    try:
-        waiver_service = WaiverWireService(db)
-        
-        if force_refresh:
-            # Run synchronously for immediate results
-            recommendations = await waiver_service.generate_weekly_recommendations(week, season)
-            
-            return {
-                "success": True,
-                "message": "Waiver recommendations generated successfully",
-                "week": week,
-                "season": season,
-                "recommendations_count": len(recommendations),
-                "top_recommendations": recommendations[:5],
-                "generated_at": datetime.utcnow().isoformat()
-            }
-        else:
-            # Run in background for large-scale generation
-            background_tasks.add_task(
-                waiver_service.generate_weekly_recommendations,
-                week,
-                season
-            )
-            
-            return {
-                "success": True,
-                "message": "Waiver recommendation generation started in background",
-                "week": week,
-                "season": season,
-                "started_at": datetime.utcnow().isoformat()
-            }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate recommendations: {str(e)}")
 
 
 @router.get("/player/{player_id}/evaluation")
