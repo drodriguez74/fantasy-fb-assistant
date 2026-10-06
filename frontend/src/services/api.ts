@@ -262,6 +262,12 @@ export const historical = {
     api.get('/historical/trends/league-wide', { params }),
 }
 
+// This week's betting board (backend/app/services/betting_service.py):
+// player props + game lines with simulated win probability, EV and units.
+export const betting = {
+  getBoard: (refresh = false) => api.get('/betting/board', { params: refresh ? { refresh: true } : undefined }),
+}
+
 // Waiver wire endpoints
 export const waiverWire = {
   // League-wide Sleeper trending adds (WaiverWireService.

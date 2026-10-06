@@ -20,6 +20,7 @@ const primaryNavigation = [
   { name: 'Waivers', href: '/waiver-wire' },
   { name: 'Trades', href: '/trade-analyzer' },
   { name: 'Players', href: '/players' },
+  { name: 'Bets', href: '/bets' },
 ]
 
 // Everything else — analysis surfaces and the look-back Reports hub.

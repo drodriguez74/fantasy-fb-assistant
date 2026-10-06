@@ -1,3 +1,46 @@
+# Handoff (2026-10-06, session 19 cont.) — Bets: player props + game lines with unit sizing
+
+**Status:** pushed to `main`. Backend 191 tests pass; frontend build clean.
+Migration `cea70c9ce01c` (`odds_cache` table) is **already applied to Supabase**,
+which Render shares. Render still needs `ODDS_API_KEY` set (see the entry below).
+
+**Built:** `/bets` page and `GET /betting/board`.
+- Player props: pass/rush/rec yards, receptions and anytime TD from DraftKings,
+  FanDuel and Hard Rock, with PrizePicks lines shown alongside.
+- Game lines: spreads and totals.
+- Pricing: de-vigged market consensus, plus a two-level Monte Carlo of Sleeper's
+  projected stat line, blended 30/70.
+- Sizing: quarter-Kelly units (1u = 1% bankroll), capped at 3u, and only when
+  EV ≥ 3% and the model agrees with the side. Lean is 0.5–1u, Strong 1.5–2u,
+  High 2.5–3u.
+- Responsible-gambling disclaimer (21+, 1-800-GAMBLER) and method explainer on the page.
+
+**Model problems found live and fixed:**
+1. Stale projections showed up as fake 3u edges (Braelon Allen projected 38 vs a
+   70.5 line). Fix: an outlier guard; props more than 35% off the market (more than
+   1.6x for TDs) get no units.
+2. A low-volume QB rushing prop (Darnold over 4.5) got 3u. Fix: yardage variability
+   now scales with 1/√volume.
+3. A numpy bool leaked into the JSON response and caused a 500. Cast fixed, plus a
+   regression test.
+
+Week 5 result: 10 recs, all 0.5–1.5u, mostly Unders. Game lines: 0 (the books agree).
+
+**Credits (important):** a full prop slate is about 68 credits. The cache is in the DB
+(memory → `odds_cache` → API), because the in-memory cache was refetching on every
+process start, and Render free tier restarts constantly. Props cache 24h; prop
+fetches stop at 60 credits left. 285 of 500 credits remain this month after testing.
+**The free tier can't sustain daily prop refreshes. The $30/20K tier can.**
+
+**Next:**
+- Grade picks against real results. Persist each week's recs, then score them once
+  stats are final. This is the only way to calibrate MODEL_WEIGHT, the CV values and
+  the outlier bounds, and to check the Under lean.
+- Then a correlated same-game simulation (e.g. QB yards ↔ WR yards), which is where
+  Monte Carlo pays off over closed-form math.
+
+---
+
 # Handoff (2026-10-06, session 19 cont.) — Vegas implied totals on DEF/K streaming
 
 **Status:** committed and pushed to `main`. Backend 183 tests pass; frontend build clean.

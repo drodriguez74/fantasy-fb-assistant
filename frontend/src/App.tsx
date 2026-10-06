@@ -10,6 +10,7 @@ import { PageLoader } from './components/common/PageLoader'
 // downloaded when a user actually navigates to it, instead of all pages
 // (plus their dependencies, e.g. recharts/d3 pulled in only by
 // AdvancedAnalysisPage) being bundled into one ~1MB chunk loaded upfront.
+const BettingPage = lazy(() => import('./pages/BettingPage').then(m => ({ default: m.BettingPage })))
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })))
 const PlayersPage = lazy(() => import('./pages/PlayersPage').then(m => ({ default: m.PlayersPage })))
@@ -104,6 +105,14 @@ function App() {
                     <AnalyticsPage />
                   </ProtectedRoute>
                 } 
+              />
+              <Route
+                path="/bets"
+                element={
+                  <ProtectedRoute>
+                    <BettingPage />
+                  </ProtectedRoute>
+                }
               />
               <Route 
                 path="/waiver-wire" 

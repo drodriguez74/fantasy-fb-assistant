@@ -72,7 +72,19 @@ All values are **rest-of-season**. ESPN's `projected_total_points` already is. Y
 
 The `/waiver-wire/*` routes (`WaiverWireService`) are the older league-wide Sleeper trending feed, kept only as the no-league view.
 
-**Vegas odds** (`odds_service.py`, optional `ODDS_API_KEY` from the-odds-api.com): one request fetches every NFL game's spreads and totals from DraftKings, FanDuel and Hard Rock Bet. Each team's implied total is (median total − its median spread) / 2. Results are cached 6h; each fetch costs 2 credits, so a full day's refreshes use ~8 of the free tier's 500/month. They feed the DEF/K streaming boards (a defense's opponent implied total, a kicker's own team total). Without a key, or on any failure, odds are simply omitted. Never log the request URL: it carries the key. Player props (yards, receptions, anytime TD) are the planned next step. They must be fetched one game per request, which costs far more credits.
+**Vegas odds** (`odds_service.py`, optional `ODDS_API_KEY` from the-odds-api.com): one request fetches every NFL game's spreads and totals from DraftKings, FanDuel and Hard Rock Bet. Each team's implied total is (median total − its median spread) / 2. Results are cached 6h; each fetch costs 2 credits, so a full day's refreshes use ~8 of the free tier's 500/month. They feed the DEF/K streaming boards (a defense's opponent implied total, a kicker's own team total). Without a key, or on any failure, odds are simply omitted. Never log the request URL: it carries the key. Player props are fetched per game (5 markets, about 5 credits each, so ~70 for a full slate) and cached 24h. Every Odds API response is persisted in the `odds_cache` table, because Render's free tier restarts often and an in-memory cache would refetch on each cold start. Prop fetches stop at a 60-credit reserve.
+
+### Bets (`/bets`, `betting_service.py` + `betting_model.py`)
+
+The weekly board prices player props and game lines. Method:
+- Market: each book's prices with the vig removed (multiplicative), using the median across DraftKings, FanDuel and Hard Rock.
+- Player model: a two-level Monte Carlo over Sleeper's weekly projected stat line, sampling projection error and then the game outcome (gamma yardage with variability ∝ 1/√volume; Poisson receptions and TDs).
+- Blend: 30% model / 70% market (shrinkage).
+- Sizing: EV at the best price, quarter-Kelly in units (1u = 1% bankroll), capped at 3u. A bet needs EV ≥ 3% and the model agreeing with the side.
+- Outliers: props whose projection is more than 35% off the market line (more than 1.6x for TDs) are flagged and get no units, since that gap usually means a stale projection.
+- Game lines: simulated around consensus (margin SD 13.5, total SD 13), so edges only appear when a book is off-market.
+
+The constants are standard published magnitudes, not yet fitted. Calibrating them needs graded results, which aren't built yet. Watch for numpy scalars leaking into responses: they 500 FastAPI's encoder.
 
 ### AI content generation
 
