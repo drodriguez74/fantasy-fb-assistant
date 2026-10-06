@@ -14,6 +14,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.services import betting_model as bm
+from app.services.betting_tracking import record_board
 from app.services import odds_service
 from app.services.sleeper_service import sleeper_service
 from app.services.weekly_projections import fetch_weekly_projections, normalize_name
@@ -258,7 +259,10 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
                 "disclaimer": DISCLAIMER}
 
     now = datetime.now(timezone.utc)
-    games = odds_service.this_week(await odds_service.get_game_lines(), now)
+    # Only games that haven't kicked off: in-game odds aren't what we'd
+    # recommend, and they'd pollute the tracked record.
+    games = [g for g in odds_service.this_week(await odds_service.get_game_lines(), now)
+             if g.get("commence_time", "") > now.strftime("%Y-%m-%dT%H:%M:%SZ")]
     state = await sleeper_service.get_nfl_state()
     week = state.get("week") if isinstance(state, dict) else None
     season = int(state.get("season") or now.year) if isinstance(state, dict) else now.year
@@ -280,25 +284,32 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     games_without_props: List[str] = []
     unmatched = 0
     for g, event in fetched:
-        teams = {_team(g.get("home_team")), _team(g.get("away_team"))}
-        label = f"{_team(g.get('away_team'))} @ {_team(g.get('home_team'))}"
+        home, away = _team(g.get("home_team")), _team(g.get("away_team"))
+        teams = (home, away)
+        label = f"{away} @ {home}"
         if not event:
             games_without_props.append(label)
             continue
         for (player, market), offers in _group_offers(event).items():
-            stats = next((projections.get((normalize_name(player), t)) for t in teams
-                          if projections.get((normalize_name(player), t)) is not None), None)
+            team = next((t for t in teams if projections.get((normalize_name(player), t)) is not None), None)
+            stats = projections.get((normalize_name(player), team)) if team else None
             mean = _projected_mean(stats, market) if stats else None
             if mean is None or mean <= 0:
                 unmatched += 1
                 continue
             rec = evaluate_player_prop(player, market, offers, mean, f"{week}|{player}|{market}")
             if rec:
-                rec["game"] = label
-                rec["kickoff"] = g.get("commence_time")
+                rec.update(game=label, kickoff=g.get("commence_time"), team=team, home=home, away=away)
                 player_props.append(rec)
 
-    game_props = [rec for g in games for rec in evaluate_game(g)]
+    game_props = [
+        {**rec, "home": _team(g.get("home_team")), "away": _team(g.get("away_team"))}
+        for g in games for rec in evaluate_game(g)
+    ]
+    try:
+        await asyncio.to_thread(record_board, season, int(week), player_props + game_props)
+    except Exception as e:  # noqa: BLE001 - tracking must never break the board
+        logger.warning("Recording betting board failed: %s", e)
 
     def ranked(recs):
         return sorted(recs, key=lambda r: (-r["units"], -r["ev"]))

@@ -1,3 +1,38 @@
+# Handoff (2026-10-06, session 19 cont.) — Bets track record: every pick saved and graded
+
+**Status:** pushed to `main`. Backend 196 tests pass. Migration `03c72f4e93d0`
+(`bet_picks`) is **already applied to Supabase**. `ODDS_API_KEY` is now set on Render
+and the live Bets page shows data.
+
+**Built:**
+- Every priced line on the board is saved to `bet_picks`, including 0-unit lines,
+  frozen at the price first seen. Only games that haven't kicked off are priced or saved.
+- `GET /betting/results` grades pending picks once their game is final: Sleeper
+  stats for props, ESPN scoreboard for games. Both are free.
+- New Results tab: record, units, ROI, splits by confidence/market/week,
+  calibration (predicted vs actual) with Brier scores for blend vs model vs market,
+  and the pick list.
+
+**Verified:** live grading against week 4 using two temporary picks (deleted
+afterwards). CeeDee Lamb Over 80.5 receiving yards graded won (actual 189); CLE −2.5
+graded won (27–24).
+
+**Current record:** week 5 is recorded. 302 lines tracked, 10 recommendations, all
+pending. The first grades land after TB @ DAL (Thursday); the full week settles
+after Monday night. Grading runs when someone opens the Results tab.
+
+**How to read it:** one week is noise. Judge on a few hundred bets and on
+calibration. If the model's Brier score is worse than the market's, lower
+MODEL_WEIGHT. If a confidence tier loses money over a big sample, raise MIN_EV for it.
+
+**Next:**
+- Use the graded data to tune `betting_model` constants (after ~3–4 weeks).
+- A correlated same-game Monte Carlo (QB ↔ WR yards).
+- Optionally, a scheduled board snapshot each week. Recording currently happens
+  only when someone opens the Bets page.
+
+---
+
 # Handoff (2026-10-06, session 19 cont.) — Bets: player props + game lines with unit sizing
 
 **Status:** pushed to `main`. Backend 191 tests pass; frontend build clean.

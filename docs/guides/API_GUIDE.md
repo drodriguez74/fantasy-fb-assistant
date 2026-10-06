@@ -157,6 +157,11 @@ The `/waiver-wire` routes below are the league-wide Sleeper trending feed, shown
   - `available: false` with a `detail` when `ODDS_API_KEY` is unset or there are no lines.
 - The board itself is cached 15 minutes. `refresh` recomputes it, but the Odds API fetches stay cached (6h lines, 24h props, persisted in `odds_cache`), so `refresh` never spends credits on data that's already cached. Method: see CLAUDE.md "Bets". Frontend: `BettingPage.tsx` (`/bets`).
 
+- `GET /betting/results?season=` (auth required) first settles pending picks whose games are final, from Sleeper stats and ESPN scores (no Odds API credits). Returns:
+  - `overall` and `by_confidence` / `by_market` / `by_week`, each with `bets, won, lost, push, void, pending, win_rate, units_staked, units_profit, roi` (recommended picks only).
+  - `calibration`: `{lines, buckets[{range, n, predicted, actual}], brier{blend, model, market}}`, computed over every graded line, including no-bet ones.
+  - `picks[]` and `newly_graded`. Shown on the Bets page's Results tab.
+
 ## Matchup Analysis (`/matchup-analysis`) — partially surfaced this session
 
 - `GET /matchup-analysis/defense-streaming/{week}?current_defense=` — auth required. Driven by `MatchupAnalysisService`/`WaiverWireService` over local defensive-matchup tables. **As of 2026-10-06 these hold no current-season data:** targets come back empty, and `current_defense_analysis` is a 5.0 placeholder ("No recent defensive data available"). The Waivers page uses it only when no league is selected; with a league it uses `GET /leagues/{id}/streaming` instead.

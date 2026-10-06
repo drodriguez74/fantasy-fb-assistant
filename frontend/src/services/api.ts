@@ -266,6 +266,8 @@ export const historical = {
 // player props + game lines with simulated win probability, EV and units.
 export const betting = {
   getBoard: (refresh = false) => api.get('/betting/board', { params: refresh ? { refresh: true } : undefined }),
+  // Graded track record of past recommendations (grades newly final games first).
+  getResults: () => api.get('/betting/results'),
 }
 
 // Waiver wire endpoints

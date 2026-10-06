@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
+import { BettingResults } from '../components/betting/BettingResults'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
@@ -128,7 +129,7 @@ export function BettingPage() {
   const [board, setBoard] = useState<Board | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'props' | 'games'>('props')
+  const [tab, setTab] = useState<'props' | 'games' | 'results'>('props')
   const [recommendedOnly, setRecommendedOnly] = useState(true)
   const [showMethod, setShowMethod] = useState(false)
 
@@ -228,7 +229,7 @@ export function BettingPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline">
             <nav className="-mb-px flex gap-6">
-              {(['props', 'games'] as const).map((t) => (
+              {(['props', 'games', 'results'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -236,10 +237,11 @@ export function BettingPage() {
                     tab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
                   }`}
                 >
-                  {t === 'props' ? 'Player props' : 'Game lines'}
+                  {t === 'props' ? 'Player props' : t === 'games' ? 'Game lines' : 'Results'}
                 </button>
               ))}
             </nav>
+            {tab !== 'results' && (
             <label className="flex items-center gap-2 text-xs text-muted pb-2">
               <input
                 type="checkbox"
@@ -249,9 +251,12 @@ export function BettingPage() {
               />
               Recommended only
             </label>
+            )}
           </div>
 
-          {shown.length === 0 ? (
+          {tab === 'results' ? (
+            <BettingResults />
+          ) : shown.length === 0 ? (
             <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
               {tab === 'games'
                 ? 'No game line clears the bar -- the books agree with each other, so there is no price to exploit. That is the normal state of an efficient market.'

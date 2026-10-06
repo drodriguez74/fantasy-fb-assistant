@@ -20,6 +20,7 @@ from app.models.nfl_schedule import NFLGame, NFLTeam, DefensiveMatchupRanking, T
 from app.models.notification import Notification
 from app.models.league_snapshot import LeagueSnapshot
 from app.models.odds_cache import OddsCache
+from app.models.bet_pick import BetPick
 
 # Set up relationships after all models are imported
 from sqlalchemy.orm import relationship
@@ -54,5 +55,5 @@ __all__ = [
     "PlayerHistoricalPerformance", "PlayerSeasonSummary", "MatchupHistory", "PlayerTrend", "FantasyLeagueHistory",
     "LeagueScoring", "ScoringPreset", "PlayerScoringCalculation",
     "NFLGame", "NFLTeam", "DefensiveMatchupRanking", "TeamMatchupStrength",
-    "Notification", "LeagueSnapshot", "OddsCache",
+    "Notification", "LeagueSnapshot", "OddsCache", "BetPick",
 ]

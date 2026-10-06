@@ -84,7 +84,9 @@ The weekly board prices player props and game lines. Method:
 - Outliers: props whose projection is more than 35% off the market line (more than 1.6x for TDs) are flagged and get no units, since that gap usually means a stale projection.
 - Game lines: simulated around consensus (margin SD 13.5, total SD 13), so edges only appear when a book is off-market.
 
-The constants are standard published magnitudes, not yet fitted. Calibrating them needs graded results, which aren't built yet. Watch for numpy scalars leaking into responses: they 500 FastAPI's encoder.
+The constants are standard published magnitudes, not yet fitted; calibrate them from the tracked results below.
+
+**Tracking & grading** (`betting_tracking.py`, `BetPick` model / `bet_picks` table): every time the board is computed, every priced line is stored once, including 0-unit lines (those are what calibration checks), frozen at the price first seen. A no-bet row is upgraded if the line later becomes a recommendation; a recommendation is never overwritten. Only games that haven't kicked off are priced or recorded. `GET /betting/results` first grades pending picks whose games are final (5h after kickoff). Props are graded from Sleeper's weekly stats (no stat line, or 0 games played, = void, matching how books handle inactive players); game lines from ESPN's public scoreboard. Neither costs Odds API credits. It returns record, units, ROI, splits by confidence/market/week, and calibration buckets with Brier scores for blend vs model vs market. Watch for numpy scalars leaking into responses: they 500 FastAPI's encoder.
 
 ### AI content generation
 
