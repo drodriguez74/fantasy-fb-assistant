@@ -1,3 +1,47 @@
+# Handoff (2026-10-06, session 19) — waiver goal: ROS values + league-first Waivers page
+
+**Status:** `main`, 3 commits not pushed (`2dce122`, `777a236`, `fdd089c`).
+Backend 174 tests pass; frontend build clean (lint: only the pre-existing
+useAuth.tsx error). Browser-checked locally on both leagues, desktop and
+390px mobile.
+
+**`777a236` Yahoo rest-of-season projections (a real bug).** Sleeper's
+season feed is a static 18-game preseason total. Checked live in week 5:
+an injured RB still showed 207 there vs 102 when his weekly rows are
+summed. So Yahoo waiver, trade and roster-grade values counted weeks
+already played and ignored byes and injuries. New
+`weekly_projections.fetch_rest_of_season_projections(season, week,
+end_week)` sums Sleeper weekly rows from the current week through the
+league's `end_week` (default 17). It falls back to the season feed if any
+week fails, takes about 1.2s, and every week is cached. ESPN needed no
+change: its `projected_total_points` is already rest-of-season (St. Brown
+246 = 18.9 × 13 remaining games). Labels now say "rest-of-season".
+
+**`fdd089c` Waivers page leads with lineup-impact advice.** It now
+auto-selects your league (remembered in localStorage `waivers.leagueId`).
+The primary list is the same engine and card as League Detail, via the new
+shared `components/waivers/LineupWaivers.tsx`: team-needs strip, drop,
+bid, plus this page's competition badge. The global trending list is only
+shown when no league is selected, and on the Trending tab. The Week picker
+follows the league's real current week; it used to show a wrong date
+guess of Week 6. Removed: the Roster Analyzer tab (typed internal player
+IDs, season 2024 hardcoded, a made-up 0.5 drop score when data was
+missing), the local-DB "generate recommendations" Refresh, and a no-op
+"Add" button. Also removed their endpoints (`POST /waiver-wire/
+analyze-roster`, `/generate-recommendations`) and the API_GUIDE lines.
+
+**Checked, not a bug:** Pro Bowl's recs all say "Drop Joe Mixon (RB, 0
+proj)". He's healthy on the bench, and Sleeper carries no projection for
+him at all, so 0 is the honest value.
+
+**Still open (judgment calls / non-waiver):** the weights (+5 waiver
+floor, 20% depth, 25% trade acceptance) are worth tuning against results.
+2-for-1 trades don't credit the freed roster spot. On the DEF/K Streaming
+tab you still type your current defense by hand; the lineup engine already
+covers DEF/K streamers for a selected league.
+
+---
+
 # Handoff (2026-09-23, session 18) — waiver + trade engines rebuilt on lineup impact
 
 **Status:** committed to `main`, not pushed. Backend 172 tests pass;
