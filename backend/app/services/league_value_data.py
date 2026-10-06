@@ -28,9 +28,11 @@ from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.sleeper_service import sleeper_service
 from app.services.weekly_projections import (
     attach_projections,
+    fetch_rest_of_season_projections,
     fetch_season_projections,
     fetch_weekly_projections,
     normalize_name,
+    season_window,
 )
 from app.services.yahoo_service import yahoo_service
 from app.services.yahoo_tokens import get_valid_yahoo_token
@@ -133,7 +135,7 @@ async def _load_espn(league: UserLeague) -> Dict[str, Any]:
         "current_week": week,
         "trade_deadline": trade_deadline,
         "starters": settings["starters"],
-        "projection_source": "ESPN projections",
+        "projection_source": "ESPN rest-of-season projections",
         "teams": [
             {
                 "team_id": str(t.get("team_id")),
@@ -169,13 +171,12 @@ async def _load_yahoo(league: UserLeague) -> Dict[str, Any]:
         raise LeagueDataError(rosters[0]["error"] if rosters else "Couldn't load this league's rosters.")
     if "error" in settings or not settings.get("starters"):
         raise LeagueDataError("This league's roster settings couldn't be loaded.")
-    try:
-        week = int(info.get("current_week")) if "error" not in info else None
-    except (TypeError, ValueError):
-        week = None
+    week, end_week = season_window(info)
 
+    # Rest-of-season, like ESPN's own `projected_total_points` -- see
+    # fetch_rest_of_season_projections for why not Sleeper's season feed.
     season_rows, week_rows = await asyncio.gather(
-        fetch_season_projections(league.season),
+        fetch_rest_of_season_projections(league.season, week, end_week),
         fetch_weekly_projections(league.season, week) if week else asyncio.sleep(0, result=[]),
     )
     if not season_rows:
@@ -224,7 +225,7 @@ async def _load_yahoo(league: UserLeague) -> Dict[str, Any]:
         "current_week": week,
         "trade_deadline": settings.get("trade_end_date"),
         "starters": settings["starters"],
-        "projection_source": "Sleeper projections scored with your league's rules",
+        "projection_source": "Sleeper rest-of-season projections scored with your league's rules",
         "teams": [
             {"team_id": str(t.get("team_id")), "team_name": t.get("team_name"), "players": build(t.get("players", []), "selected_position")}
             for t in rosters

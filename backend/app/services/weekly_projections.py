@@ -24,6 +24,7 @@ added via YAHOO_EXTRA_STATS. K and DEF points stay on Sleeper's standard
 scoring -- their per-category projections aren't in the feed -- and that's
 disclosed on the response.
 """
+import asyncio
 import logging
 import re
 import time
@@ -97,6 +98,62 @@ async def fetch_season_projections(season: int) -> List[Dict[str, Any]]:
     stat lines) -- the Yahoo counterpart to ESPN's season-long
     `projected_total_points`, used for trade values."""
     return await _fetch(_SEASON_PROJECTIONS_URL.format(season=season), (int(season), 0))
+
+
+async def fetch_rest_of_season_projections(
+    season: int, from_week: Optional[int], through_week: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """Rest-of-season projections: Sleeper's weekly rows for `from_week`
+    through `through_week` (the league's last week, default 17), stat lines
+    summed per player -- same row shape as the season feed, so
+    attach_projections scores them unchanged (scoring is linear per stat).
+
+    Sleeper's season feed is a static 18-game total (confirmed live
+    2026-10-06: an injured RB still projected 207 pts there vs 102 summed
+    weekly), so weeks already played, byes and multi-week injuries all
+    distort it mid-season. ESPN's own `projected_total_points` is already
+    rest-of-season (13 games remaining at week 5), so this is the Yahoo
+    counterpart. Falls back to the season feed when the week is unknown
+    or any weekly fetch fails -- a partial sum would silently undercount."""
+    last = int(through_week or 17)
+    if not from_week or int(from_week) > last:
+        return await fetch_season_projections(season)
+    weeks = range(int(from_week), last + 1)
+    per_week = await asyncio.gather(*(fetch_weekly_projections(season, w) for w in weeks))
+    if any(not rows for rows in per_week):
+        return await fetch_season_projections(season)
+
+    summed: Dict[str, Dict[str, Any]] = {}
+    for rows in per_week:
+        for r in rows:
+            pid = str(r.get("player_id") or "")
+            if not pid:
+                continue
+            acc = summed.get(pid)
+            if acc is None:
+                summed[pid] = {**r, "opponent": None, "stats": {k: v for k, v in r["stats"].items() if isinstance(v, (int, float))}}
+                continue
+            totals = acc["stats"]
+            for k, v in r["stats"].items():
+                if isinstance(v, (int, float)):
+                    totals[k] = totals.get(k, 0) + v
+    return list(summed.values())
+
+
+def season_window(league_info: Any) -> Tuple[Optional[int], Optional[int]]:
+    """(current_week, end_week) from a yahoo_service.get_league_info result,
+    each None when missing/unparseable -- the args for
+    fetch_rest_of_season_projections."""
+    if not isinstance(league_info, dict) or "error" in league_info:
+        return None, None
+
+    def as_int(v: Any) -> Optional[int]:
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    return as_int(league_info.get("current_week")), as_int(league_info.get("end_week"))
 
 
 async def _fetch(url: str, cache_key: Tuple[int, int]) -> List[Dict[str, Any]]:

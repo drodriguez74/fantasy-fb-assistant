@@ -17,7 +17,7 @@ from app.models.user_league import UserLeague
 from app.services.espn_service_enhanced import espn_service_enhanced
 from app.services.yahoo_service import yahoo_service
 from app.services.yahoo_tokens import get_valid_yahoo_token
-from app.services.weekly_projections import attach_projections, fetch_season_projections
+from app.services.weekly_projections import attach_projections, fetch_rest_of_season_projections, season_window
 from app.services.sleeper_service import sleeper_service
 from app.services.roster_grading import grade_roster
 from app.services.this_week_service import build_this_week as _build_this_week
@@ -286,16 +286,17 @@ async def _build_yahoo_roster_analysis_snapshot(
         for p in raw_players
     ]
     league_settings = None
-    yahoo_settings, season_rows = await asyncio.gather(
+    yahoo_settings, yahoo_info = await asyncio.gather(
         yahoo_service.get_league_settings(access_token, user_league.league_key),
-        fetch_season_projections(user_league.season),
+        yahoo_service.get_league_info(access_token, user_league.league_key),
     )
+    season_rows = await fetch_rest_of_season_projections(user_league.season, *season_window(yahoo_info))
     if "error" in yahoo_settings:
         yahoo_settings = {}
     if yahoo_settings.get("starters"):
         league_settings = {"starters": yahoo_settings["starters"]}
 
-    # Season projections (Sleeper's, scored with this league's Yahoo rules
+    # Rest-of-season projections (Sleeper's, scored with this league's Yahoo rules
     # -- see weekly_projections.py) let grade_roster rate starter quality,
     # not just composition, like ESPN's. Unmatched players stay at 0.0.
     projection_source = None
@@ -304,7 +305,7 @@ async def _build_yahoo_roster_analysis_snapshot(
         for p in players:
             if p["projected_points"] is None:
                 p["projected_points"] = 0.0
-        projection_source = "Sleeper season projection, scored with your league's rules"
+        projection_source = "Sleeper rest-of-season projection, scored with your league's rules"
 
     starting_lineup = [p for p in players if p["lineup_slot"] not in ("BE", "IR")]
     bench_players = [p for p in players if p["lineup_slot"] in ("BE", "IR")]
@@ -346,7 +347,7 @@ async def _build_yahoo_roster_analysis_snapshot(
                 "score": grading["composition_score"],
                 "description": (
                     "Composition grade based on this league's real roster-slot requirements. "
-                    "Starter quality uses Sleeper's season projections scored with your league's rules "
+                    "Starter quality uses Sleeper's rest-of-season projections scored with your league's rules "
                     "(Yahoo doesn't publish per-player projections)."
                     if projection_source else
                     "Composition grade based on this league's real roster-slot requirements. Season "

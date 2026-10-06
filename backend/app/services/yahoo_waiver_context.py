@@ -3,7 +3,7 @@ to the `espn_enrichment` / `team_bye_map` pair both waiver paths already
 build for ESPN (see waiver_wire.py::_fetch_connected_roster_and_settings).
 
 - Ownership %: Yahoo's own `percent_owned` on each free agent.
-- Season projection: Sleeper's full-season projection scored with the
+- Season projection: Sleeper's rest-of-season projection scored with the
   league's real Yahoo rules (Yahoo publishes none per player -- see
   weekly_projections.py). None when a free agent has no projection.
 - This-week byes: every NFL team with a player rostered anywhere in the
@@ -13,7 +13,7 @@ build for ESPN (see waiver_wire.py::_fetch_connected_roster_and_settings).
 import asyncio
 from typing import Any, Dict, List, Optional, Tuple
 
-from app.services.weekly_projections import attach_projections, fetch_season_projections
+from app.services.weekly_projections import attach_projections, fetch_rest_of_season_projections, season_window
 from app.services.yahoo_service import yahoo_service
 
 
@@ -27,12 +27,12 @@ async def build_yahoo_waiver_context(
     """Returns (enrichment keyed by lower-cased name, team_bye_map keyed by
     upper-case NFL team). Either is None when its source couldn't be loaded;
     never raises."""
-    rosters, projection_rows, league_info = await asyncio.gather(
+    rosters, league_info = await asyncio.gather(
         yahoo_service.get_league_rosters(access_token, league_key),
-        fetch_season_projections(season),
         yahoo_service.get_league_info(access_token, league_key),
         return_exceptions=True,
     )
+    projection_rows = await fetch_rest_of_season_projections(season, *season_window(league_info))
 
     enrichment: Optional[Dict[str, Dict[str, Any]]] = None
     if free_agents:

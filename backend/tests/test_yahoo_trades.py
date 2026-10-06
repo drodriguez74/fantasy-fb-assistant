@@ -32,7 +32,7 @@ def _patch(monkeypatch, rosters, rows):
     monkeypatch.setattr(yahoo_service, "get_league_settings", AsyncMock(return_value={
         "starters": {"RB": 1, "WR": 1}, "scoring_rules": None, "stat_values": {}, "trade_end_date": "2026-11-28"}))
     monkeypatch.setattr(yahoo_service, "get_league_info", AsyncMock(return_value={"current_week": "3"}))
-    monkeypatch.setattr(lvd, "fetch_season_projections", AsyncMock(return_value=rows))
+    monkeypatch.setattr(lvd, "fetch_rest_of_season_projections", AsyncMock(return_value=rows))
     monkeypatch.setattr(lvd, "fetch_weekly_projections", AsyncMock(return_value=[]))
     monkeypatch.setattr(lvd, "_trending_by_name", AsyncMock(return_value={}))
 

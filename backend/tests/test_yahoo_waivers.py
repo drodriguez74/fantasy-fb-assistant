@@ -44,7 +44,8 @@ def test_waiver_context_scores_free_agents_and_maps_byes(monkeypatch):
         return [{"team_id": "1", "players": [
             {"team": "Min", "bye_week": 3}, {"team": "Dal", "bye_week": 10}]}]
 
-    async def season(s):
+    async def season(s, week, end_week):
+        assert (week, end_week) == (3, None)
         return [{"player": {"first_name": "Player", "last_name": "4", "position": "WR", "team": "MIN"},
                  "team": "MIN", "stats": {"pts_std": 100.0, "rec": 50.0}}]
 
@@ -53,7 +54,7 @@ def test_waiver_context_scores_free_agents_and_maps_byes(monkeypatch):
 
     monkeypatch.setattr(yahoo_service, "get_league_rosters", rosters)
     monkeypatch.setattr(yahoo_service, "get_league_info", info)
-    monkeypatch.setattr(yahoo_waiver_context, "fetch_season_projections", season)
+    monkeypatch.setattr(yahoo_waiver_context, "fetch_rest_of_season_projections", season)
 
     fas = [{"name": "Player 4", "team": "Min", "position": "WR", "ownership_percentage": 12}]
     rules = {"receiving": {"reception": 1.0}}
@@ -127,7 +128,11 @@ def test_yahoo_roster_grade_uses_season_projections(monkeypatch):
     async def teams(tok, key):
         return [{"team_id": "1", "name": "Mine", "manager": "me"}]
 
-    async def season(s):
+    async def info(tok, key):
+        return {"current_week": "5", "end_week": "17"}
+
+    async def season(s, week, end_week):
+        assert (week, end_week) == (5, 17)
         return [{"player": {"first_name": "Josh", "last_name": "Allen", "position": "QB", "team": "BUF"},
                  "team": "BUF", "stats": {"pts_std": 350.0}}]
 
@@ -135,7 +140,8 @@ def test_yahoo_roster_grade_uses_season_projections(monkeypatch):
     monkeypatch.setattr(yahoo_service, "get_team_roster", roster)
     monkeypatch.setattr(yahoo_service, "get_league_settings", settings)
     monkeypatch.setattr(yahoo_service, "get_league_teams", teams)
-    monkeypatch.setattr(league_snapshots, "fetch_season_projections", season)
+    monkeypatch.setattr(yahoo_service, "get_league_info", info)
+    monkeypatch.setattr(league_snapshots, "fetch_rest_of_season_projections", season)
 
     ul = UserLeague(id=1, user_id=1, platform=PlatformType.YAHOO, league_id="1", league_key="461.l.1",
                     team_id="1", season=2026)
@@ -144,4 +150,4 @@ def test_yahoo_roster_grade_uses_season_projections(monkeypatch):
     by_name = {p["name"]: p["projected_points"] for p in ra["players"]}
     assert by_name == {"Josh Allen": 350.0, "Nobody Known": 0.0}
     assert ra["projection_source"]
-    assert "Sleeper's season projections" in ra["overall_grade"]["description"]
+    assert "Sleeper's rest-of-season projections" in ra["overall_grade"]["description"]

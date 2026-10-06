@@ -87,3 +87,42 @@ def test_yahoo_attach_zeroes_byes_and_skips_ir_in_unmatched():
     assert lineup[0]["projected_points"] == 9.0
     assert lineup[1]["projected_points"] == 0.0
     assert unmatched == ["Unknown Bench"]
+
+
+def _rows_by_week(monkeypatch, weekly, season_rows=None):
+    import asyncio
+    from app.services import weekly_projections as wp
+
+    async def fetch_week(season, week):
+        return weekly.get(week, [])
+
+    async def fetch_season(season):
+        return season_rows or []
+
+    monkeypatch.setattr(wp, "fetch_weekly_projections", fetch_week)
+    monkeypatch.setattr(wp, "fetch_season_projections", fetch_season)
+    return lambda *a: asyncio.run(wp.fetch_rest_of_season_projections(*a))
+
+
+def test_rest_of_season_sums_remaining_weeks_so_byes_and_injuries_count(monkeypatch):
+    healthy = lambda pts: dict(_row("Amon-Ra", "St. Brown", "DET", "WR", pts_std=pts, rec=5.0), player_id="1")
+    hurt = dict(_row("Travis", "Etienne", "JAX", "RB", pts_std=10.0, rec=2.0), player_id="2")
+    # Week 6 is St. Brown's bye (no row); Etienne is out until week 7.
+    ros = _rows_by_week(monkeypatch, {5: [healthy(12.0)], 6: [hurt], 7: [healthy(14.0), hurt]})
+
+    rows = {r["player_id"]: r for r in ros(2026, 5, 7)}
+
+    assert rows["1"]["stats"] == {"pts_std": 26.0, "rec": 10.0}
+    assert rows["2"]["stats"] == {"pts_std": 20.0, "rec": 4.0}
+    assert rows["1"]["opponent"] is None  # a summed line has no single opponent
+    lineup = [{"name": "Amon-Ra St. Brown", "team": "DET", "position": "WR"}]
+    attach_projections(lineup, list(rows.values()), {"receiving": {"reception": 1.0}})
+    assert lineup[0]["projected_points"] == 36.0
+
+
+def test_rest_of_season_falls_back_to_season_feed_when_incomplete(monkeypatch):
+    season_rows = [dict(_row("A", "B", "DET", "WR", pts_std=200.0), player_id="1")]
+    ros = _rows_by_week(monkeypatch, {5: [dict(_row("A", "B", "DET", "WR", pts_std=12.0), player_id="1")]}, season_rows)
+
+    assert ros(2026, 5, 6) == season_rows       # week 6 fetch came back empty
+    assert ros(2026, None, None) == season_rows  # current week unknown
