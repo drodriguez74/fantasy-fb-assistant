@@ -62,8 +62,19 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
   const [showAll, setShowAll] = useState(false)
   const { entries, power, flex, loading, error } = state
   const ranked = rankEntries(entries)
-  const profitable = ranked.filter((e) => e.ev > 0)
-  const shown = showAll ? ranked : profitable.slice(0, 6)
+  // By default, skip entries that mostly repeat a better shown one (half or
+  // more of their picks already used above): the same bet with one swap.
+  const distinct: typeof ranked = []
+  const used = new Set<string>()
+  for (const e of ranked) {
+    if (e.ev <= 0 || distinct.length >= 6) continue
+    const keys = e.legs.map((l) => `${l.player}|${l.market}`)
+    const overlap = keys.filter((k) => used.has(k)).length
+    if (overlap >= e.size / 2) continue
+    keys.forEach((k) => used.add(k))
+    distinct.push({ ...e, overlap })
+  }
+  const shown = showAll ? ranked : distinct
 
   return (
     <div className="space-y-3">
@@ -74,7 +85,8 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
         </button>
       </div>
       <p className="text-xs text-muted leading-relaxed">
-        Ranked by expected value. One pick per player, players from at least two teams. Payouts are PrizePicks' standard
+        Ranked by expected value; near-duplicates of a better entry are hidden. One pick per player, players from at
+        least two teams. Payouts are PrizePicks' standard
         multipliers; check yours on a built (unsubmitted) lineup's "$1 to pay $X" line and edit them here if they differ.
       </p>
       {editing && power && flex && (
@@ -150,12 +162,12 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
           ))}
           {!showAll && ranked.length > shown.length && (
             <button onClick={() => setShowAll(true)} className="text-xs text-accent-ink underline">
-              Show all {ranked.length} entries, including ones that lose money
+              Show all {ranked.length} entries, including near-duplicates and ones that lose money
             </button>
           )}
           {showAll && (
             <button onClick={() => setShowAll(false)} className="text-xs text-accent-ink underline">
-              Show profitable entries only
+              Show distinct profitable entries only
             </button>
           )}
         </div>

@@ -70,7 +70,7 @@ export function ThisWeekCard({
               ? 'No bets clear the bar right now.'
               : `${bets.length} bet${bets.length === 1 ? '' : 's'} · ${totalUnits}u${
                   dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''
-                } total`}
+                } total.`}
             {board.watch_count ? ` ${board.watch_count} more on the watch list.` : ''}
           </p>
         </div>
