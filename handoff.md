@@ -1,3 +1,12 @@
+# Handoff (2026-10-07, session 19 cont.) — TimesFM test + spread calibration backtest
+
+**Status:** 215 tests pass. Code: `backend/scripts/backtest_projections.py` (new); `betting_model.py` gained `projection_error()`, `PROJECTION_ERROR_BY_MARKET`, `DUD_PROB` and `apply_duds()`, all deliberately empty or off, so behavior is unchanged. Full write-up: BETTING_GUIDE.md section 9.
+- **TimesFM 3: rejected.** On 4,556 2025 player-weeks it missed by 18.9 on average vs Sleeper's 18.1 (passing 63.8 vs 56.8), close to a last-8-games average (19.1). Errors 0.89 correlated with Sleeper's; best blend ~1%; per-player spread worse than ours; needs ~3 GB RAM.
+- **Calibration: current spread validated, not changed.** A per-market fit on weeks 4–10 moved held-out scores by −0.8% to +0.5% (noise). Yards' extreme low tail is thin (14–15% below our 10th percentile), but the goblin-relevant region is already close (P ≥ half the projection within ~1.5 pts), and duds made that worse.
+- Next: rerun the backtest after each season; graded bets remain the test for the market blend.
+
+---
+
 # Handoff (2026-10-07, session 19 wrap) — Render memory fix + full betting documentation
 
 **Status:** everything pushed except this entry's commit (see git log). 214 backend tests pass.

@@ -40,6 +40,8 @@ import numpy as np
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
+# Per-market overrides, fitted by scripts/backtest_projections.py (see
+# PROJECTION_ERROR_BY_MARKET / DUD_PROB below the outcome-spread constants).
 MODEL_WEIGHT = 0.30          # weight on the projection model vs the de-vigged market
 KELLY_FRACTION = 0.25
 MIN_EV = 0.03                # 3% expected return per dollar staked
@@ -90,6 +92,33 @@ YARDS_REF_MEAN = {
 }
 VOLUME_EXPONENT = 0.25
 MAX_YARDS_CV = 1.5
+
+# Projection error per market (falls back to PROJECTION_ERROR). Both this and
+# DUD_PROB are left empty on purpose: scripts/backtest_projections.py fitted
+# them on the 2025 season (4,755 player-weeks) and found no out-of-sample gain
+# over the current settings (validation pinball within +/-0.8%, mixed sign),
+# and duds made the goblin-relevant tail worse. Rerun it each season.
+PROJECTION_ERROR_BY_MARKET: Dict[str, float] = {}
+
+# "Dud" games for yardage: an early exit, a benching or a blowout script
+# leaves a player far below any normal-game spread. With probability
+# DUD_PROB[market] the outcome is a small fraction (0-DUD_FRACTION) of the
+# true mean; other outcomes are scaled up so the mean is unchanged.
+DUD_PROB: Dict[str, float] = {}
+DUD_FRACTION = 0.25
+
+
+def projection_error(market: str) -> float:
+    return PROJECTION_ERROR_BY_MARKET.get(market, PROJECTION_ERROR)
+
+
+def apply_duds(outcomes: np.ndarray, true_mean: np.ndarray, p: float, rng: np.random.Generator) -> np.ndarray:
+    """Replace a share p of outcomes with dud games, keeping the mean."""
+    if p <= 0:
+        return outcomes
+    dud = rng.random(outcomes.shape) < p
+    scaled = outcomes * (1 - p * DUD_FRACTION / 2) / (1 - p)
+    return np.where(dud, true_mean * rng.uniform(0, DUD_FRACTION, outcomes.shape), scaled)
 SPREAD_SD = 13.5
 TOTAL_SD = 13.0
 
@@ -156,10 +185,10 @@ def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS) -> 
     """Simulated outcomes for one player stat whose projected mean is
     `mean`, including uncertainty in the projection itself."""
     rng = _rng(seed_text)
-    true_mean = np.clip(rng.normal(mean, PROJECTION_ERROR * mean, n), 0.01, None)
+    true_mean = np.clip(rng.normal(mean, projection_error(market) * mean, n), 0.01, None)
     if market in YARDS_CV:
         shape = 1 / yards_cv(market, mean) ** 2
-        return rng.gamma(shape, true_mean / shape)
+        return apply_duds(rng.gamma(shape, true_mean / shape), true_mean, DUD_PROB.get(market, 0.0), rng)
     return rng.poisson(true_mean).astype(float)
 
 

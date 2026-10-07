@@ -217,3 +217,17 @@ def test_worst_price_is_the_min_ev_cutoff():
     assert bm.ev(0.55, cut - 1) < bm.MIN_EV + 0.002     # one cent worse is (about) at/below the bar
     assert bm.price_offer(0.55, 100)["min_price"] == cut
     assert bm.price_offer(0.50, -110)["min_price"] is None   # no bet, no cutoff
+
+
+def test_calibration_knobs_default_to_current_behavior():
+    # Empty overrides: same draws as the single global setting.
+    assert bm.projection_error("player_reception_yds") == bm.PROJECTION_ERROR
+    assert not bm.DUD_PROB
+    rng = np.random.default_rng(0)
+    x = rng.gamma(4.0, 15.0, 50_000)
+    assert bm.apply_duds(x, np.full_like(x, 60.0), 0.0, rng) is x
+    # With duds on, the mean is preserved and the low tail gets heavier.
+    m = np.full_like(x, 60.0)
+    y = bm.apply_duds(x, m, 0.08, np.random.default_rng(1))
+    assert abs(y.mean() - x.mean()) / x.mean() < 0.02
+    assert np.mean(y < 10) > np.mean(x < 10)

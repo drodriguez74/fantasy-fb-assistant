@@ -1,6 +1,6 @@
 # Bets: how it works, what we decided, and why
 
-The single record for the betting feature (`/bets`). It covers what was built, the method, every decision with its reason and evidence, data-access constraints, and what's still open. Last updated 2026-10-07.
+The single record for the betting feature (`/bets`). It covers what was built, the method, every decision with its reason and evidence, data-access constraints, and what's still open. Last updated 2026-10-07 (incl. the TimesFM test and the calibration backtest).
 
 Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` (boards), `betting_tracking.py` (record and grade), `odds_service.py`, `espn_projections.py`, `espn_game_predictor.py`, `prizepicks_board.py`; frontend `frontend/src/pages/BettingPage.tsx` and `frontend/src/components/betting/`. Endpoints: [API_GUIDE.md → Betting](API_GUIDE.md#betting-betting).
 
@@ -33,7 +33,8 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | `5fdce4b` | College game lines + NFL / College switch; college props shelved |
 | `d056b58` | College lines tracked and graded |
 | `a84835e`, `14fe535` | Redesign around "This week's card" after a strategist + design review |
-| (memory fix) | Analytics libraries lazy-loaded after a Render out-of-memory restart |
+| `f9dcc91` | Analytics libraries lazy-loaded after a Render out-of-memory restart; this guide |
+| (backtest) | TimesFM 3 tested and rejected; spread model validated on 4,755 real player-weeks (`scripts/backtest_projections.py`) |
 
 ---
 
@@ -90,6 +91,8 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | College graded without a migration | Saved as `kind = "cfb_game"`, filed under the NFL betting week, graded from ESPN's college scoreboard by full team name. | 54 real finals parsed in testing. |
 | "This week's card" first | Strategist review: bettors want what to bet, how much, by when. | Design review. |
 | Hide near-duplicate PrizePicks entries | The top entries were the same six picks with one swap; playing several is one bet. | Live review. |
+| TimesFM 3 not adopted as a projection source | Backtest on 4,556 2025 player-weeks: worse than Sleeper (avg miss 18.9 vs 18.1; passing 63.8 vs 56.8), barely better than a last-8-games average (19.1). Errors 0.89 correlated with Sleeper's; best out-of-sample blend helps ~1%. Its per-player spread scored worse than ours (pinball 7.42 vs 6.96). It needs ~3 GB RAM (Render has 512 MB). | Section 9. |
+| Spread settings validated, not changed | Fitting projection error, CV and a dud-game rate per market on weeks 4–10 moved held-out (11–17) scores by −0.8% to +0.5%, mixed sign: noise. Duds made the goblin-relevant tail worse. The knobs exist (`PROJECTION_ERROR_BY_MARKET`, `DUD_PROB`) but are deliberately empty. | Section 9; rerun each season. |
 | Lazy-load analytics libraries | A Render out-of-memory restart. scikit-learn, statsmodels, pandas and pulp loaded at startup put the app at 281 MB of 512 MB before any request. | Now 137 MB idle, ~209 MB peak on Bets, no leak over 6 rebuilds. |
 
 ---
@@ -149,10 +152,52 @@ None of it costs credits.
 
 ---
 
+## 9. Validation and research
+
+### Calibration backtest (`backend/scripts/backtest_projections.py`)
+
+It uses a past season's Sleeper weekly projections and actual stats: free, cached in `backend/.cache/backtest/`. The cases are every player-week, weeks 4–17, where the player played and was projected for a prop-sized amount (QB passing ≥150, rush/rec yds ≥20, receptions ≥2). Settings are fitted on weeks 4–10 and scored on 11–17 with pinball loss over the 10th–90th percentiles (lower is better). Level isn't shipped, because slate centering sets it live from the market. Run it after each season: `cd backend && python scripts/backtest_projections.py --season 2026`.
+
+**2025 result (4,755 cases).** The current settings are already near the best this model family allows.
+
+| Market | Current (val.) | Fitted (val.) | Below q10 / median / above q90 (current) |
+|---|---|---|---|
+| Receiving yds | 8.678 | 8.656 | 15% / 52% / 8% |
+| Receptions | 0.606 | 0.609 | 4% / 40% / 6% (discrete; ties land on the median) |
+| Rushing yds | 8.784 | 8.810 | 14% / 46% / 9% |
+| Passing yds | 23.93 | 23.77 | 9% / 49% / 3% |
+
+The one consistent miss is that yards land below our 10th percentile 14–15% of the time (should be 10%). These are near-zero games such as early exits. In the region goblin lines occupy, though, the model is already close. P(at least half the projection), model vs real: rec yds 69.2% vs 67.8%, rush 74.9% vs 76.3%, pass 90.7% vs 92.1%. A dud-game rate fixes the extreme tail but worsens that region, so it stays off.
+
+Caveat: this measures the *outcome spread* around Sleeper's projection. It can't measure the market blend; graded bets (Results tab) are still the test for that.
+
+### TimesFM 3 (Google's time-series foundation model), tested 2026-10-07, rejected
+
+The question was whether a zero-shot forecaster reading each player's game history (2023 onward) adds to Sleeper's projections, or gives better per-player spread (it outputs 10th–90th percentiles).
+
+| Forecast | Avg miss, all | Passing | Rushing | Receiving | Receptions |
+|---|---|---|---|---|---|
+| Sleeper | **18.1** | **56.8** | 23.4 | 23.5 | **1.60** |
+| TimesFM 3 | 18.9 | 63.8 | 24.0 | 23.7 | 1.69 |
+| Last-8-games average | 19.1 | 63.5 | 24.2 | 24.1 | 1.70 |
+| Blend, weight fit on wk 4–10, scored 11–17 | 17.9 | 60.1 (w=0) | 22.4 | 23.0 | 1.59 |
+
+- Box-score history can't see injuries, roles or matchups, so it behaves like a smart moving average.
+- Its errors are 0.89 correlated with Sleeper's, so it adds little information.
+- Its percentiles were well calibrated (10/52/11%), but its per-player spread was less informative than ours: pinball 7.42 vs 6.96, and width-to-actual-miss correlation 0.56 vs 0.61.
+- It needs ~3 GB RAM and a separate job.
+
+Not worth adding. Reproducing it on an Intel Mac takes three workarounds:
+- PyTorch 2.2 is the last Intel-Mac build, so pin numpy<2.
+- Supply `nn.RMSNorm` (added in torch 2.4) as a small stand-in module.
+- Batch only equal-length series: mixed lengths were padded and came back NaN (~20%).
+
+The harness lived in the session scratchpad; the calibration script above keeps the reusable part.
+
 ## 8. Open items
 
 1. Verify PrizePicks 3–6 pick payouts in Florida (build an unsubmitted all-standard lineup and read "$1 to pay $X").
-2. After 3–4 graded weeks: tune `MODEL_WEIGHT`, CVs, the stale-guard bounds, `LEG_CORRELATION` and `COVER_TOTAL_RHO`; settle Sleeper vs ESPN accuracy from `espn_projection`.
+2. After 3–4 graded weeks: tune `MODEL_WEIGHT`, the stale-guard bounds, `LEG_CORRELATION` and `COVER_TOTAL_RHO`; settle Sleeper vs ESPN accuracy from `espn_projection`. The spread settings (CVs, projection error) were already validated by the backtest (section 9); rerun it each season.
 3. Track PrizePicks entries in `bet_picks` so they're graded too.
 4. Un-shelve college props when credits allow (league_id=15 verified; set `CFB_PROPS_ENABLED`).
 5. More prop markets and daily refreshes need the paid Odds API tier.
