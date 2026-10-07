@@ -91,5 +91,92 @@ def test_board_rows_are_plain_json():
 
 
 def test_low_volume_yardage_is_noisier():
-    assert bm.yards_cv("player_rush_yds", 12.0) > 2 * bm.yards_cv("player_rush_yds", 70.0)
+    assert bm.yards_cv("player_rush_yds", 12.0) > 1.5 * bm.yards_cv("player_rush_yds", 70.0)
     assert bm.yards_cv("player_rush_yds", 0.5) == bm.MAX_YARDS_CV
+
+
+def test_joint_prob_copula():
+    assert bm.joint_prob(0.6, 0.6, 0.0) == 0.36
+    assert math.isclose(bm.joint_prob(0.5, 0.5, 0.5), 1 / 3, abs_tol=1e-4)  # closed form: 1/4 + asin(rho)/2pi
+    assert bm.joint_prob(0.6, 0.6, 0.45) > 0.36 > bm.joint_prob(0.6, 0.6, -0.2)
+    assert bm.leg_correlation("player_reception_yds", "player_pass_yds", True, True) == 0.45
+    assert bm.leg_correlation("player_pass_yds", "player_reception_yds", False, False) == 0.0
+
+
+def test_prizepicks_leg_uses_market_at_prizepicks_number():
+    from app.services.betting_service import prizepicks_pairs
+    offers = _offers(60.5, -110, -110)
+    offers["prizepicks"] = 52.5  # well under the books' 60.5: More is the side
+    rec = evaluate_player_prop("WR One", "player_reception_yds", offers, 60.0, "pp1")
+    leg = rec["prizepicks"]
+    assert leg["side"] == "More" and leg["book_line"] == 60.5
+    assert leg["market_prob"] > 0.5 and leg["p_win"] > 0.5
+
+    def prop(player, team, market, side, p):
+        return {"player": player, "team": team, "game": "BUF @ KC", "market": market, "market_label": market,
+                "projection": 1.0, "prizepicks": {"line": 1.5, "side": side, "p_win": p, "p_push": 0.0,
+                                                    "model_prob": p, "market_prob": p, "book_line": 1.5}}
+    props = [
+        prop("QB", "KC", "player_pass_yds", "More", 0.6),
+        prop("WR", "KC", "player_reception_yds", "More", 0.6),
+        prop("WR", "KC", "player_receptions", "More", 0.6),     # same player as above: never paired
+        prop("RB", "BUF", "player_rush_yds", "Less", 0.45),     # under 50%: not a leg
+    ]
+    out = prizepicks_pairs(props)
+    assert all(len({l["player"] for l in r["legs"]}) == 2 for r in out["pairs"])
+    assert all(r["legs"][0]["player"] != "RB" and r["legs"][1]["player"] != "RB" for r in out["pairs"])
+    stack = next(r for r in out["pairs"] if {l["market"] for l in r["legs"]} == {"player_pass_yds", "player_reception_yds"})
+    assert stack["correlation"] == 0.45 and stack["joint_prob"] > stack["independent_prob"]
+
+
+def test_slate_centering_removes_systematic_projection_bias():
+    # Lines at the projected mean: right-skewed yardage puts the median below
+    # the mean, so the uncentered model leans Under on every prop; the fitted
+    # scale brings the median prop back to 50%.
+    pairs = [(p, p + 0.5) for p in (30, 42, 55, 61, 70, 77, 85, 96, 104)]
+    k = bm.fit_projection_scale("player_reception_yds", pairs)
+    assert k > 1.0
+    median_over = np.median([bm.prob_over(bm.simulate_stat("player_reception_yds", p * k, f"c{i}"), line)[0]
+                             for i, (p, line) in enumerate(pairs)])
+    assert abs(median_over - 0.5) < 0.03
+    assert bm.fit_projection_scale("player_reception_yds", pairs[:3]) == 1.0  # too few props: untouched
+    # Anytime TD: projections at half the market-implied scoring rate -> scale ~2.
+    td = [(0.2, 1 - math.exp(-0.4))] * 10
+    assert math.isclose(bm.fit_projection_scale("player_anytime_td", td), 1.6)  # clipped at the bound
+
+
+def test_anytime_td_devig_uses_game_total():
+    # 20 players at 30% each imply ~7.1 TDs; a 45-point total supports ~4.5.
+    scale = bm.td_rate_scale([0.30] * 20, 45.0)
+    assert 0.6 < scale < 0.7
+    fair = bm.td_fair_prob(0.30, scale)
+    assert 0.20 < fair < 0.23                      # a 30% price is really ~21%
+    assert bm.td_rate_scale([0.30] * 5, 45.0) is None   # partial prop list: no game estimate
+    assert bm.td_rate_scale([0.30] * 20, None) is None  # no total
+    assert bm.td_fair_prob(0.30, None) < 0.30           # fallback still removes a hold
+
+
+def test_espn_must_agree_before_units():
+    # Sleeper above the line (not far enough to be an outlier): Over gets units on its own...
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1")
+    assert rec["side"] == "Over" and rec["units"] > 0 and "espn_agrees" not in rec
+    # ...but not when ESPN projects him under the line.
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1",
+                               espn_projection=40.0)
+    assert rec["espn_agrees"] is False and rec["units"] == 0.0
+    assert rec["espn_projection"] == 40.0
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1",
+                               espn_projection=80.0)
+    assert rec["espn_agrees"] is True and rec["units"] > 0
+
+
+def test_prizepicks_pairs_skip_legs_espn_disagrees_with():
+    from app.services.betting_service import prizepicks_pairs
+
+    def prop(player, agrees):
+        return {"player": player, "team": "KC", "game": "BUF @ KC", "market": "player_rush_yds", "market_label": "",
+                "projection": 1.0, "prizepicks": {"line": 1.5, "side": "More", "p_win": 0.6, "p_push": 0.0,
+                                                    "model_prob": 0.6, "market_prob": 0.55, "book_line": 1.5,
+                                                    "espn_prob": None, "espn_agrees": agrees}}
+    out = prizepicks_pairs([prop("A", True), prop("B", None), prop("C", False)])
+    assert [{l["player"] for l in r["legs"]} for r in out["pairs"]] == [{"A", "B"}]

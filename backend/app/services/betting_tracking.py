@@ -80,6 +80,7 @@ def _row_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
         "model_prob": r.get("model_prob"),
         "market_prob": r.get("market_prob"),
         "projection": r.get("projection"),
+        "espn_projection": r.get("espn_projection"),
     }
 
 

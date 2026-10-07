@@ -1,3 +1,58 @@
+# Handoff (2026-10-06, session 19 cont.) — PrizePicks 2-pick Power Play finder
+
+**Status:** built, NOT committed yet. Backend 198 tests pass; frontend build + lint clean.
+Verified against this week's real cached odds (no new credits). Not checked in the
+browser: PrizePicks itself is blocked by the Chrome extension, and minting a local
+login token was denied, so the new tab was checked through the API only.
+
+**Built:** a "PrizePicks 2-pick" tab on `/bets`, from the board's new `prizepicks` section.
+- Lines come from The Odds API's `prizepicks` bookmaker (already fetched with props):
+  ~185 standard lines this week across pass/rush/rec yards and receptions. No anytime
+  TD, no goblin/demon lines.
+- Each leg is priced at PrizePicks' number: the books' fair P(over) at the nearest book
+  line, shifted by the simulation's move between the two lines, then blended 30/70.
+- Pairs: a 3x payout is priced as +200 on P(both hit), using the usual EV/Kelly/unit
+  rules. Same-game legs use a Gaussian copula with `LEG_CORRELATION` (QB↔own WR +0.45,
+  opposing QBs +0.25, ...; standard SGP magnitudes, not fitted). Same player twice is excluded.
+
+**Week 5 result:** 22 +EV pairs. The top ones are same-team QB Under + WR Under stacks.
+**Caveat:** every leg is a Less and the market sits near 50% on all of them, so the edge
+is entirely the model's Under lean (right-skewed gamma: mean projection > median). This
+is the same Under lean flagged earlier; it is unvalidated until graded results come in.
+
+**Update, same session — Under lean fixed by slate centering.** A review found the model picked
+Less on 56 of 73 PrizePicks legs while Sleeper projected 62 of 87 players above their line.
+Fitting the CVs to the market would need unrealistically tight spreads, so instead
+`fit_projection_scale` rescales each market's projections per slate (week 5: rec yds ×1.13,
+rush ×1.15, pass ×1.07, receptions ×1.05, TD ×1.20). Legs are now 32 Less / 28 More and 5 pairs
+are +EV (top: the same Wilson/Geno Smith stack at +6.6%, 0.5u). Also fixed: the Less side's
+market probability on whole-number lines ignored pushes.
+**TD longshots fixed.** Books quote anytime TD Yes-only, and a full game's prices imply 5.5-7.5 TDs
+where ~4-5 happen, so the hold is ~30-40%, not the 7% assumed. `td_rate_scale` now scales each
+game's implied scoring rates to its Vegas total (scale ~0.66-0.76; a 30% price is really ~21%).
+TD recs went from 10 to 0, and the TD centering factor went from 1.20 to 0.93.
+**Low-volume Under lean fixed.** CV now scales with mean^-0.25, not ^-0.5 (`VOLUME_EXPONENT`).
+Week 5 now: 1 board rec (Godwin Over 3.5 receptions, 0.5u); PrizePicks legs 34 Less / 26 More,
+8 +EV pairs, top is still the Wilson/Geno Smith stack (+7.1%, 0.5u).
+
+**ESPN cross-check (same session).** ESPN's public weekly projections (`espn_projections.py`) tracked
+the books' lines about as well as Sleeper (median error 16.5% vs 15.3%; ESPN better on rush/TD,
+Sleeper on rec yds), so Sleeper stays primary and ESPN must agree before a side gets units.
+`bet_picks.espn_projection` added (migration `f79e92683ff7`, **already applied to Supabase**).
+Week 5 result: 0 board recs, 0 PrizePicks pairs with units (best +2.5%, under the 3% bar). The Geno
+Smith stack died: Sleeper 189 vs ESPN 232 vs line 208.5.
+**Heads-up:** week 5's 302 rows (10 recs) were recorded under the old, Under-biased model and are
+frozen, so they'll be graded as-is with no ESPN projection. Consider excluding week 5 from calibration.
+
+**Next:**
+- Grade Sleeper vs ESPN projections against actual stats once a few weeks are tracked.
+- Track PrizePicks legs/pairs in `bet_picks` so they get graded (needs a new `kind`;
+  the unique key is per subject+market, which the book-side row already uses).
+- Check the Under lean against graded results before trusting these.
+- Fit `LEG_CORRELATION` from graded same-game outcomes.
+
+---
+
 # Handoff (2026-10-06, session 19 cont.) — Bets track record: every pick saved and graded
 
 **Status:** pushed to `main`. Backend 196 tests pass. Migration `03c72f4e93d0`

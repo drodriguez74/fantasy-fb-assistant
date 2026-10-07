@@ -79,10 +79,16 @@ The `/waiver-wire/*` routes (`WaiverWireService`) are the older league-wide Slee
 The weekly board prices player props and game lines. Method:
 - Market: each book's prices with the vig removed (multiplicative), using the median across DraftKings, FanDuel and Hard Rock.
 - Player model: a two-level Monte Carlo over Sleeper's weekly projected stat line, sampling projection error and then the game outcome (gamma yardage with variability ∝ 1/√volume; Poisson receptions and TDs).
+- Slate centering: each week, each market's projections are scaled (`fit_projection_scale`) so the median prop's model P(over) matches the market. Sleeper runs systematically off the books by stat type, and uncentered that bias showed up as a fake Under edge on nearly every prop. Don't fix it by shrinking the CVs: that makes the model overconfident.
+- Anytime TD is quoted Yes-only, so it's de-vigged by scaling each game's implied scoring rates to the TDs its Vegas total supports (`td_rate_scale`; the real hold is ~30-40%). A flat small hold made every longshot look like value.
+- Yardage CV scales with volume as mean^-0.25 (`VOLUME_EXPONENT`); the pure-math 0.5 made low-volume props lean Under.
+- ESPN cross-check (`espn_projections.py`, ESPN's public weekly per-stat projections, no login): centered the same way, and a side gets no units unless ESPN's projection also beats the market. PrizePicks pairs skip legs ESPN disagrees with. Compared against the books' lines (week 5), ESPN and Sleeper were about equally close (16.5% vs 15.3%), so Sleeper stays primary. Each tracked pick stores `espn_projection` so graded results can settle which source is better.
 - Blend: 30% model / 70% market (shrinkage).
 - Sizing: EV at the best price, quarter-Kelly in units (1u = 1% bankroll), capped at 3u. A bet needs EV ≥ 3% and the model agreeing with the side.
 - Outliers: props whose projection is more than 35% off the market line (more than 1.6x for TDs) are flagged and get no units, since that gap usually means a stale projection.
 - Game lines: simulated around consensus (margin SD 13.5, total SD 13), so edges only appear when a book is off-market.
+
+**PrizePicks 2-pick** (`prizepicks_pairs`): each PrizePicks line (from the Odds API `prizepicks` bookmaker) is priced at its own number (the books' fair probability at the nearest line, shifted by the simulation), and pairs are priced as +200 on P(both hit). Same-game legs use a Gaussian copula with `betting_model.LEG_CORRELATION` (also unfitted). The Chrome extension blocks prizepicks.com, so don't plan on scraping it.
 
 The constants are standard published magnitudes, not yet fitted; calibrate them from the tracked results below.
 

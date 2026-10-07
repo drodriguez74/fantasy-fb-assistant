@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { BettingResults } from '../components/betting/BettingResults'
+import { PrizePicksPairs, type PrizePicksBoard } from '../components/betting/PrizePicksPairs'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
@@ -31,6 +32,8 @@ interface BoardRow {
   market_line?: number | null
   prizepicks_line?: number | null
   projection_outlier?: boolean
+  espn_projection?: number | null
+  espn_agrees?: boolean
   // game lines
   consensus_line?: number
 }
@@ -42,6 +45,7 @@ interface Board {
   generated_at?: string
   player_props?: BoardRow[]
   game_props?: BoardRow[]
+  prizepicks?: PrizePicksBoard
   recommended_count?: number
   evaluated?: { player_props: number; games: number; props_without_projection: number }
   games_without_props?: string[]
@@ -103,6 +107,7 @@ function RowCard({ row }: { row: BoardRow }) {
           {row.type === 'player_prop' && (
             <p className="stat-nums text-[11px] text-faint mt-1.5">
               Projection {row.projection?.toFixed(1)}
+              {row.espn_projection != null && ` · ESPN ${row.espn_projection.toFixed(1)}`}
               {row.market_line != null && ` · market line ${row.market_line}`}
               {row.prizepicks_line != null && ` · PrizePicks ${row.prizepicks_line}`}
               {` · ${row.books_quoting} book${row.books_quoting === 1 ? '' : 's'}`}
@@ -112,6 +117,11 @@ function RowCard({ row }: { row: BoardRow }) {
             <p className="stat-nums text-[11px] text-faint mt-1.5">
               Consensus {row.market === 'spread' ? 'home spread' : 'total'} {row.consensus_line}
               {row.p_push > 0 && ` · push ${pct(row.p_push)}`} · {row.books_quoting} books
+            </p>
+          )}
+          {row.espn_agrees === false && !row.projection_outlier && (
+            <p className="text-[11px] text-warning-700 mt-1">
+              ESPN's projection doesn't back this side, so no units. When the two sources split, the edge is usually noise.
             </p>
           )}
           {row.projection_outlier && (
@@ -129,7 +139,7 @@ export function BettingPage() {
   const [board, setBoard] = useState<Board | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [tab, setTab] = useState<'props' | 'games' | 'results'>('props')
+  const [tab, setTab] = useState<'props' | 'games' | 'prizepicks' | 'results'>('props')
   const [recommendedOnly, setRecommendedOnly] = useState(true)
   const [showMethod, setShowMethod] = useState(false)
 
@@ -229,7 +239,7 @@ export function BettingPage() {
 
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline">
             <nav className="-mb-px flex gap-6">
-              {(['props', 'games', 'results'] as const).map((t) => (
+              {(['props', 'games', 'prizepicks', 'results'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setTab(t)}
@@ -237,11 +247,11 @@ export function BettingPage() {
                     tab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
                   }`}
                 >
-                  {t === 'props' ? 'Player props' : t === 'games' ? 'Game lines' : 'Results'}
+                  {t === 'props' ? 'Player props' : t === 'games' ? 'Game lines' : t === 'prizepicks' ? 'PrizePicks 2-pick' : 'Results'}
                 </button>
               ))}
             </nav>
-            {tab !== 'results' && (
+            {(tab === 'props' || tab === 'games') && (
             <label className="flex items-center gap-2 text-xs text-muted pb-2">
               <input
                 type="checkbox"
@@ -256,6 +266,8 @@ export function BettingPage() {
 
           {tab === 'results' ? (
             <BettingResults />
+          ) : tab === 'prizepicks' ? (
+            <PrizePicksPairs data={board.prizepicks} />
           ) : shown.length === 0 ? (
             <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
               {tab === 'games'
