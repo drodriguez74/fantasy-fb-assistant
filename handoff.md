@@ -1,3 +1,116 @@
+# START HERE — Session 19 wrap (2026-10-06 → 10-07): the Bets feature, end to end
+
+> Read this first, then `docs/guides/BETTING_GUIDE.md` (the full record: method, decisions log with
+> evidence, data limits, validation, open items). The per-step entries below this one have the details.
+
+## State right now
+- **Everything is committed and pushed to `main`** (last: `820c8c5`). Render (backend) and Vercel
+  (frontend) auto-deploy on push. Backend **220 tests pass**; frontend `npm run build` + lint clean.
+- **Migrations, all applied to Supabase** (shared by local dev and Render; Render does NOT run them):
+  `cea70c9ce01c` odds_cache, `03c72f4e93d0` bet_picks, `f79e92683ff7` bet_picks.espn_projection,
+  `8ab3f8bb12ed` user_entries. Alembic head = `8ab3f8bb12ed`.
+- **Config:** `ODDS_API_KEY` is set in Render and in `backend/.env` (the founder shared it in chat and
+  plans to rotate it). Odds API free tier: **277 of 500 credits left this month** (2026-10-07).
+- **Live-verified on the deployed site (2026-10-07):** the redesigned Bets page, the bankroll → dollars
+  conversion, Game lines, PrizePicks ordering. **Not yet seen in a browser:** the "My entries" tab, the
+  per-sport Results toggle, the "still a bet at X" line (needs Render's deploy), and phone width after
+  the redesign (Chrome wouldn't resize).
+
+## What was built (commits, oldest → newest)
+| Commit | What |
+|---|---|
+| `2c6844f` | PrizePicks 2-pick finder; **model bias fixes** (slate centering, game-total TD de-vig, volume exponent 0.25); **ESPN cross-check** required for units |
+| `9026f3e` | **Full PrizePicks board upload** (browser Cmd+S → upload); never pair teammates |
+| `0499f71` | **Game-line model** (Sleeper team points; ESPN predictor + projections as checks), cover/total combos, **watch tier**, 2–6 pick Power/Flex entries |
+| `5fdce4b` | **College football** game lines behind an NFL / College switch; college props built but **shelved** |
+| `d056b58` | College lines tracked and graded (`kind = "cfb_game"`, ESPN college scoreboard) |
+| `a84835e`, `14fe535` | **Bets page redesign** around "This week's card" (strategist + design review), then live-review fixes |
+| `f9dcc91` | **Render out-of-memory fix** (analytics libraries lazy-loaded) + `BETTING_GUIDE.md` |
+| `ca1875f` | **Calibration backtest** (spread model validated, unchanged) + **TimesFM 3 tested and rejected** |
+| `874d765` | Results tab scoped per sport with an "All sports" toggle |
+| `820c8c5` | **My entries**: the founder's real PrizePicks entries, snapshotted and auto-graded |
+
+## Files (39 changed since `2445cee`)
+- **Backend services:** `betting_model.py` (pricing math, centering, TD de-vig, game model, entries math,
+  `worst_price`, calibration knobs off), `betting_service.py` (NFL board, college board, PrizePicks
+  pricing/pairs/entries, `snapshot_leg`, `_pricing_context`), `betting_tracking.py` (record/grade NFL +
+  college, `summarize(sport=)`), `odds_service.py` (`sport` param: NFL/NCAAF), `espn_projections.py`
+  (new), `espn_game_predictor.py` (new: NFL + FBS win probabilities), `prizepicks_board.py` (new:
+  upload parse/store, league label `"NCAAFB"`), `user_entries.py` (new), `espn_service.py` (shared
+  `ESPN_PRO_TEAM_ABBR`).
+- **Endpoints:** `betting.py` (`/board?sport=`, `/prizepicks-board`, `/prizepicks-entries`,
+  `/results?sport=`, `/entries` GET/POST/DELETE), `analytics.py` + `advanced_analysis.py` (lazy imports).
+- **Models / migrations:** `user_entry.py` (new), `bet_pick.py` (+`espn_projection`), `models/__init__.py`.
+- **Script:** `backend/scripts/backtest_projections.py` (rerun each season; caches to `backend/.cache/backtest`).
+- **Tests:** `test_betting_model.py`, `test_betting_tracking.py`, `test_prizepicks_board.py` (new), `test_user_entries.py` (new).
+- **Frontend (`src/components/betting/`):** `BetCard.tsx`, `ThisWeekCard.tsx`, `MyEntries.tsx`,
+  `GameCombos.tsx`, `PrizePicksPairs.tsx` (the PrizePicks tab), `PrizePicksEntries.tsx`,
+  `prizePicksEntriesData.ts` (entries hook + ranking), `betTypes.ts` (shared types, formatting,
+  bankroll hook), `BettingResults.tsx` (sport scope); `pages/BettingPage.tsx`; `services/api.ts`.
+- **Docs:** `docs/guides/BETTING_GUIDE.md` (new, the single record), `API_GUIDE.md` (Betting section),
+  `CLAUDE.md` (Bets rules + "Memory on Render"), `current-state.md`, this file. `.gitignore`: `*prizepicks*.json`.
+
+## Key decisions (full table with evidence: BETTING_GUIDE.md section 3)
+- **Market anchors everything** (70% market / 30% model). A bet needs EV ≥ 3% with the model AND the ESPN
+  check agreeing; quarter-Kelly, **max 3u** (college 1u). No 4u until graded calibration earns it.
+- **Bias fixes stay** (each fixed a measured fake edge): slate centering (fake Under lean), TD de-vig
+  from game totals (fake longshot TDs), volume exponent 0.25 (low-volume Under lean). Never "fix" a
+  lean by shrinking CVs.
+- **Spread settings are validated:** the backtest on 4,755 real 2025 player-weeks found no
+  out-of-sample gain from refitting. Change them only if a rerun shows one.
+- **TimesFM 3 rejected:** worse than Sleeper (avg miss 18.9 vs 18.1), errors 0.89 correlated, worse
+  per-player spread, ~3 GB RAM.
+- **Sleeper primary, ESPN a required check** (equally close to the books; disagreement = noise). Yahoo
+  has no projections.
+- **PrizePicks:** never scrape (Chrome extension blocks the site; the API is behind a DataDome
+  CAPTCHA). The board comes from the founder's daily browser upload, entries from manual logging.
+  Never pair teammates (2+ teams required). Max 6 picks. Payouts editable; Florida confirmed 2-pick
+  Power 3x, 2-pick Flex 2x/0.5x, one goblin → 2.6x; 3–6 pick payouts unverified.
+- **College:** game lines only, behind the NFL / College switch ("CFB Game Lines" + Results). ESPN
+  predictor spreads at 0.15 weight / 1u cap; totals market-only; college props shelved
+  (`CFB_PROPS_ENABLED = False`, credits). PrizePicks' college league label `"NCAAFB"` is stored as-is.
+- **Results are judged per sport** (NFL and college run different models); "All sports" for the combined view.
+- **Memory:** heavy libraries load where they're used, never at startup (idle 281 → 137 MB on a 512 MB instance).
+
+## Week-5/6 facts worth remembering
+- The week-5 NFL rows in `bet_picks` (302 lines, 10 bets) were recorded under the old Under-biased
+  model; consider excluding week 5 from calibration.
+- The board after the fixes: 2 NFL bets (MIN @ NO Over 42 1u, BUF @ LAR Under 54.5 0.5u), 12 watch;
+  college 3 small bets.
+- The founder's real entry (logged in chat, not yet in the app): 2-pick Power $10 → $30, McCaffrey Less
+  36.5 rec yds (books 51% / model 56%) + Irving More 51.5 rush yds (books 56% / model 60%; projections
+  75–78 vs books 57.5). ~29% to hit by the books, ~33% by the model; break-even 33.3%.
+
+## Open items (priority order)
+1. The founder logs real entries in **My entries** (start with the McCaffrey/Irving one). Check the tab live.
+2. Optional **screenshot import** for My entries (Claude vision reads a PrizePicks entry screenshot and
+   prefills the form). Offered; not built.
+3. Verify Florida **3–6 pick payouts** (build an unsubmitted all-standard lineup, read "$1 to pay $X").
+4. After 3–4 graded weeks: tune `MODEL_WEIGHT`, the stale-guard bounds, `LEG_CORRELATION` and
+   `COVER_TOTAL_RHO`; settle Sleeper vs ESPN via `espn_projection`; read the per-sport calibration.
+5. Rerun `backend/scripts/backtest_projections.py --season 2026` after the season.
+6. More prop markets, daily prop refreshes and college props need the paid Odds API tier ($30/20K).
+7. Check the phone layout of the redesigned page.
+
+## Gotchas
+- **Run backend scripts and tests from `backend/`**: settings read `.env` from the working directory.
+- `betting_service.snapshot_leg` needs `_pricing_context["nfl"]`, filled by `build_board()`; the
+  POST `/entries` handler calls `build_board()` first.
+- numpy scalars in API responses 500 FastAPI; cast to plain Python types.
+- PrizePicks `allowed_wager_types` is a string (`"over"` / `"under_or_over"`), not a list.
+- Local sign-in: the demo password shown on the login form does not match the shared DB's demo user,
+  so check UI changes on the deployed site (the founder's Chrome is signed in there).
+- The TimesFM harness lived in the session scratchpad only (Intel Mac needs torch 2.2 + numpy<2 + an
+  `nn.RMSNorm` stand-in + equal-length batching); its results are in BETTING_GUIDE section 9.
+
+## How the founder works (preferences learned this session)
+- Places all wagers themselves; wants data and pricing, never automation of their accounts.
+- Wants a commit + push when they say so, and the docs updated with decisions and reasons.
+- Values honest pushback (stale-projection warnings, "no bet this week") over more recommendations.
+- Plays PrizePicks in **Florida**; liked the NFL / College switch over separate tabs.
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — My entries (the founder's real PrizePicks entries)
 
 **Status:** 220 tests pass, build + lint clean. Migration `8ab3f8bb12ed` (`user_entries`) is **already applied to Supabase**. Committed and pushed (see git log).

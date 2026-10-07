@@ -1,6 +1,6 @@
 # Current State
 
-_High-level project status. Read this (with `memory.md`) via `/orient` after `/clear`. Not a task queue — see `handoff.md` for the active task._
+_High-level project status (last updated 2026-10-07, end of session 19; the START HERE entry in `handoff.md` has the session summary). Read this (with `memory.md`) via `/orient` after `/clear`. Not a task queue — see `handoff.md` for the active task._
 
 ## What this project is
 
