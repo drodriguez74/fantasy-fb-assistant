@@ -1,3 +1,15 @@
+# Handoff (2026-10-07, session 19 cont.) — College picks tracked and graded
+
+**Status:** 213 tests pass, build + lint clean. Not committed yet.
+- The college board saves every priced line to `bet_picks` as kind `cfb_game` (no migration), filed
+  under the NFL betting week. Verified live: 114 lines saved (57 games × spread/total), 3 recommended.
+- Grading: ESPN college scoreboard by kickoff date (± a day for late UTC kickoffs), matched by full team
+  name. Verified live against last weekend: 54 real finals parsed.
+- Results: new "By sport" split (NFL vs College); college picks are marked "CFB"; the College view now
+  has a Results tab too.
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — College football section on /bets
 
 **Status:** 212 tests pass, frontend build + lint clean. **Not committed.** Founder will test.

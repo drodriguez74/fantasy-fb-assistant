@@ -50,3 +50,24 @@ def test_calibration_buckets_and_brier():
     assert c["lines"] == 3  # push excluded
     assert {b["range"]: (b["n"], b["actual"]) for b in c["buckets"]} == {"30-40%": (1, 1.0), "60-70%": (2, 0.5)}
     assert c["brier"]["blend"] is not None and c["brier"]["model"] is not None
+
+
+def test_college_finals_match_by_full_team_name():
+    from app.services.betting_tracking import _completed_scores
+    from app.services.espn_game_predictor import cfb_team_key
+
+    def team(name, side, score):
+        return {"homeAway": side, "score": str(score), "team": {"displayName": name, "abbreviation": name[:4]}}
+    data = {"events": [
+        {"competitions": [{"status": {"type": {"completed": True}},
+                           "competitors": [team("UTEP Miners", "home", 17), team("Nevada Wolf Pack", "away", 31)]}]},
+        {"competitions": [{"status": {"type": {"completed": False}},
+                           "competitors": [team("Memphis Tigers", "home", 7), team("UAB Blazers", "away", 3)]}]},
+    ]}
+    finals = _completed_scores(data, lambda t: cfb_team_key(t.get("displayName")))
+    # The Odds API's spelling of the same teams finds the final; unfinished games are left out.
+    assert finals[(cfb_team_key("UTEP Miners"), cfb_team_key("Nevada Wolf Pack"))] == (17.0, 31.0)
+    assert len(finals) == 1
+    # College spreads grade with full team names as the side (Nevada -8.5 won by 14).
+    outcome, actual = game_outcome("spread", "Nevada Wolf Pack", -8.5, "UTEP Miners", 17, 31)
+    assert outcome == "won" and actual == 14

@@ -19,7 +19,7 @@ interface RecordSummary {
 interface TrackedPick {
   id: number
   week: number
-  kind: 'player_prop' | 'game'
+  kind: 'player_prop' | 'game' | 'cfb_game'
   subject: string
   game: string
   market: string
@@ -37,6 +37,7 @@ interface TrackedPick {
 
 interface Results {
   overall: RecordSummary
+  by_sport?: Record<string, RecordSummary>
   by_confidence: Record<string, RecordSummary>
   by_market: Record<string, RecordSummary>
   by_week: (RecordSummary & { season: number; week: number })[]
@@ -165,6 +166,9 @@ export function BettingResults() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {data.by_sport && Object.keys(data.by_sport).length > 1 && (
+          <SplitTable title="By sport" rows={Object.entries(data.by_sport).map(([k, v]) => [k, v])} />
+        )}
         <SplitTable
           title="By confidence"
           rows={(['high', 'strong', 'lean'] as const).filter((k) => data.by_confidence[k]).map((k) => [k[0].toUpperCase() + k.slice(1), data.by_confidence[k]])}
@@ -220,7 +224,9 @@ export function BettingResults() {
               <div key={p.id} className="flex items-center justify-between gap-3 py-2">
                 <div className="min-w-0">
                   <div className="text-sm text-body truncate">
-                    <span className="stat-nums text-xs text-faint mr-2">W{p.week} · {p.units}u</span>
+                    <span className="stat-nums text-xs text-faint mr-2">
+                      {p.kind === 'cfb_game' ? 'CFB · ' : ''}W{p.week} · {p.units}u
+                    </span>
                     {p.subject}
                   </div>
                   <div className="text-xs text-muted">

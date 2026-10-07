@@ -893,8 +893,8 @@ async def price_cfb_prizepicks(uploaded: Dict[str, Any], games: List[Dict[str, A
 async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
     """College football board: game lines + combos (ESPN predictor as the
     spread model) and, with an uploaded college PrizePicks board, PrizePicks
-    picks priced against the books. Not recorded in bet_picks yet: grading
-    is NFL-only (Sleeper stats / NFL scoreboard)."""
+    picks priced against the books. Game lines are recorded in bet_picks as
+    kind "cfb_game" and graded from ESPN's college scoreboard."""
     from app.services.espn_game_predictor import cfb_team_key, fetch_cfb_home_win_probs
 
     cached = _board_cache.get("cfb")
@@ -939,5 +939,15 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
         "method": CFB_METHOD,
         "disclaimer": DISCLAIMER,
     }
+    # Track college game lines like NFL ones (kind "cfb_game"), filed under
+    # the NFL betting week so the Results page groups them with that week.
+    state = await sleeper_service.get_nfl_state()
+    week = state.get("week") if isinstance(state, dict) else None
+    if week:
+        season = int(state.get("season") or now.year)
+        try:
+            await asyncio.to_thread(record_board, season, int(week), [{**r, "type": "cfb_game"} for r in game_props])
+        except Exception as e:  # noqa: BLE001 - tracking must never break the board
+            logger.warning("Recording college board failed: %s", e)
     _board_cache["cfb"] = (time.monotonic(), board)
     return board

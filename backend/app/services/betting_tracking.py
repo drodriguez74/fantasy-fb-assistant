@@ -5,7 +5,8 @@ against real results, summarize how the recommendations did.
   the price first seen (see BetPick for the upsert rule).
 - grade_pending: settles pending picks once their game is final, from free
   sources (no Odds API credits): Sleeper's weekly stats for player props,
-  ESPN's public scoreboard for game lines. A player with no stat line (or
+  ESPN's public NFL scoreboard for NFL game lines, ESPN's college scoreboard
+  (matched by full team name) for college game lines (kind "cfb_game"). A player with no stat line (or
   0 games played) is graded "void", matching how books void props for
   inactive players.
 - summarize: record, units, ROI (recommended picks only), splits by
@@ -31,6 +32,8 @@ logger = logging.getLogger(__name__)
 
 _SLEEPER_STATS_URL = "https://api.sleeper.app/stats/nfl/{season}/{week}"
 _ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
+_ESPN_CFB_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
+GAME_KINDS = ("game", "cfb_game")  # NFL / college game lines (same win/loss math)
 # A game is gradeable once it has surely ended and stats have landed.
 _GRADE_AFTER = timedelta(hours=5)
 
@@ -165,11 +168,17 @@ async def _sleeper_stats(season: int, week: int) -> Dict[Tuple[str, str], Dict[s
 
 
 async def _espn_finals(season: int, week: int) -> Dict[Tuple[str, str], Tuple[float, float]]:
-    """{(home, away): (home_score, away_score)} for completed games."""
+    """{(home, away): (home_score, away_score)} for completed NFL games."""
     async with httpx.AsyncClient(timeout=30.0) as client:
         r = await client.get(_ESPN_SCOREBOARD_URL, params={"seasontype": 2, "week": week, "dates": season})
         r.raise_for_status()
         data = r.json()
+    return _completed_scores(data, lambda t: normalize_team(t.get("abbreviation")))
+
+
+def _completed_scores(data: Dict[str, Any], key) -> Dict[Tuple[str, str], Tuple[float, float]]:
+    """{(key(home), key(away)): (home_score, away_score)} for completed games
+    on an ESPN scoreboard response."""
     finals = {}
     for event in data.get("events") or []:
         comp = (event.get("competitions") or [{}])[0]
@@ -178,9 +187,23 @@ async def _espn_finals(season: int, week: int) -> Dict[Tuple[str, str], Tuple[fl
         teams = {c.get("homeAway"): c for c in comp.get("competitors") or []}
         if "home" not in teams or "away" not in teams:
             continue
-        h = normalize_team(teams["home"]["team"]["abbreviation"])
-        a = normalize_team(teams["away"]["team"]["abbreviation"])
-        finals[(h, a)] = (float(teams["home"]["score"]), float(teams["away"]["score"]))
+        finals[(key(teams["home"]["team"]), key(teams["away"]["team"]))] = (
+            float(teams["home"]["score"]), float(teams["away"]["score"]))
+    return finals
+
+
+async def _espn_cfb_finals(kickoffs: Iterable[datetime]) -> Dict[Tuple[str, str], Tuple[float, float]]:
+    """College finals keyed by (cfb_team_key(home), cfb_team_key(away)), from
+    ESPN's FBS scoreboard on each kickoff's date (and the day before, since a
+    late kickoff in UTC is the previous evening in the US)."""
+    from app.services.espn_game_predictor import cfb_team_key
+    dates = sorted({(k - timedelta(days=d)).strftime("%Y%m%d") for k in kickoffs for d in (0, 1)})
+    finals: Dict[Tuple[str, str], Tuple[float, float]] = {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        for day in dates:
+            r = await client.get(_ESPN_CFB_SCOREBOARD_URL, params={"dates": day, "groups": 80, "limit": 300})
+            r.raise_for_status()
+            finals.update(_completed_scores(r.json(), lambda t: cfb_team_key(t.get("displayName"))))
     return finals
 
 
@@ -199,17 +222,24 @@ async def grade_pending(now: Optional[datetime] = None) -> int:
 
         graded = 0
         for (season, week), picks in by_week.items():
+            from app.services.espn_game_predictor import cfb_team_key
+            college = [p for p in picks if p.kind == "cfb_game"]
             try:
-                finals = await _espn_finals(season, week)
+                finals = await _espn_finals(season, week) if len(college) < len(picks) else {}
                 stats = await _sleeper_stats(season, week) if any(p.kind == "player_prop" for p in picks) else {}
+                cfb_finals = await _espn_cfb_finals(p.kickoff for p in college) if college else {}
             except (httpx.HTTPError, ValueError) as e:
                 logger.warning("Grading week %s/%s skipped: %s", season, week, e)
                 continue
             for p in picks:
-                if (p.home, p.away) not in finals:
+                if p.kind == "cfb_game":
+                    score = cfb_finals.get((cfb_team_key(p.home), cfb_team_key(p.away)))
+                else:
+                    score = finals.get((p.home, p.away))
+                if score is None:
                     continue  # not final yet (or postponed): try again later
-                home_score, away_score = finals[(p.home, p.away)]
-                if p.kind == "game":
+                home_score, away_score = score
+                if p.kind in GAME_KINDS:
                     outcome, actual = game_outcome(p.market, p.side, p.line, p.home, home_score, away_score)
                 else:
                     row = stats.get((normalize_name(p.subject), p.team))
@@ -310,6 +340,7 @@ def summarize(season: Optional[int] = None) -> Dict[str, Any]:
     by_week = split(lambda p: (p.season, p.week))
     return {
         "overall": _record(recs),
+        "by_sport": {k: _record(v) for k, v in split(lambda p: "College" if p.kind == "cfb_game" else "NFL").items()},
         "by_confidence": {k: _record(v) for k, v in split(lambda p: p.confidence).items()},
         "by_market": {k: _record(v) for k, v in split(lambda p: p.market).items()},
         "by_week": [{"season": s, "week": w, **_record(v)} for (s, w), v in sorted(by_week.items(), reverse=True)],

@@ -201,9 +201,9 @@ export function BettingPage() {
     if (sport === 'cfb' && !college && !collegeLoading && !collegeError) loadCollege()
   }, [sport, college, collegeLoading, collegeError, loadCollege])
 
-  // College: game lines only (college player props are shelved, and grading is NFL-only).
+  // College: game lines + the shared Results (college player props are shelved).
   const tabs =
-    sport === 'cfb' ? (['college'] as const) : (['props', 'games', 'prizepicks', 'results'] as const)
+    sport === 'cfb' ? (['college', 'results'] as const) : (['props', 'games', 'prizepicks', 'results'] as const)
   const TAB_LABELS: Record<'props' | 'games' | 'college' | 'prizepicks' | 'results', string> = {
     props: 'Player props',
     games: 'Game lines',
@@ -367,8 +367,8 @@ export function BettingPage() {
               {tab === 'college' && (
                 <p className="text-xs text-muted leading-relaxed">
                   Spreads use ESPN's predictor at half the NFL weight with a 1u cap until results are graded; totals only
-                  flag a sportsbook that's off the others, since nothing projects college totals. College picks aren't
-                  tracked in Results yet.
+                  flag a sportsbook that's off the others, since nothing projects college totals. College picks are
+                  tracked and graded in Results (marked CFB).
                 </p>
               )}
               {shown.map((row, i) => (
