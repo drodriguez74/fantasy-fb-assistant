@@ -25,10 +25,14 @@ Method (what a recommendation means)
    only when EV >= MIN_EV and the model and market agree on the side.
    More units = larger estimated edge relative to price = more confidence.
 
-Game props (spreads, totals) are simulated as margin ~ N(consensus spread,
-13.5) and total ~ N(consensus total, 13.0) -- the long-run NFL spread and
-total error. Centered on consensus, they find edges only where one book's
-line or price is off the market (line shopping), never by out-predicting it.
+Game props (spreads, totals): the NFL margin follows a key-number
+distribution (a normal around the consensus spread, SD 13.26, reweighted so
+games land on 3, 7, 6, 10 and 14 as often as they really do -- fitted on
+2015-2024 closing lines, see KEY_MARGIN_LOG_WEIGHTS); totals ~ N(consensus,
+13.0). Centered on consensus, they find edges only where one book's line or
+price is off the market (line shopping), never by out-predicting it. The
+Sleeper game model gets no weight in the NFL (GAME_MODEL_WEIGHT): on real
+closing lines it carried no information (2025 + 2026 backtests).
 
 Calibration constants are standard published magnitudes, not fitted to
 this app's results yet; they should be tuned once graded results exist.
@@ -47,6 +51,13 @@ KELLY_FRACTION = 0.25
 MIN_EV = 0.03                # 3% expected return per dollar staked
 MAX_UNITS = 3.0
 UNIT_STEP = 0.5
+# The weekly card always shows at least MIN_CARD_PICKS picks (the founder's
+# call: people bet every week). When fewer bets clear MIN_EV, the best
+# remaining lines fill the card at a flat FILL_UNITS, labeled "Best
+# available" (confidence "fill") and tracked as their own tier in Results so
+# they can be judged separately from real bets.
+MIN_CARD_PICKS = 3
+FILL_UNITS = 0.5
 # Anytime TD is quoted "Yes" only, so it can't be de-vigged pairwise. Summed
 # over a full game, the books' Yes prices imply ~5.5-7.5 rushing/receiving
 # TDs where ~4-5 actually happen: the hold is ~30-40%, not a few percent,
@@ -119,8 +130,23 @@ def apply_duds(outcomes: np.ndarray, true_mean: np.ndarray, p: float, rng: np.ra
     dud = rng.random(outcomes.shape) < p
     scaled = outcomes * (1 - p * DUD_FRACTION / 2) / (1 - p)
     return np.where(dud, true_mean * rng.uniform(0, DUD_FRACTION, outcomes.shape), scaled)
-SPREAD_SD = 13.5
-TOTAL_SD = 13.0
+SPREAD_SD = 13.26   # NFL closing-spread error, 2015-2024 (was 13.5; the close has sharpened)
+TOTAL_SD = 13.0     # measured 13.2-13.3; unchanged
+
+# NFL margins pile up on key numbers: a favorite wins by exactly 3 about 9.7%
+# of the time at spreads of 2.5-3.5, where a rounded normal says 3.0%, and a
+# closing spread of exactly 3 pushes 11%. Log-weights on each exact favorite
+# margin |k| = 0..25 multiply a binned normal (scripts/experiments/
+# exp1c_export.py, fitted on 2015-2024; out-of-sample on 2025-26 the exact-
+# margin log-loss improved by 0.137 [0.080, 0.193]). Ties (k = 0) are rare.
+KEY_MARGIN_LOG_WEIGHTS = (
+    -1.853, -0.1327, -0.1017, 1.0847, -0.0993, -0.055, 0.44, 0.6435, -0.0008, -0.8608,
+    0.1888, -0.5733, -0.664, -0.5903, 0.4809, -0.5862, -0.1514, 0.2015, -0.0468, -0.6384,
+    0.0233, 0.179, -0.6442, -0.0829, 0.2228, -0.0669,
+)
+_MARGINS = np.arange(-70, 71)
+_MARGIN_WEIGHTS = np.exp(np.array([KEY_MARGIN_LOG_WEIGHTS[abs(k)] if abs(k) < len(KEY_MARGIN_LOG_WEIGHTS) else 0.0
+                                   for k in _MARGINS]))
 
 
 # ---------------------------------------------------------------------------
@@ -205,12 +231,43 @@ def prob_over(samples: np.ndarray, line: float) -> Tuple[float, float]:
     return over, push
 
 
+def margin_pmf(location: float, sd: float = SPREAD_SD) -> np.ndarray:
+    """P(home margin = k) for k in _MARGINS: a binned normal at `location`
+    reweighted by the key-number weights."""
+    from scipy.special import ndtr  # light; not scipy.stats (Render memory)
+    p = ndtr((_MARGINS + 0.5 - location) / sd) - ndtr((_MARGINS - 0.5 - location) / sd)
+    p = p * _MARGIN_WEIGHTS
+    return p / p.sum()
+
+
+def market_margin_pmf(home_spread: float, sd: float = SPREAD_SD) -> np.ndarray:
+    """Key-number margin distribution centered on the market: the location
+    at which the home side's no-push cover chance at the consensus spread
+    is 50% (the reweighting moves the mean, so it's solved, not assumed)."""
+    lo, hi = -home_spread - 8, -home_spread + 8
+    for _ in range(30):
+        mid = (lo + hi) / 2
+        p = margin_pmf(mid, sd)
+        win, loss = p[_MARGINS + home_spread > 0].sum(), p[_MARGINS + home_spread < 0].sum()
+        lo, hi = (mid, hi) if win < loss else (lo, mid)
+    return margin_pmf((lo + hi) / 2, sd)
+
+
+def _margins_from_uniform(pmf: np.ndarray, u: np.ndarray) -> np.ndarray:
+    return _MARGINS[np.minimum(np.searchsorted(np.cumsum(pmf), u), len(_MARGINS) - 1)].astype(float)
+
+
 def simulate_game(consensus_home_spread: float, consensus_total: float, seed_text: str, n: int = N_SIMS,
-                  margin_sd: float = SPREAD_SD, total_sd: float = TOTAL_SD):
+                  margin_sd: float = SPREAD_SD, total_sd: float = TOTAL_SD, key_numbers: bool = False):
     """(home margin, total points) draws centered on the consensus lines.
-    Rounded to whole points so key-number pushes (3, 7, 47...) occur."""
+    Rounded to whole points so key-number pushes (3, 7, 47...) occur.
+    key_numbers (NFL): margins follow the key-number distribution centered
+    on the market (market_margin_pmf)."""
     rng = _rng(seed_text)
-    margin = np.round(rng.normal(-consensus_home_spread, margin_sd, n))
+    if key_numbers:
+        margin = _margins_from_uniform(market_margin_pmf(consensus_home_spread, margin_sd), rng.random(n))
+    else:
+        margin = np.round(rng.normal(-consensus_home_spread, margin_sd, n))
     total = np.round(rng.normal(consensus_total, total_sd, n))
     return margin, total
 
@@ -332,9 +389,19 @@ def fit_projection_scale(market: str, pairs: List[Tuple[float, float]]) -> float
 # - total: the same Sleeper team points, cross-checked by ESPN's player
 #   projections. On the week-5 slate Sleeper's totals tracked the market at
 #   0.93 correlation (margins 0.97) yet differed by up to 4 points.
-# A favorite that covers usually means more points, so the favorite's margin
-# and the total are drawn with correlation COVER_TOTAL_RHO for combos.
-COVER_TOTAL_RHO = 0.15
+# The favorite's margin and the total are drawn with correlation
+# COVER_TOTAL_RHO for combos. Measured on 2015-2025 closing lines (3,024
+# games): margin error vs total error +0.030 [-0.006, +0.065]; "favorite
+# covers" vs "over" -0.009 (scripts/experiments/corr_cover_total.py). The
+# old 0.15 priced favorite-cover + Over ~2 points too likely.
+COVER_TOTAL_RHO = 0.03
+# The Sleeper game model's weight vs the market for NFL spreads and totals.
+# On real closing lines (2025 + 2026 wk 1-4, 116 bets at 53-62-1) it carried
+# no information: recalibration slope 0.11 (spreads) / -0.05 (totals), and
+# any weight above 0 scored worse than the line alone out of sample
+# (scripts/backtest_game_lines.py, scripts/experiments/exp3_weight_recal.py).
+# At 0 a game-line bet comes only from a book off the market (line shopping).
+GAME_MODEL_WEIGHT = 0.0
 
 
 # College games are less predictable than the NFL: wider margin and total
@@ -356,13 +423,20 @@ def margin_from_win_prob(p_home: float, sd: float = SPREAD_SD) -> float:
 
 
 def simulate_game_joint(home_margin: float, total: float, rho: float, seed_text: str, n: int = N_SIMS,
-                        margin_sd: float = SPREAD_SD, total_sd: float = TOTAL_SD):
+                        margin_sd: float = SPREAD_SD, total_sd: float = TOTAL_SD, key_numbers: bool = False):
     """(home margin, total) draws with correlation rho, rounded to whole
-    points (key-number pushes)."""
+    points (key-number pushes). key_numbers: the margin follows the
+    key-number distribution centered on home_margin's spread (Gaussian
+    copula, so rho still applies)."""
+    from scipy.special import ndtr  # light; not scipy.stats (Render memory)
     rng = _rng(seed_text)
     z1 = rng.standard_normal(n)
     z2 = rho * z1 + np.sqrt(1 - rho * rho) * rng.standard_normal(n)
-    return np.round(home_margin + margin_sd * z1), np.round(total + total_sd * z2)
+    if key_numbers:
+        margin = _margins_from_uniform(market_margin_pmf(-home_margin, margin_sd), ndtr(z1))
+    else:
+        margin = np.round(home_margin + margin_sd * z1)
+    return margin, np.round(total + total_sd * z2)
 
 
 def fair_american(p: float) -> Optional[int]:
@@ -444,23 +518,26 @@ POWER_PLAY_2_BREAKEVEN = (1 / 3) ** 0.5
 
 # Correlation of two players' stat outcomes in the same game (as latent
 # Gaussian correlation, Over/Over orientation; an Under flips the sign).
-# Standard same-game-parlay magnitudes, not fitted yet -- calibrate from
-# results. Keys are (market a, market b, same team?); different games are 0.
+# Measured on 2024-2026 Sleeper projections vs actual stats (Over/Under a
+# projection-centered line; scripts/experiments/corr_props.py, game-
+# clustered bootstrap CIs, n = pairs). The old guessed opponent values were
+# 2-3x too high and added fake EV to same-game More/More pairs. Pairs
+# measured as noise (|rho| < 0.03 with a CI spanning 0) are left at 0.
+# Keys are (market a, market b, same team?); different games are 0.
 _PASS, _RUSH, _REC_YDS, _RECS = "player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions"
 LEG_CORRELATION = {
     # Teammates: a QB's yards are his receivers' yards.
-    (_PASS, _REC_YDS, True): 0.45,
-    (_PASS, _RECS, True): 0.35,
-    (_PASS, _RUSH, True): -0.10,     # run-heavy script = fewer dropbacks
-    (_RUSH, _RUSH, True): -0.20,     # backs split the carries
-    (_REC_YDS, _REC_YDS, True): 0.05,
-    # Opponents: shootouts lift both passing games; a team running out the
-    # clock is usually ahead of an opponent forced to throw.
-    (_PASS, _PASS, False): 0.25,
-    (_PASS, _REC_YDS, False): 0.15,
-    (_PASS, _RECS, False): 0.10,
-    (_REC_YDS, _REC_YDS, False): 0.10,
-    (_PASS, _RUSH, False): 0.10,
+    (_PASS, _REC_YDS, True): 0.38,   # [0.34, 0.42], n=4,508 (WR/TE; RB receivers 0.32)
+    (_PASS, _RECS, True): 0.32,      # [0.27, 0.36], n=4,126
+    (_PASS, _RUSH, True): -0.08,     # [-0.14, -0.01], n=1,943: run-heavy script = fewer dropbacks
+    (_RUSH, _REC_YDS, True): -0.04,  # [-0.07, -0.01], n=7,301
+    # Opponents: shootouts lift both passing games a little; the team that's
+    # ahead runs while the other throws, so opposing backs move apart.
+    (_PASS, _PASS, False): 0.08,     # [-0.05, 0.20], n=601 (normal-score 0.12 [0.04, 0.19])
+    (_PASS, _REC_YDS, False): 0.06,  # [0.01, 0.11], n=4,504
+    (_PASS, _RECS, False): 0.05,     # [0.00, 0.11], n=4,121
+    (_REC_YDS, _REC_YDS, False): 0.04,  # [0.00, 0.07], n=8,469
+    (_RUSH, _RUSH, False): -0.19,    # [-0.26, -0.12], n=1,579
 }
 
 

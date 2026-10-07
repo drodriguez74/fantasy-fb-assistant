@@ -203,7 +203,9 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
         )}
         <SplitTable
           title="By confidence"
-          rows={(['high', 'strong', 'lean'] as const).filter((k) => data.by_confidence[k]).map((k) => [k[0].toUpperCase() + k.slice(1), data.by_confidence[k]])}
+          rows={(['high', 'strong', 'lean', 'fill'] as const)
+            .filter((k) => data.by_confidence[k])
+            .map((k) => [k === 'fill' ? 'Best available' : k[0].toUpperCase() + k.slice(1), data.by_confidence[k]])}
         />
         <SplitTable
           title="By market"

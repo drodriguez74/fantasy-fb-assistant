@@ -87,6 +87,15 @@ def _row_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def fill_keys(season: int, week: int) -> set:
+    """(kind, subject, market) of lines already tracked as card fills this
+    week, so the card keeps the same "Best available" picks as prices move."""
+    with SessionLocal() as db:
+        rows = db.query(BetPick.kind, BetPick.subject, BetPick.market).filter(
+            BetPick.season == season, BetPick.week == week, BetPick.confidence == "fill").all()
+    return {tuple(r) for r in rows}
+
+
 def record_board(season: int, week: int, rows: Iterable[Dict[str, Any]]) -> int:
     """Insert each priced line once. An existing "no bet" row is replaced
     when the line later becomes a recommendation; an existing

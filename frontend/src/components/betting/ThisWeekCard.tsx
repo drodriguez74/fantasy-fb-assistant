@@ -57,6 +57,8 @@ export function ThisWeekCard({
     .sort((a, b) => (a.kickoff ?? '').localeCompare(b.kickoff ?? ''))
   const bestEntry = entries ? rankEntries(entries.entries).find((e) => e.ev > 0) : undefined
   const totalUnits = bets.reduce((sum, r) => sum + r.units, 0)
+  const fills = bets.filter((r) => r.card_fill).length
+  const real = bets.length - fills
 
   return (
     <section className="rounded-xl border border-volt bg-surface p-4 sm:p-5" aria-labelledby="this-week-card">
@@ -67,10 +69,10 @@ export function ThisWeekCard({
           </h2>
           <p className="text-xs text-muted mt-0.5">
             {bets.length === 0
-              ? 'No bets clear the bar right now.'
-              : `${bets.length} bet${bets.length === 1 ? '' : 's'} · ${totalUnits}u${
-                  dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''
-                } total.`}
+              ? 'No lines available right now.'
+              : `${real ? `${real} bet${real === 1 ? '' : 's'}` : 'No bets clear the bar'}${
+                  fills ? ` + ${fills} best available` : ''
+                } · ${totalUnits}u${dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''} total.`}
             {board.watch_count ? ` ${board.watch_count} more on the watch list.` : ''}
           </p>
         </div>
@@ -90,6 +92,7 @@ export function ThisWeekCard({
                 <p className="stat-nums text-[11px] text-muted">
                   {odds(r.price)} at {r.book}
                   {r.min_price != null && ` · still a bet at ${odds(r.min_price)} or better`}
+                  {r.card_fill && ` · EV ${r.ev > 0 ? '+' : ''}${(r.ev * 100).toFixed(1)}%`}
                   {r.type === 'player_prop' || r.market === 'spread' ? ` · ${r.game}` : ''}
                   {kickoffLabel(r.kickoff) && ` · ${kickoffLabel(r.kickoff)}`}
                 </p>
@@ -100,6 +103,13 @@ export function ThisWeekCard({
             </li>
           ))}
         </ul>
+      )}
+
+      {fills > 0 && (
+        <p className="mt-2 text-[11px] text-faint leading-relaxed">
+          Best available picks fill the card when fewer than 3 lines clear the bar: the strongest remaining lines at a
+          flat 0.5u. They aren't a measured edge, and Results tracks them separately.
+        </p>
       )}
 
       {bestEntry && (

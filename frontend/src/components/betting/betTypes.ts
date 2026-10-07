@@ -4,7 +4,9 @@ import { useState } from 'react'
 import type { PrizePicksBoard } from './PrizePicksPairs'
 import type { GameComboSet } from './GameCombos'
 
-export type Confidence = 'high' | 'strong' | 'lean' | 'none'
+// 'fill': a "Best available" pick that tops the card up to 3 when fewer
+// lines clear the bar (flat 0.5u, tracked as its own tier).
+export type Confidence = 'high' | 'strong' | 'lean' | 'fill' | 'none'
 
 export interface BoardRow {
   type: 'player_prop' | 'game'
@@ -38,6 +40,8 @@ export interface BoardRow {
   espn_agrees?: boolean
   // Positive EV every source agrees with, too small to size.
   watch?: boolean
+  // Best available: fills the weekly card; not a measured edge.
+  card_fill?: boolean
   // game lines (home spread or total; negative spread = home favored)
   consensus_line?: number
   model_line?: number | null
@@ -56,6 +60,7 @@ export interface Board {
   game_combos?: GameComboSet[]
   watch_count?: number
   recommended_count?: number
+  fill_count?: number
   evaluated?: { player_props: number; games: number; props_without_projection: number }
   games_without_props?: string[]
   credits_remaining?: number | null
@@ -69,7 +74,7 @@ export const odds = (p: number) => (p > 0 ? `+${p}` : `${p}`)
 export const signedPct = (x: number) => `${x > 0 ? '+' : ''}${(x * 100).toFixed(1)}%`
 
 // Plain-language bet sizes (backend confidence tiers: 0.5-1u, 1.5-2u, 2.5-3u).
-export const SIZE_LABEL: Record<Confidence, string> = { lean: 'Small', strong: 'Medium', high: 'Max', none: '' }
+export const SIZE_LABEL: Record<Confidence, string> = { lean: 'Small', strong: 'Medium', high: 'Max', fill: 'Best avail.', none: '' }
 
 export function kickoffLabel(iso?: string): string {
   if (!iso) return ''

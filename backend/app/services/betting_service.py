@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from app.services import betting_model as bm
-from app.services.betting_tracking import record_board
+from app.services.betting_tracking import fill_keys, record_board
 from app.services.espn_projections import fetch_espn_weekly_projections
 from app.services import prizepicks_board
 from app.services.espn_game_predictor import fetch_home_win_probs
@@ -195,7 +195,7 @@ def evaluate_player_prop(
     if not candidates:
         return None
     if espn_samples is not None:
-        candidates = [_espn_check(c, espn_samples) for c in candidates]
+        candidates = [_espn_check(c, espn_samples, market) for c in candidates]
     if market == "player_anytime_td":
         market_line, outlier = None, bm.projection_outlier(market, mean, market_td_prob=p_market)
     else:
@@ -209,7 +209,7 @@ def evaluate_player_prop(
     best["watch"] = bool(best["units"] == 0 and best["ev"] > 0 and not outlier and best["model_agrees"]
                          and best.get("espn_agrees") is not False)
     pp_line = offers.get("prizepicks")
-    pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples)
+    pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples, market=market)
               if pp_line is not None and market != "player_anytime_td" and not outlier else None)
     return {
         "market_line": market_line,
@@ -238,16 +238,27 @@ def _side_prob(samples, side: str, line: Optional[float]) -> float:
     return over if side in ("Over", "More") else max(0.0, 1 - over - push)
 
 
-def _espn_check(c: Dict[str, Any], espn_samples) -> Dict[str, Any]:
-    """ESPN's probability for this side; no units unless it also beats the market."""
+# Markets where ESPN's projection is a required cross-check. Where ESPN and
+# Sleeper differ by 15%+, the result lands on ESPN's side 53-60% of the time
+# for rushing, receiving yards and receptions (two held-out seasons), but
+# 37-45% for passing yards -- there the check only filtered noise
+# (scripts/experiments/props_mean_analyze.py extras).
+ESPN_CHECK_EXEMPT = frozenset({"player_pass_yds"})
+
+
+def _espn_check(c: Dict[str, Any], espn_samples, market: Optional[str] = None) -> Dict[str, Any]:
+    """ESPN's probability for this side; no units unless it also beats the
+    market (shown but not required for ESPN_CHECK_EXEMPT markets)."""
     p = _side_prob(espn_samples, c["side"], c["line"])
+    if market in ESPN_CHECK_EXEMPT:
+        return {**c, "espn_prob": round(p, 4), "espn_agrees": None}
     agrees = p > c["market_prob"]
     c = {**c, "espn_prob": round(p, 4), "espn_agrees": agrees}
     return c if agrees else {**c, "units": 0.0, "confidence": "none"}
 
 
 def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn_samples=None,
-                    sides=frozenset({"over", "under"})) -> Optional[Dict[str, Any]]:
+                    sides=frozenset({"over", "under"}), market: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Better side of PrizePicks' line, priced like any other offer. The
     books rarely quote PrizePicks' exact number, so the market's fair
     P(over) is taken at the nearest book line and shifted by how much the
@@ -267,7 +278,8 @@ def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn
     return {
         "espn_prob": round(espn_p, 4) if espn_p is not None else None,
         # None when ESPN has no projection; pairs skip legs where it's False.
-        "espn_agrees": (espn_p > market_side) if espn_p is not None else None,
+        "espn_agrees": ((espn_p > market_side) if espn_p is not None and market not in ESPN_CHECK_EXEMPT
+                        else None),
         "line": pp_line,
         "side": "More" if over else "Less",
         "p_win": round(p_over if over else p_under, 4),
@@ -359,7 +371,7 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
             fair = _fair_over(offers["books"])
             if not fair:
                 continue
-            leg = _prizepicks_leg(line["line"], samples, fair, esamp, sides=allowed)
+            leg = _prizepicks_leg(line["line"], samples, fair, esamp, sides=allowed, market=market)
             if leg is None:
                 continue
             outlier = bm.projection_outlier(market, model_mean, market_line=min(fair, key=lambda pt: abs(fair[pt] - 0.5)))
@@ -388,8 +400,9 @@ def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, flo
     """Best PrizePicks entries -- 3-6 pick Power (2-pick Power is the pairs
     list) and 2-6 pick Flex -- from the most likely
     legs. Rules: one pick per player and players from at least two teams.
-    Opposing players in the same game are simulated together (leg
-    correlation); everything else is independent."""
+    Players in the same game -- opponents and teammates alike (a 3+ pick
+    entry can hold a QB and his own receiver) -- are simulated together
+    (leg correlation); different games are independent."""
     from itertools import combinations
     power = power or bm.POWER_PAYOUTS
     flex = flex or bm.FLEX_PAYOUTS
@@ -406,9 +419,10 @@ def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, flo
             for i, a in enumerate(combo):
                 for j in range(i + 1, size):
                     b = combo[j]
-                    if a.get("game") == b.get("game") and a.get("team") != b.get("team"):
+                    if a.get("game") and a.get("game") == b.get("game"):
                         sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
-                        corr[i, j] = corr[j, i] = sign * bm.leg_correlation(a["market"], b["market"], True, False)
+                        same_team = bool(a.get("team")) and a.get("team") == b.get("team")
+                        corr[i, j] = corr[j, i] = sign * bm.leg_correlation(a["market"], b["market"], True, same_team)
             dist = bm.hit_count_distribution([l["p_win"] for l in combo], corr, "|".join(l["player"] for l in combo))
             power_table = {size: power[size]} if size >= 3 and power.get(size) else None
             for kind, table in (("power", power_table), ("flex", flex.get(size))):
@@ -421,6 +435,34 @@ def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, flo
         for kind in ("power", "flex"):
             out.extend(sorted(found[kind], key=lambda e: -e["ev"])[:per_size])
     return out
+
+
+def fill_card(recs: List[Dict[str, Any]], existing: frozenset = frozenset(), kind: Optional[str] = None) -> int:
+    """Top the card up to MIN_CARD_PICKS: when fewer lines are bets, the best
+    remaining ones (lines already filled this week first, then the watch
+    list, then highest EV; never a stale-projection outlier) become "Best
+    available" picks at FILL_UNITS. Mutates recs; returns how many were filled.
+    `kind` overrides the tracked kind (college rows are tracked as cfb_game)."""
+    need = bm.MIN_CARD_PICKS - sum(1 for r in recs if r["units"] > 0)
+    if need <= 0:
+        return 0
+
+    def key(r):
+        return (kind or r["type"], r["player"] if r["type"] == "player_prop" else r["game"], r["market"])
+
+    pool = [r for r in recs if r["units"] == 0 and not r.get("projection_outlier")]
+    pool.sort(key=lambda r: (key(r) not in existing, not r.get("watch"), -r["ev"]))
+    for r in pool[:need]:
+        r.update(units=bm.FILL_UNITS, confidence="fill", card_fill=True)
+    return min(need, len(pool))
+
+
+async def _fill_keys(season: int, week: int) -> frozenset:
+    try:
+        return frozenset(await asyncio.to_thread(fill_keys, season, week))
+    except Exception as e:  # noqa: BLE001 - tracking must never break the board
+        logger.warning("Reading card fills failed: %s", e)
+        return frozenset()
 
 
 def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str, Any]:
@@ -446,8 +488,8 @@ def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str,
 # ---------------------------------------------------------------------------
 
 def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
-                  sds: Tuple[float, float] = (bm.SPREAD_SD, bm.TOTAL_SD), model_weight: float = bm.MODEL_WEIGHT,
-                  max_units: float = bm.MAX_UNITS) -> List[Dict[str, Any]]:
+                  sds: Tuple[float, float] = (bm.SPREAD_SD, bm.TOTAL_SD), model_weight: float = bm.GAME_MODEL_WEIGHT,
+                  max_units: float = bm.MAX_UNITS, key_numbers: Optional[bool] = None) -> List[Dict[str, Any]]:
     """Best-priced side of the spread and the total for one game.
 
     `model` (optional): {"margin", "total"} -- the projected home margin and
@@ -457,7 +499,11 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
     consensus and a side needs the model (and check) to favor it; where it
     doesn't, sims center on consensus and only an off-market book's price
     can show an edge. `sds`: (margin, total) error SDs for the sport;
-    `model_weight` / `max_units` let a less-proven model count for less."""
+    `model_weight` / `max_units` let a less-proven model count for less. NFL
+    model_weight is 0 (bm.GAME_MODEL_WEIGHT): the model is shown for
+    reference but neither moves the price nor gates a side, so an edge is a
+    book off the market. key_numbers (default: on for the NFL SDs) prices
+    spreads with the key-number margin distribution."""
     home, away = game.get("home_team"), game.get("away_team")
     spreads: List[Tuple[str, str, float, float]] = []   # (book, team, point, price)
     totals: List[Tuple[str, str, float, float]] = []    # (book, Over/Under, point, price)
@@ -474,7 +520,10 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
         return []
     seed = f"{game.get('id')}|game"
     margin_sd, total_sd = sds
-    market = bm.simulate_game(home_spread, total_line, seed, margin_sd=margin_sd, total_sd=total_sd)
+    if key_numbers is None:
+        key_numbers = sds == (bm.SPREAD_SD, bm.TOTAL_SD)
+    market = bm.simulate_game(home_spread, total_line, seed, margin_sd=margin_sd, total_sd=total_sd,
+                              key_numbers=key_numbers)
     model = model or {}
     # Which kinds the model (and its check) actually covers.
     has_model = {"spread": model.get("margin") is not None, "total": model.get("total") is not None}
@@ -508,16 +557,19 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
             priced = bm.price_offer(bm.blend(p_mod, p_mkt, model_weight), price, p_push)
             if priced["units"] > max_units:
                 priced = {**priced, "units": max_units, "confidence": bm.confidence_label(max_units)}
-            agrees = p_mod is None or p_mod > p_mkt
-            check_ok = None if p_check is None else p_check > p_mkt
+            # With no model weight the model and its check are information
+            # only; with weight they must favor the side.
+            gated = model_weight > 0
+            agrees = p_mod is None or not gated or p_mod > p_mkt
+            check_ok = None if p_check is None or not gated else p_check > p_mkt
             if not agrees or check_ok is False:
                 priced = {**priced, "units": 0.0, "confidence": "none"}
             side = (_team(name) or name) if kind == "spread" else name
             cands.append({"side": side, "line": point, "book": BOOK_LABELS.get(book, book), "price": int(price),
                           "model_prob": round(p_mod, 4) if p_mod is not None else None,
                           "market_prob": round(p_mkt, 4), "check_prob": round(p_check, 4) if p_check is not None else None,
-                          "watch": bool(p_mod is not None and agrees and check_ok is not False and priced["ev"] > 0
-                                        and priced["units"] == 0),
+                          "watch": bool((p_mod is not None or not gated) and agrees and check_ok is not False
+                                        and priced["ev"] > 0 and priced["units"] == 0),
                           **priced})
         return max(cands, key=lambda c: c["ev"]) if cands else None
 
@@ -545,7 +597,7 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
 
 def game_combos(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
                 sds: Tuple[float, float] = (bm.SPREAD_SD, bm.TOTAL_SD),
-                model_weight: float = bm.MODEL_WEIGHT) -> Optional[Dict[str, Any]]:
+                model_weight: float = bm.GAME_MODEL_WEIGHT) -> Optional[Dict[str, Any]]:
     """Cover + over/under same-game parlays at the consensus spread and
     total: the chance each combo hits and its fair (no-vig) odds. The Odds
     API has no same-game-parlay prices, so these are for comparing with the
@@ -565,7 +617,8 @@ def game_combos(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
     home_favored = home_spread < 0
     rho = bm.COVER_TOTAL_RHO * (1 if home_favored else -1)
     margin, total = bm.simulate_game_joint(margin_mean, total_mean, rho, f"{game.get('id')}|combo",
-                                           margin_sd=sds[0], total_sd=sds[1])
+                                           margin_sd=sds[0], total_sd=sds[1],
+                                           key_numbers=sds == (bm.SPREAD_SD, bm.TOTAL_SD))
     h, a = _team(home) or home, _team(away) or away
     combos = []
     for team, cover in ((h, margin + home_spread > 0), (a, -margin - home_spread > 0)):
@@ -752,6 +805,7 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
         for g in games for rec in evaluate_game(g, models.get(g["id"]))
     ]
     combos = [c for g in games for c in [game_combos(g, models.get(g["id"]))] if c]
+    filled = fill_card(player_props + game_props, await _fill_keys(season, int(week)))
     try:
         await asyncio.to_thread(record_board, season, int(week), player_props + game_props)
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
@@ -778,6 +832,7 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
         "game_combos": combos,
         "watch_count": sum(1 for r in player_props + game_props if r.get("watch")),
         "recommended_count": sum(1 for r in player_props + game_props if r["units"] > 0),
+        "fill_count": filled,
         "evaluated": {"player_props": len(player_props), "games": len(games), "props_without_projection": unmatched},
         "games_without_props": games_without_props,
         "credits_remaining": await odds_service.credits_remaining_async(),
@@ -921,6 +976,11 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
                   for g in games for rec in evaluate_game(g, models.get(g["id"]), sds,
                                                           bm.CFB_MODEL_WEIGHT, bm.CFB_MAX_UNITS)]
     combos = [c for g in games for c in [game_combos(g, models.get(g["id"]), sds, bm.CFB_MODEL_WEIGHT)] if c]
+    # College lines are tracked under the NFL betting week (see below).
+    state = await sleeper_service.get_nfl_state()
+    week = state.get("week") if isinstance(state, dict) else None
+    season = int(state.get("season") or now.year) if isinstance(state, dict) else now.year
+    filled = fill_card(game_props, await _fill_keys(season, int(week)) if week else frozenset(), kind="cfb_game")
     uploaded = await prizepicks_board.load_recent("NCAAFB") if CFB_PROPS_ENABLED else None
     prizepicks = (await price_cfb_prizepicks(uploaded, games) if uploaded
                   else {"source": None, "detail": CFB_DETAIL, "pairs": [], "legs": [], "positive_ev_pairs": 0,
@@ -934,6 +994,7 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
         "game_combos": combos,
         "prizepicks": prizepicks,
         "recommended_count": sum(1 for r in game_props if r["units"] > 0),
+        "fill_count": filled,
         "watch_count": sum(1 for r in game_props if r.get("watch")),
         "evaluated": {"player_props": prizepicks.get("lines_priced", 0), "games": len(games), "props_without_projection": 0},
         "games_modeled": len(models),
@@ -945,10 +1006,7 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
     }
     # Track college game lines like NFL ones (kind "cfb_game"), filed under
     # the NFL betting week so the Results page groups them with that week.
-    state = await sleeper_service.get_nfl_state()
-    week = state.get("week") if isinstance(state, dict) else None
     if week:
-        season = int(state.get("season") or now.year)
         try:
             await asyncio.to_thread(record_board, season, int(week), [{**r, "type": "cfb_game"} for r in game_props])
         except Exception as e:  # noqa: BLE001 - tracking must never break the board
@@ -988,7 +1046,7 @@ def snapshot_leg(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not fair:
             return None
         books = _market_leg(leg["line"], market, fair, [side], f"entry|{seed}")["p_win"]
-        model = _prizepicks_leg(leg["line"], samples, fair, esamp, sides={side})["p_win"]
+        model = _prizepicks_leg(leg["line"], samples, fair, esamp, sides={side}, market=market)["p_win"]
         center = min(fair, key=lambda pt: abs(fair[pt] - 0.5))
         outlier = bm.projection_outlier(market, model_mean, market_line=center)
     return {

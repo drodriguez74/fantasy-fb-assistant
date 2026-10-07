@@ -4,6 +4,16 @@
 import { type BoardRow, SIZE_LABEL, dollars, kickoffLabel, odds, pct, sideSpread, signedPct } from './betTypes'
 
 function SizeBadge({ row, bankroll }: { row: BoardRow; bankroll: number | null }) {
+  if (row.card_fill) {
+    // Best available: on the card, but not a measured edge -- outlined, not solid.
+    return (
+      <div className="w-[68px] shrink-0 rounded-md border border-volt text-body px-2 py-1.5 text-center">
+        <div className="stat-nums text-lg font-bold leading-none">{row.units}u</div>
+        <div className="stat-nums text-[9px] tracking-wider uppercase mt-1 text-muted">{SIZE_LABEL[row.confidence]}</div>
+        {dollars(row.units, bankroll) && <div className="stat-nums text-[10px] mt-0.5">{dollars(row.units, bankroll)}</div>}
+      </div>
+    )
+  }
   if (row.units > 0) {
     return (
       <div className="w-[68px] shrink-0 rounded-md bg-volt text-volt-ink px-2 py-1.5 text-center">

@@ -1,6 +1,6 @@
 # Bets: how it works, what we decided, and why
 
-The single record for the betting feature (`/bets`). It covers what was built, the method, every decision with its reason and evidence, data-access constraints, and what's still open. Last updated 2026-10-07 (incl. the TimesFM test and the calibration backtest).
+The single record for the betting feature (`/bets`). It covers what was built, the method, every decision with its reason and evidence, data-access constraints, and what's still open. Last updated 2026-10-07 (incl. the TimesFM test, the calibration backtest and the model review in section 9).
 
 Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` (boards), `betting_tracking.py` (record and grade), `odds_service.py`, `espn_projections.py`, `espn_game_predictor.py`, `prizepicks_board.py`; frontend `frontend/src/pages/BettingPage.tsx` and `frontend/src/components/betting/`. Endpoints: [API_GUIDE.md → Betting](API_GUIDE.md#betting-betting).
 
@@ -13,13 +13,13 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | Area | What it does |
 |---|---|
 | NFL player props | Pass/rush/rec yards, receptions and anytime TD from DraftKings, FanDuel and Hard Rock, priced by simulation against the market, sized in units. |
-| NFL game lines | Spreads and totals with a real model: Sleeper-projected team scores, cross-checked by ESPN. |
+| NFL game lines | Spreads and totals priced off the market with key-number margins; bets come from books off the consensus (line shopping). The Sleeper game model is shown for reference only (no weight since the 2026-10-07 review). |
 | Cover + over/under combos | The four same-game parlays per game, with chance and fair odds to compare against a book's SGP price. |
 | PrizePicks | The full board, uploaded daily: 2-pick pairs, 2–6 pick Power/Flex entries, and goblin/demon hit chances. |
 | College football | Game lines only, behind an NFL / College switch. ESPN's predictor models spreads; college props are built but shelved. |
 | Tracking & grading | Every priced line saved, then graded automatically. The Results tab shows record, units, ROI, calibration and NFL vs College. |
 | My entries | The founder's real PrizePicks entries, logged on the page, snapshotted with the engine's view and graded from real stats, including a "whose read was right" check (books vs model). |
-| Bets page | "This week's card" (the actual bets with dollars and kickoff times), tiered cards, and tabs for the evidence. |
+| Bets page | "This week's card" (the actual bets with dollars and kickoff times, always at least 3 picks), tiered cards, and tabs for the evidence. |
 
 ### Timeline (all 2026-10-06/07)
 
@@ -36,6 +36,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | `a84835e`, `14fe535` | Redesign around "This week's card" after a strategist + design review |
 | `f9dcc91` | Analytics libraries lazy-loaded after a Render out-of-memory restart; this guide |
 | (backtest) | TimesFM 3 tested and rejected; spread model validated on 4,755 real player-weeks (`scripts/backtest_projections.py`) |
+| (review) | Model review on real 2025/2026 closing lines and outcomes: game-line model weight 0, key-number spreads, measured correlations (teammates fixed), ESPN check off for passing, "Best available" card fill (section 9) |
 
 ---
 
@@ -51,15 +52,17 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 **Anytime TD de-vig.** Books quote "Yes" only, so each game's implied scoring rates are scaled to the TDs its Vegas total supports (`td_rate_scale`; 0.105 TDs per point, 95% to listed players). Typical scale is 0.66–0.76: a 30% price is really about 21%.
 
-**ESPN cross-check.** ESPN's public weekly projections are centered the same way. A side gets units only if ESPN also favors it over the market.
+**ESPN cross-check.** ESPN's public weekly projections are centered the same way. A side gets units only if ESPN also favors it over the market, except passing yards, where ESPN is shown but not required (`ESPN_CHECK_EXEMPT`; section 9).
 
-**Game model.** Projected team points are 6 × (rush + rec TDs) + kicker points, from Sleeper, centered on totals. Spreads are checked against ESPN's matchup predictor (win prob → margin, SD 13.5); totals against ESPN projections. Week 5: Sleeper totals vs market correlation 0.93, margins 0.97.
+**Game lines.** The market is the price (`GAME_MODEL_WEIGHT = 0`): a game-line bet exists only where one book's line or price is off the consensus. Spreads use a key-number margin distribution (`market_margin_pmf`: a normal, SD 13.26, reweighted so games land on 3, 7, 6, 10 and 14 as often as they really do, centered so the consensus spread is 50/50), so a half point through 3 or 7 is priced at its real value. Totals stay N(consensus, 13.0). The Sleeper team-points model (6 × rush + rec TDs + kicker points) and its ESPN checks are still computed and shown, but neither moves the price nor gates a side: on real closing lines they carried no information (section 9). College keeps its 0.15-weight ESPN predictor and plain normal margins.
 
-**Sizing.** EV at the best available price. A bet needs EV ≥ 3% plus the model *and* the check agreeing. Stake is quarter-Kelly in units (1u = 1% bankroll), rounded down to 0.5u, capped at 3u (college 1u). Sizes: Small 0.5–1u, Medium 1.5–2u, Max 2.5–3u. **Watch** = positive EV every source agrees on, but under 3%, so no units. Each bet also shows the worst price that still clears 3% (`min_price`).
+**Sizing.** EV at the best available price. A bet needs EV ≥ 3% plus the model *and* the check agreeing (props; NFL game lines need only the price). Stake is quarter-Kelly in units (1u = 1% bankroll), rounded down to 0.5u, capped at 3u (college 1u). Sizes: Small 0.5–1u, Medium 1.5–2u, Max 2.5–3u. **Watch** = positive EV every source agrees on, but under 3%, so no units. Each bet also shows the worst price that still clears 3% (`min_price`).
+
+**Best available (card fill).** The weekly card always has at least 3 picks (`MIN_CARD_PICKS`): when fewer bets qualify, the best remaining lines fill it at a flat 0.5u (`FILL_UNITS`), watch list first, then highest EV, never a stale-projection outlier. They're labeled "Best available" (confidence `fill`), shown with their EV, kept stable through the week once chosen (`fill_keys`), and tracked as their own tier in Results so they're judged apart from real bets.
 
 **Stale-projection guard.** A prop whose projection is >35% off the market line (>1.6× for TDs) gets no units, is sorted last and is dimmed.
 
-**PrizePicks.** Each line is priced at PrizePicks' own number: the books' fair probability at the nearest line, shifted along the simulation. A 2-pick Power is +200 on P(both). Entries use the hit-count distribution: exact (Poisson-binomial) for independent legs, a Gaussian copula for opposing same-game legs (`LEG_CORRELATION`).
+**PrizePicks.** Each line is priced at PrizePicks' own number: the books' fair probability at the nearest line, shifted along the simulation. A 2-pick Power is +200 on P(both). Entries use the hit-count distribution: exact (Poisson-binomial) for independent legs, a Gaussian copula for same-game legs, teammates and opponents alike (`LEG_CORRELATION`, measured; section 9). A 2-pick can't hold teammates (PrizePicks needs 2 teams), but a 3–6 pick entry can, and before the review those teammate pairs were wrongly treated as independent.
 
 ---
 
@@ -75,7 +78,12 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | Volume exponent 0.25, not 0.5 | 1/√volume made low-volume props lean Under (P(over) 0.39 for lines under 25 vs 0.52 for 50+) while the market's line/projection ratio was flat. | Week-5 bins; Darnold-type props are caught by the stale guard. |
 | Sleeper primary, ESPN as a required check | Against the books' lines they're about equally close (Sleeper 15.3% vs ESPN 16.5% median error). Where they disagree, the edge is usually noise (Geno Smith: Sleeper 189, ESPN 232, line 208.5). | 262-prop comparison. |
 | Yahoo not a source | Yahoo's API has no per-player projections. | Known since 2026-09-23. |
-| Game lines get a model | Without one, they only flagged off-market books. Sleeper team points track the market closely but differ by up to 4 points. | MIN @ NO 46.4 vs 42.5 → 1u Over. |
+| ~~Game lines get a model~~ (superseded 2026-10-07) | Without one, they only flagged off-market books. Sleeper team points track the market closely but differ by up to 4 points. | MIN @ NO 46.4 vs 42.5 → 1u Over. |
+| NFL game-line model weight 0 (2026-10-07) | On real closing lines the model added nothing: recalibration slope 0.11 (spreads) / −0.05 (totals), any weight above 0 scored worse out of sample, and its bets went 53-62-1 (−18u). Game-line edges now come only from books off the market. | 2025 + 2026 wk 1–4 backtest (section 9). |
+| Key-number spread pricing (2026-10-07) | A rounded normal said a favorite wins by exactly 3 3% of the time; it's 9.7% at spreads of 2.5–3.5 and an exact-3 spread pushes 11%. That mispriced every half point through 3 and 7, the only place line shopping makes money. | 2,742 games fit, 336 scored out of sample; log-loss −0.137 [−0.193, −0.080]. |
+| Measured correlations (2026-10-07) | The guessed opponent values were 2–3x too high and made same-game More/More pairs look +EV; opposing backs (−0.19) were missing; `COVER_TOTAL_RHO` was 0.15 vs a measured 0.03; teammates in 3+ pick entries were treated as independent (QB↔own WR is +0.38). | Section 9. |
+| ESPN check not required for passing yards (2026-10-07) | Where ESPN and Sleeper differ by 15%+, the result lands on ESPN's side 53–60% for rush/rec/receptions but 37–45% for passing: the check only filtered noise there. | Two held-out seasons, section 9. |
+| Always 3 picks on the card (2026-10-07) | Founder's call: people bet every week. Fills are the best remaining lines at a flat 0.5u, labeled and tracked separately, so the card never inflates an edge to get there. | Week 5 after the review: 1 bet + 2 fills (both positive EV, from the watch list). |
 | Cover/total combos show fair odds only | The Odds API carries no SGP prices. | — |
 | Watch tier | A quiet week looked broken ("nothing recommended"); positive-EV, all-agree plays are shown without units. | Founder feedback. |
 | PrizePicks: never pair teammates | PrizePicks requires 2+ teams. That removes the main correlation edge (QB + his WR). | Founder confirmed; killed the Daniels/Hurst stack. |
@@ -199,11 +207,52 @@ Not worth adding. Reproducing it on an Intel Mac takes three workarounds:
 
 The harness lived in the session scratchpad; the calibration script above keeps the reusable part.
 
+### Model review on real outcomes (2026-10-07)
+
+Every test was fit on one period and scored on data it never saw (2025 weeks 11–17, 2026 weeks 1–4, and 2024 or 2006–2014 where a second check was possible), with bootstrap CIs. About 25 ideas were tested; only results that held on more than one held-out set were adopted, since one or two "wins" in 25 are expected by chance. Scripts are in `backend/scripts/` and `backend/scripts/experiments/`, run from `backend/`; free data caches in `backend/.cache/backtest/`.
+
+**Game lines on real closing lines** (`scripts/backtest_game_lines.py`, nflverse closing lines + scores, the shipped pricing code; `--model-weight 0.30` reproduces the pre-review model):
+
+| | Bets | Record | Hit (95% CI) | Break-even | Sized result |
+|---|---|---|---|---|---|
+| 2025, weeks 1–18 | 109 | 50-58-1 | 46.3% [37, 56] | 51.7% | −17.4u (−10.5%) |
+| 2026, weeks 1–4 | 7 | 3-4 | 42.9% | 52.1% | −0.8u |
+
+Brier vs the line alone: spreads 0.2508 vs 0.2500, totals 0.2513 vs 0.2499 (2025). Sleeper alone was overconfident (its 70%+ calls hit 38.5%) and picked the underdog on 196 of 272 spreads (projected margins too narrow, slope 0.64). The ESPN check's vetoed bets went 21-13 (noise).
+
+**Adopted**
+
+| Change | Evidence | Script |
+|---|---|---|
+| NFL game-line model weight 0.30 → 0 | Recalibration slope 0.11 (spreads), −0.05 (totals): no information. Out of sample, w=0 scored best (totals 0.2501 vs 0.2544 at 0.30); isotonic/Platt recalibration only made it worse. | `experiments/exp3_weight_recal.py` |
+| Key-number margins (`KEY_MARGIN_LOG_WEIGHTS`), `SPREAD_SD` 13.5 → 13.26 | Favorite wins by exactly 3 at spreads 2.5–3.5: 9.7% real vs 3.0% modeled; spreads of exactly 3 push 11.0% (n=391). Exact-margin log-loss −0.137 [−0.193, −0.080] out of sample. Example: market at −3, +3.5 at −110 is +3.5% EV (was priced −1.7%); −3.5 at +115 was a fake 4.3% bet (really −1.5%). Totals: no key-number gain, SD 13.0 confirmed. | `experiments/exp1_distribution.py`, `exp1b_centered.py`, `exp1c_export.py` (exports the weights) |
+| `COVER_TOTAL_RHO` 0.15 → 0.03 | 2015–2025, 3,024 games: margin error vs total error +0.030 [−0.006, +0.065]; "favorite covers" vs "over" −0.009. Favorite-cover + Over at a +260 SGP: −1.4% EV shipped vs −8.3% measured. | `experiments/corr_cover_total.py` |
+| Teammates correlated in 3+ pick entries (bug fix) | QB pass yds ↔ own WR/TE rec yds +0.38 [0.34, 0.42] (n=4,508). A QB More + own WR Less 3-pick was shown at −0.2% EV, really ~−20%. | `experiments/corr_props.py`, `corr_impact.py` |
+| `LEG_CORRELATION` measured | Opponents 2–3x lower than guessed: QB↔opp QB 0.08 (was 0.25), QB↔opp WR 0.06 (0.15), WR↔opp WR 0.04 (0.10). Opposing RBs' rushing −0.19 [−0.26, −0.12] (was 0). RB↔own RB 0.00 (was −0.20). A QB More / opp QB More 2-pick was shown at +2.6% EV, really ~−5.5%. | `experiments/corr_props.py` |
+| ESPN check off for passing yards | ESPN-direction hit rate where it differs from Sleeper by 15%+: rush 59.6% / 56.2%, rec yds 54.1% / 59.4%, receptions 53.2% / 59.3% (two held-out sets) vs passing 37.5% / 45.3%. | `experiments/props_mean_analyze.py extras` |
+
+The prop correlations were measured against projection-centered lines, not real PrizePicks lines; graded entries remain the final test.
+
+**Promising, not adopted yet**
+
+| Idea | Evidence | What would settle it |
+|---|---|---|
+| Passing yards as a symmetric normal (CV ≈ 0.31) instead of gamma | The gamma overstates demon-line P(over) by +7.6 pp [5.1, 10.2] in all three held-out sets; pinball −2.0% [−1.0, −3.0]. It narrows the spread, which touches the "don't shrink CVs" rule. | A separate change, then graded passing props. `experiments/props_dist_eval.py --markets player_pass_yds --methods normal,current_refit --centered` |
+| Raise `MIN_EV` to ~5–8% | One season can't tell how much of the estimated edge is real (fraction 0.10, CI [−1.2, 1.5]). At 3% the threshold assumes ~60% is real; 8% with quarter-Kelly halves the drawdown risk if none is. Half-Kelly is dominated. | Graded bets. `experiments/corr_kelly.py` |
+| Anytime TD: Vegas team total + ESPN blend | Brier −1.3% [−2.2, −0.3] and −1.5% [−2.4, −0.7] on two held-out sets; books already price team totals. | Low priority. `experiments/props_mean_analyze.py td` |
+| Wind unders (≥ 12 mph) | +15.5% [+6.4, +24.2] in 2015–24 (n=426), +4.4% in 2006–14, −4.4% in 2025–26 (n=40); game-time wind isn't knowable pregame. | Log forecast wind before kickoff. `experiments/exp4_quick_checks.py` |
+
+**Rejected:** Elo/QB-adjusted ratings (worse than the market, significantly on spreads); situational regressions (rest, travel, divisional, weather; no coefficient |t| > 1.5); single-factor angles (backup QB, home dogs, byes); Sleeper/ESPN or Vegas-adjusted mean projections, recent usage, opponent defense and a gradient-boosted residual model (all within ±2%, sign flips between test sets); dud mixtures, per-player dispersion, negative binomial receptions, quantile regression, bootstrap residuals and PIT recalibration; more Monte Carlo draws (simulation error ~0.2% EV, far below the 3% bar).
+
+**Not testable yet:** player props against real lines. No free archive of 2025 prop lines exists; The Odds API's historical endpoint (paid, ~13.7K credits for one pre-kickoff snapshot of 5 markets for every 2025 game, about one month of the $30 tier) is the cheapest legitimate source.
+
 ## 8. Open items
 
 1. Verify PrizePicks 3–6 pick payouts in Florida (build an unsubmitted all-standard lineup and read "$1 to pay $X").
-2. After 3–4 graded weeks: tune `MODEL_WEIGHT`, the stale-guard bounds, `LEG_CORRELATION` and `COVER_TOTAL_RHO`; settle Sleeper vs ESPN accuracy from `espn_projection`. The spread settings (CVs, projection error) were already validated by the backtest (section 9); rerun it each season.
-3. ~~Track PrizePicks entries~~: done as My entries (the founder's real entries). Optional: a screenshot import to prefill the form; grading the engine's own suggested entries too.
+2. After 3–4 graded weeks: tune the prop `MODEL_WEIGHT` and the stale-guard bounds; judge the "Best available" fills (Results → By confidence); settle Sleeper vs ESPN accuracy from `espn_projection`. Game-line weight, `LEG_CORRELATION` and `COVER_TOTAL_RHO` were set from data in the 2026-10-07 review (section 9); rerun `scripts/backtest_game_lines.py --season 2026` and the correlation scripts after the season.
+2a. Decide the "promising" items in section 9: passing yards as a normal, a higher `MIN_EV`, the TD blend, and logging forecast wind.
+3. ~~Track PrizePicks entries~~: done as My entries. Screenshot import shipped (`1aa84c0`) but untested end to end: both AI accounts (OpenAI, Anthropic) were out of credits on 2026-10-07. Optional: grade the engine's own suggested entries too.
+3a. Backtest props on real lines: one month of The Odds API's paid tier for 2025 (and 2026 wk 1–4) historical props (section 9).
 4. Un-shelve college props when credits allow (league_id=15 verified; set `CFB_PROPS_ENABLED`).
 5. More prop markets and daily refreshes need the paid Odds API tier.
 6. Optional: a scheduled weekly board snapshot so recording doesn't depend on someone opening the page.

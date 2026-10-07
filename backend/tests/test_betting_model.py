@@ -99,7 +99,7 @@ def test_joint_prob_copula():
     assert bm.joint_prob(0.6, 0.6, 0.0) == 0.36
     assert math.isclose(bm.joint_prob(0.5, 0.5, 0.5), 1 / 3, abs_tol=1e-4)  # closed form: 1/4 + asin(rho)/2pi
     assert bm.joint_prob(0.6, 0.6, 0.45) > 0.36 > bm.joint_prob(0.6, 0.6, -0.2)
-    assert bm.leg_correlation("player_reception_yds", "player_pass_yds", True, True) == 0.45
+    assert bm.leg_correlation("player_reception_yds", "player_pass_yds", True, True) == 0.38
     assert bm.leg_correlation("player_pass_yds", "player_reception_yds", False, False) == 0.0
 
 
@@ -127,7 +127,7 @@ def test_prizepicks_leg_uses_market_at_prizepicks_number():
     assert teams and all(len(t) == 2 for t in teams)            # never two players from one team
     assert all("RB" not in {l["player"] for l in r["legs"]} for r in out["pairs"])
     shootout = next(r for r in out["pairs"] if {l["player"] for l in r["legs"]} == {"QB", "OPP QB"})
-    assert shootout["correlation"] == 0.25 and shootout["joint_prob"] > shootout["independent_prob"]
+    assert shootout["correlation"] == 0.08 and shootout["joint_prob"] > shootout["independent_prob"]
 
 
 def test_slate_centering_removes_systematic_projection_bias():
@@ -231,3 +231,84 @@ def test_calibration_knobs_default_to_current_behavior():
     y = bm.apply_duds(x, m, 0.08, np.random.default_rng(1))
     assert abs(y.mean() - x.mean()) / x.mean() < 0.02
     assert np.mean(y < 10) > np.mean(x < 10)
+
+
+# --- 2026-10-07 model review (evidence: docs/guides/BETTING_GUIDE.md section 9) ---
+
+def _spread_game(spreads):
+    """One NFL game; spreads = [(book, DAL home spread, DAL price, TB price)]."""
+    return {"id": "kn", "home_team": "Dallas Cowboys", "away_team": "Tampa Bay Buccaneers",
+            "commence_time": "2026-10-09T00:15:00Z",
+            "bookmakers": [{"key": k, "markets": [
+                {"key": "spreads", "outcomes": [{"name": "Dallas Cowboys", "point": pt, "price": hp},
+                                                {"name": "Tampa Bay Buccaneers", "point": -pt, "price": ap}]},
+                {"key": "totals", "outcomes": [{"name": "Over", "point": 44.5, "price": -110},
+                                               {"name": "Under", "point": 44.5, "price": -110}]}]}
+                for k, pt, hp, ap in spreads]}
+
+
+def test_key_numbers_price_the_half_point_around_3():
+    p = bm.market_margin_pmf(-3.0)
+    k = bm._MARGINS
+    assert 0.07 < p[k == 3].sum() < 0.11              # real push rate at 3 is ~8-11%; a plain normal says 3%
+    assert p[k > 2.5].sum() - p[k > 3.5].sum() > 0.07  # so -2.5 vs -3.5 is worth ~8 points of probability
+    margin, _ = bm.simulate_game(-3.0, 44.0, "kn", key_numbers=True)
+    assert 0.07 < float((margin == 3).mean()) < 0.11
+    # Consensus DAL -3; one book hangs TB +3.5 at -110: the hook over 3 is a real edge.
+    game = _spread_game([("draftkings", -3.0, -110, -110), ("fanduel", -3.0, -110, -110),
+                         ("hardrockbet", -3.5, -110, -110)])
+    spread = next(r for r in evaluate_game(game) if r["market"] == "spread")
+    assert spread["book"] == "Hard Rock Bet" and spread["line"] == 3.5 and spread["units"] > 0
+
+
+def test_nfl_game_model_has_no_weight():
+    game = _spread_game([("draftkings", -7.0, -110, -110), ("fanduel", -7.0, -110, -110), ("hardrockbet", -7.0, -110, -110)])
+    # A model that loves Dallas by 17 changes nothing: the price is the market's.
+    for r in evaluate_game(game, {"margin": 17.0, "total": 60.0}):
+        assert r["units"] == 0.0 and r["p_win"] == r["market_prob"]
+        assert r["model_prob"] is not None  # still shown for reference
+
+
+def test_cover_total_correlation_is_small():
+    assert bm.COVER_TOTAL_RHO <= 0.05
+
+
+def test_teammates_are_correlated_in_entries():
+    from app.services.betting_service import prizepicks_entries
+
+    def leg(player, team, market, side):
+        return {"player": player, "team": team, "game": "BUF @ KC", "market": market, "side": side, "p_win": 0.55}
+    other = {"player": "Far", "team": "SF", "game": "SF @ SEA", "market": "player_rush_yds", "side": "More", "p_win": 0.55}
+    stack = [leg("QB", "KC", "player_pass_yds", "More"), leg("WR", "KC", "player_reception_yds", "More"), other]
+    split = [leg("QB", "KC", "player_pass_yds", "More"), leg("WR", "KC", "player_reception_yds", "Less"), other]
+    p_stack = next(e for e in prizepicks_entries(stack) if e["type"] == "power" and e["size"] == 3)["p_all"]
+    p_split = next(e for e in prizepicks_entries(split) if e["type"] == "power" and e["size"] == 3)["p_all"]
+    assert p_stack > 0.55 ** 3 + 0.02 and p_split < 0.55 ** 3 - 0.02
+
+
+def test_espn_check_does_not_gate_passing_yards():
+    from app.services.betting_service import _espn_check
+    c = {"side": "Over", "line": 250.5, "market_prob": 0.5, "units": 1.0, "confidence": "lean"}
+    espn_says_under = np.full(1000, 200.0)
+    assert _espn_check(c, espn_says_under, "player_pass_yds")["units"] == 1.0
+    assert _espn_check(c, espn_says_under, "player_reception_yds")["units"] == 0.0
+
+
+def test_card_is_filled_to_three_picks():
+    from app.services.betting_service import fill_card
+
+    def rec(name, ev, units=0.0, **kw):
+        return {"type": "player_prop", "player": name, "game": "G", "market": "player_rush_yds",
+                "units": units, "confidence": "lean" if units else "none", "ev": ev, **kw}
+    recs = [rec("Bet", 0.05, 1.0), rec("Watch", 0.01, watch=True), rec("Best", 0.02), rec("Neg", -0.02),
+            rec("Stale", 0.30, projection_outlier=True)]
+    assert fill_card(recs) == 2
+    filled = {r["player"] for r in recs if r.get("card_fill")}
+    assert filled == {"Watch", "Best"}  # watch list first, then EV; never a stale projection
+    assert all(r["units"] == bm.FILL_UNITS and r["confidence"] == "fill" for r in recs if r.get("card_fill"))
+    # A line already filled this week keeps its spot as prices move.
+    recs = [rec("Watch", 0.01, watch=True), rec("Best", 0.02), rec("Neg", -0.02), rec("Kept", -0.05)]
+    fill_card(recs, frozenset({("player_prop", "Kept", "player_rush_yds")}))
+    assert {r["player"] for r in recs if r.get("card_fill")} == {"Kept", "Watch", "Best"}
+    # Enough real bets: nothing is filled.
+    assert fill_card([rec(f"B{i}", 0.05, 1.0) for i in range(3)]) == 0
