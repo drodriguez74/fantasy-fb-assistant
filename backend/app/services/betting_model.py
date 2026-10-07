@@ -353,10 +353,26 @@ def blend(p_model: Optional[float], p_market: float, weight: float = MODEL_WEIGH
     return weight * p_model + (1 - weight) * p_market
 
 
+def worst_price(p_win: float, p_push: float = 0.0, min_ev: float = MIN_EV) -> Optional[int]:
+    """The longest-odds price (American) at which a side still clears
+    min_ev -- what a bettor can accept if the line moves. None if no price
+    would (p_win too low)."""
+    if p_win <= 0:
+        return None
+    decimal = 1 + (min_ev + max(0.0, 1 - p_win - p_push)) / p_win
+    if decimal <= 1.0001:
+        return None
+    american = (decimal - 1) * 100 if decimal >= 2 else -100 / (decimal - 1)
+    # Round toward the safe side (a slightly better price than the exact cutoff).
+    return int(np.ceil(american)) if american > 0 else int(np.ceil(american))
+
+
 def price_offer(p_win: float, price: float, p_push: float = 0.0) -> Dict[str, float]:
     e = ev(p_win, price, p_push)
     units = kelly_units(p_win, price, p_push) if e >= MIN_EV else 0.0
     return {
+        # For a bet: still worth it down to this price if the line moves.
+        "min_price": worst_price(p_win, p_push) if units > 0 else None,
         "p_win": round(p_win, 4),
         "p_push": round(p_push, 4),
         "ev": round(e, 4),

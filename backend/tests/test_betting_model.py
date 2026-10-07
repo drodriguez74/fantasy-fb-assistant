@@ -207,3 +207,13 @@ def test_prizepicks_entries_respect_rules():
     for e in entries:
         assert len({l["team"] for l in e["legs"]}) >= 2
         assert len({l["player"] for l in e["legs"]}) == e["size"]
+
+
+def test_worst_price_is_the_min_ev_cutoff():
+    # 55% at even money: EV +10%. The cutoff price leaves exactly MIN_EV.
+    cut = bm.worst_price(0.55)
+    assert cut is not None and cut < 100
+    assert bm.ev(0.55, cut) >= bm.MIN_EV - 1e-9
+    assert bm.ev(0.55, cut - 1) < bm.MIN_EV + 0.002     # one cent worse is (about) at/below the bar
+    assert bm.price_offer(0.55, 100)["min_price"] == cut
+    assert bm.price_offer(0.50, -110)["min_price"] is None   # no bet, no cutoff

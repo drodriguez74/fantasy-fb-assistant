@@ -1,8 +1,10 @@
 // PrizePicks 2-pick Power Plays from GET /betting/board's `prizepicks`
 // section -- backend/app/services/betting_service.py (prizepicks_pairs, and
 // price_uploaded_board when the user has uploaded today's board).
-import { useRef, useState } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
+import { PrizePicksEntries } from './PrizePicksEntries'
+import type { EntriesState } from './prizePicksEntriesData'
 export interface PrizePicksLeg {
   player: string
   team?: string | null
@@ -65,9 +67,8 @@ function Leg({ leg }: { leg: PrizePicksLeg }) {
         <span className="stat-nums">{leg.line}</span> <span className="text-muted">{leg.market_label}</span>
       </p>
       <p className="stat-nums text-[11px] text-faint">
-        Hit {pct(leg.p_win)} · market {pct(leg.market_prob)}
-        {leg.model_prob != null && ` · model ${pct(leg.model_prob)}`}
-        {leg.projection != null && ` · proj ${leg.projection.toFixed(1)}`}
+        {pct(leg.p_win)} to hit · books {pct(leg.market_prob)}
+        {leg.projection != null && ` · Sleeper ${leg.projection.toFixed(1)}`}
         {leg.espn_projection != null && ` · ESPN ${leg.espn_projection.toFixed(1)}`}
         {leg.book_line != null && leg.book_line !== leg.line && ` · books at ${leg.book_line}`}
       </p>
@@ -140,17 +141,28 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
   )
 }
 
-function AltLines({ title, note, rows }: { title: string; note: string; rows?: PrizePicksAltLine[] }) {
-  if (!rows || rows.length === 0) return null
+function Fold({ title, summary, defaultOpen = false, children }: { title: string; summary: string; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen)
   return (
     <div className="rounded-lg border border-hairline bg-surface">
-      <div className="px-4 pt-3">
-        <h4 className="text-sm font-medium text-body">{title}</h4>
-        <p className="text-[11px] text-faint mt-0.5">{note}</p>
-      </div>
-      <ul className="divide-y divide-hairline mt-2">
+      <button onClick={() => setOpen((v) => !v)} className="w-full flex items-baseline gap-3 px-4 py-3 text-left" aria-expanded={open}>
+        <span className="text-sm font-medium text-body">{title}</span>
+        <span className="text-xs text-faint">{summary}</span>
+        <span className="ml-auto text-xs text-accent-ink">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && <div className="px-4 pb-4 space-y-3">{children}</div>}
+    </div>
+  )
+}
+
+function AltLines({ rows, note }: { rows?: PrizePicksAltLine[]; note: string }) {
+  if (!rows || rows.length === 0) return null
+  return (
+    <>
+      <p className="text-[11px] text-faint">{note}</p>
+      <ul className="divide-y divide-hairline">
         {rows.slice(0, 12).map((r) => (
-          <li key={`${r.player}-${r.market}-${r.line}`} className="px-4 py-2 flex items-baseline gap-3">
+          <li key={`${r.player}-${r.market}-${r.line}`} className="py-2 flex items-baseline gap-3">
             <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
             <span className="min-w-0 text-sm text-body">
               {r.player} <span className="text-faint text-xs">{r.team}</span>{' '}
@@ -158,75 +170,77 @@ function AltLines({ title, note, rows }: { title: string; note: string; rows?: P
               <span className="stat-nums">{r.line}</span> <span className="text-muted">{r.market_label}</span>
             </span>
             <span className="ml-auto stat-nums text-[11px] text-faint shrink-0 hidden sm:inline">
-              {r.projection != null ? `proj ${r.projection.toFixed(1)}` : `books at ${r.book_line ?? '—'}`}
+              {r.projection != null ? `Sleeper ${r.projection.toFixed(1)}` : `books at ${r.book_line ?? '—'}`}
               {r.espn_projection != null && ` · ESPN ${r.espn_projection.toFixed(1)}`}
             </span>
           </li>
         ))}
       </ul>
+    </>
+  )
+}
+
+function PairCard({ pair }: { pair: PrizePicksPair }) {
+  return (
+    <div className={`border rounded-lg p-4 bg-surface ${pair.ev > 0 ? 'border-volt' : 'border-hairline opacity-80'}`}>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Leg leg={pair.legs[0]} />
+        <Leg leg={pair.legs[1]} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 stat-nums text-xs">
+        <span><span className="text-body">{pct(pair.joint_prob)}</span> <span className="text-faint">both hit</span></span>
+        <span className={pair.ev > 0 ? 'text-success-700' : 'text-muted'}>
+          EV {pair.ev > 0 ? '+' : ''}{(pair.ev * 100).toFixed(1)}%
+        </span>
+        {pair.units > 0 && <span className="text-body">{pair.units}u</span>}
+        {pair.correlation !== 0 && (
+          <span className="text-faint">
+            Same game: {pair.correlation > 0 ? 'these tend to hit together' : 'these tend to pull apart'}
+          </span>
+        )}
+      </div>
     </div>
   )
 }
 
-export function PrizePicksPairs({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded: () => void }) {
+/** The PrizePicks tab: board upload, best entries, 2-pick pairs, then goblins/demons. */
+export function PrizePicksPairs({ data, onUploaded, entries }: { data?: PrizePicksBoard; onUploaded: () => void; entries: EntriesState }) {
   const positive = data?.pairs.filter((p) => p.ev > 0) ?? []
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       <UploadPanel data={data} onUploaded={onUploaded} />
-      {!data || data.pairs.length === 0 ? (
-        <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
-          {data?.detail ?? "No PrizePicks lines matched this week's priced props."}
-        </div>
-      ) : (
-        <>
+      <PrizePicksEntries state={entries} />
+      {data && data.pairs.length > 0 && (
+        <Fold
+          title="2-pick pairs"
+          summary={positive.length ? `${positive.length} profitable` : 'none profitable this week'}
+          defaultOpen={positive.length > 0}
+        >
           <p className="text-xs text-muted leading-relaxed">
-            2-pick Power Play pays {data.payout}x, so two unrelated picks each need {pct(data.breakeven_leg)} to break even.
-            PrizePicks requires players from two different teams, so pairs never use teammates. Opponents in the same game are
-            priced together: a shootout lifts both quarterbacks. Picks ESPN's projection disagrees with are left out.{' '}
-            {data.positive_ev_pairs} pairs have positive expected value; most weeks few or none will, because PrizePicks' lines
-            usually match the books.
+            A 2-pick Power Play pays {data.payout}x, so each pick needs about {pct(data.breakeven_leg)} to break even. Pairs
+            never use teammates (PrizePicks needs two teams); opponents in the same game are priced together.
           </p>
-          {(positive.length ? positive : data.pairs.slice(0, 10)).map((pair) => (
-            <div
-              key={`${pair.legs[0].player}-${pair.legs[0].market}-${pair.legs[1].player}-${pair.legs[1].market}`}
-              className="border border-hairline rounded-lg p-4 bg-surface"
-            >
-              <div className="flex items-start gap-3">
-                <div className={`shrink-0 rounded-md px-2.5 py-1.5 text-center ${pair.units > 0 ? 'bg-success-100 text-success-800' : 'bg-surface-2 text-muted'}`}>
-                  <div className="stat-nums text-base font-semibold leading-none">{pair.units > 0 ? `${pair.units}u` : '—'}</div>
-                  <div className="stat-nums text-[9px] tracking-wider uppercase mt-0.5">{pair.units > 0 ? pair.confidence : 'no bet'}</div>
-                </div>
-                <div className="min-w-0 flex-1 grid gap-3 sm:grid-cols-2">
-                  <Leg leg={pair.legs[0]} />
-                  <Leg leg={pair.legs[1]} />
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 stat-nums text-xs">
-                <span><span className="text-faint">Both hit </span><span className="text-body">{pct(pair.joint_prob)}</span></span>
-                <span>
-                  <span className="text-faint">EV </span>
-                  <span className={pair.ev > 0 ? 'text-success-700' : 'text-muted'}>{pair.ev > 0 ? '+' : ''}{(pair.ev * 100).toFixed(1)}%</span>
-                </span>
-                {pair.correlation !== 0 && (
-                  <span className="text-faint">
-                    Same game, {pair.correlation > 0 ? 'tend to hit together' : 'tend to pull apart'} (ρ {pair.correlation > 0 ? '+' : ''}{pair.correlation}) · unrelated would be {pct(pair.independent_prob)}
-                  </span>
-                )}
-              </div>
-            </div>
+          {(positive.length ? positive : data.pairs.slice(0, 5)).map((pair) => (
+            <PairCard key={`${pair.legs[0].player}-${pair.legs[0].market}-${pair.legs[1].player}-${pair.legs[1].market}`} pair={pair} />
           ))}
-        </>
+        </Fold>
       )}
-      <AltLines
-        title="Goblins: most likely to hit"
-        note="Easier lines with a smaller payout. The file doesn't include payouts, so check PrizePicks' multiplier: two picks at 85% hit together about 72% of the time, so that pair needs to pay at least 1.4x."
-        rows={data?.goblins}
-      />
-      <AltLines
-        title="Demons: most likely to hit"
-        note="Harder lines with a bigger payout. Compare the hit chance here with the multiplier PrizePicks shows."
-        rows={data?.demons}
-      />
+      {!data?.pairs.length && data?.detail && (
+        <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">{data.detail}</div>
+      )}
+      {(data?.goblins?.length ?? 0) > 0 && (
+        <Fold title="Goblins" summary="easier lines, smaller payout · most likely to hit">
+          <AltLines
+            rows={data?.goblins}
+            note="The file has no payouts, so compare with PrizePicks' multiplier: two 85% picks hit together about 72% of the time, so that pair needs at least 1.4x."
+          />
+        </Fold>
+      )}
+      {(data?.demons?.length ?? 0) > 0 && (
+        <Fold title="Demons" summary="harder lines, bigger payout · most likely to hit">
+          <AltLines rows={data?.demons} note="Compare each hit chance with the multiplier PrizePicks shows." />
+        </Fold>
+      )}
     </div>
   )
 }

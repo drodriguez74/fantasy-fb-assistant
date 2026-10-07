@@ -1,33 +1,9 @@
-// Best 3-6 pick PrizePicks Power and Flex entries from POST
-// /betting/prizepicks-entries (backend betting_service.prizepicks_entries).
-// Payouts default to PrizePicks' standard published multipliers; they vary
-// by state, so the user can edit them (kept in this browser only).
-import { useCallback, useEffect, useState } from 'react'
-import { betting, getErrorMessage } from '../../services/api'
-import type { PrizePicksLeg } from './PrizePicksPairs'
-
-interface Entry {
-  size: number
-  type: 'power' | 'flex'
-  ev: number
-  p_all: number
-  p_paid: number
-  payouts: Record<string, number>
-  legs: PrizePicksLeg[]
-}
-
-type Power = Record<string, number>
-type Flex = Record<string, Record<string, number>>
-
-const STORAGE_KEY = 'prizepicks-payouts'
-
-function loadSaved(): { power?: Power; flex?: Flex } {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
-  } catch {
-    return {}
-  }
-}
+// Best PrizePicks Power and Flex entries, ranked by EV with overlap warnings.
+// Data comes from usePrizePicksEntries (prizePicksEntriesData.ts). Payouts
+// default to PrizePicks' standard multipliers; they vary by state, so the
+// user can edit them (kept in this browser only).
+import { useState } from 'react'
+import { type EntriesState, type Entry, type Flex, type Power, rankEntries } from './prizePicksEntriesData'
 
 const pct = (p: number) => `${(p * 100).toFixed(1)}%`
 
@@ -79,83 +55,36 @@ function PayoutEditor({ power, flex, onChange }: { power: Power; flex: Flex; onC
   )
 }
 
-export function PrizePicksEntries() {
-  const [entries, setEntries] = useState<Entry[]>([])
-  const [power, setPower] = useState<Power | null>(null)
-  const [flex, setFlex] = useState<Flex | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+const entryName = (e: Entry) => `${e.size}-pick ${e.type === 'power' ? 'Power' : 'Flex'}`
+
+export function PrizePicksEntries({ state }: { state: EntriesState }) {
   const [editing, setEditing] = useState(false)
-
-  const load = useCallback(async (p?: Power, f?: Flex) => {
-    setLoading(true)
-    setError('')
-    try {
-      const saved = loadSaved()
-      const response = await betting.getPrizePicksEntries({ power: p ?? saved.power, flex: f ?? saved.flex })
-      setEntries(response.data.entries)
-      setPower((cur) => cur ?? saved.power ?? response.data.default_power)
-      setFlex((cur) => cur ?? saved.flex ?? response.data.default_flex)
-    } catch (err) {
-      setError(getErrorMessage(err, "Couldn't build PrizePicks entries."))
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
-
-  const save = () => {
-    if (!power || !flex) return
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ power, flex }))
-    } catch {
-      // storage unavailable: payouts still apply to this request
-    }
-    load(power, flex)
-  }
-
-  const reset = () => {
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // nothing saved
-    }
-    setPower(null)
-    setFlex(null)
-    load(undefined, undefined)
-  }
+  const [showAll, setShowAll] = useState(false)
+  const { entries, power, flex, loading, error } = state
+  const ranked = rankEntries(entries)
+  const profitable = ranked.filter((e) => e.ev > 0)
+  const shown = showAll ? ranked : profitable.slice(0, 6)
 
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium text-body">2–6 pick entries</h3>
+        <h3 className="text-sm font-medium text-body">Best entries</h3>
         <button onClick={() => setEditing((v) => !v)} className="text-xs text-accent-ink underline">
           {editing ? 'Hide payouts' : 'Edit payouts'}
         </button>
       </div>
       <p className="text-xs text-muted leading-relaxed">
-        Built from the most likely picks, one per player, from at least two teams. Payouts are PrizePicks' standard
-        multipliers for all-standard lineups; they vary by state, so check yours by building a lineup (don't submit it) and
-        reading "$1 to pay $X". Flex pays even if one or two picks miss.
+        Ranked by expected value. One pick per player, players from at least two teams. Payouts are PrizePicks' standard
+        multipliers; check yours on a built (unsubmitted) lineup's "$1 to pay $X" line and edit them here if they differ.
       </p>
       {editing && power && flex && (
         <div className="rounded-lg border border-hairline bg-surface p-4 space-y-3">
-          <PayoutEditor
-            power={power}
-            flex={flex}
-            onChange={(p, f) => {
-              setPower(p)
-              setFlex(f)
-            }}
-          />
+          <PayoutEditor power={power} flex={flex} onChange={state.setPayouts} />
           <div className="flex gap-3">
-            <button onClick={save} className="bg-volt text-volt-ink px-3 py-1.5 rounded-lg text-sm hover:bg-volt-dark">
+            <button onClick={state.save} className="bg-volt text-volt-ink px-3 py-1.5 rounded-lg text-sm hover:bg-volt-dark">
               Save and reprice
             </button>
-            <button onClick={reset} className="text-xs text-muted underline">
+            <button onClick={state.reset} className="text-xs text-muted underline">
               Reset to standard
             </button>
           </div>
@@ -165,29 +94,33 @@ export function PrizePicksEntries() {
         <p className="text-xs text-muted">Building entries...</p>
       ) : error ? (
         <p className="text-xs text-warning-700">{error}</p>
-      ) : entries.length === 0 ? (
-        <p className="text-xs text-muted">Not enough picks to build entries this week.</p>
+      ) : shown.length === 0 ? (
+        <div className="rounded-lg border border-hairline bg-surface p-4 text-sm text-muted">
+          No entry has positive expected value at these payouts this week.
+          {ranked.length > 0 && (
+            <button onClick={() => setShowAll(true)} className="block mt-1 text-xs text-accent-ink underline">
+              Show all {ranked.length} entries anyway
+            </button>
+          )}
+        </div>
       ) : (
         <div className="space-y-3">
-          {entries.map((e) => (
+          {shown.map((e, i) => (
             <div
               key={`${e.type}-${e.legs.map((l) => `${l.player}${l.market}`).join('|')}`}
-              className="rounded-lg border border-hairline bg-surface p-4"
+              className={`rounded-lg bg-surface p-4 border ${i === 0 && e.ev > 0 ? 'border-volt' : 'border-hairline'} ${
+                e.ev <= 0 ? 'opacity-70' : ''
+              }`}
             >
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 stat-nums text-xs">
-                <span className="text-sm font-semibold text-body">
-                  {e.size}-pick {e.type === 'power' ? 'Power' : 'Flex'}
+                <span className="text-sm font-semibold text-body">{entryName(e)}</span>
+                <span className={e.ev > 0 ? 'text-success-700' : 'text-muted'}>
+                  EV {e.ev > 0 ? '+' : ''}
+                  {(e.ev * 100).toFixed(1)}%
                 </span>
-                <span>
-                  <span className="text-faint">EV </span>
-                  <span className={e.ev > 0 ? 'text-success-700' : 'text-muted'}>
-                    {e.ev > 0 ? '+' : ''}
-                    {(e.ev * 100).toFixed(1)}%
-                  </span>
-                </span>
-                <span><span className="text-faint">All hit </span><span className="text-body">{pct(e.p_all)}</span></span>
+                <span><span className="text-body">{pct(e.p_all)}</span> <span className="text-faint">all hit</span></span>
                 {e.type === 'flex' && (
-                  <span><span className="text-faint">Pays something </span><span className="text-body">{pct(e.p_paid)}</span></span>
+                  <span><span className="text-body">{pct(e.p_paid)}</span> <span className="text-faint">pays something</span></span>
                 )}
                 <span className="text-faint">
                   Pays{' '}
@@ -207,8 +140,24 @@ export function PrizePicksEntries() {
                   </li>
                 ))}
               </ul>
+              {e.overlap > 0 && (
+                <p className="text-[11px] text-warning-700 mt-2">
+                  Shares {e.overlap} pick{e.overlap === 1 ? '' : 's'} with a better entry above. Playing both doubles up on
+                  the same outcomes, so pick one.
+                </p>
+              )}
             </div>
           ))}
+          {!showAll && ranked.length > shown.length && (
+            <button onClick={() => setShowAll(true)} className="text-xs text-accent-ink underline">
+              Show all {ranked.length} entries, including ones that lose money
+            </button>
+          )}
+          {showAll && (
+            <button onClick={() => setShowAll(false)} className="text-xs text-accent-ink underline">
+              Show profitable entries only
+            </button>
+          )}
         </div>
       )}
     </div>

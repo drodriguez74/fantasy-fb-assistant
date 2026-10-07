@@ -1,3 +1,25 @@
+# Handoff (2026-10-07, session 19 cont.) — Bets page UX redesign (strategist + design review)
+
+**Status:** built, 214 backend tests pass, frontend build + lint clean. **Not committed, not seen in a
+browser**: local sign-in failed (the demo password in LoginForm doesn't match the shared DB's demo
+user), so the visual check has to happen on the deployed site after a push.
+
+From a live review of every Bets screen (desktop + phone):
+1. **This week's card** (`ThisWeekCard.tsx`) at the top: the actual bets across props/games, in
+   kickoff order, with units → dollars (bankroll setting, localStorage), "still a bet at X or better"
+   (backend `worst_price` / `min_price` on every sized bet), and the best +EV PrizePicks entry.
+2. **Scannable cards** (`BetCard.tsx`): bet / watch / no-bet look distinct (volt border + badge for
+   bets), fixed-width badge, plain sizes (Small / Medium / Max), "54.6% to win" as the hero number,
+   kickoff times, plain-language details ("Books: BAL +3 · we project BAL +2.2").
+3. **PrizePicks order**: upload → best entries (ranked by EV, profitable only by default, overlap
+   warnings) → 2-pick pairs (folded when none profitable) → goblins/demons (folded).
+   Entries data moved to `prizePicksEntriesData.ts` (hook shared with the card).
+4. **Polish**: one-line disclaimer (21+ and helpline always visible, full text on "More"), stats and
+   method moved below the content, combos folded with column headers, the board stays on screen while
+   refreshing, and a "waking up the odds server" note after 8s on a cold load.
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — College picks tracked and graded
 
 **Status:** 213 tests pass, build + lint clean. Not committed yet.
