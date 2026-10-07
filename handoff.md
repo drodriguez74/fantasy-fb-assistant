@@ -1,3 +1,25 @@
+# START HERE — Session 20 (2026-10-07): model review on real outcomes + screenshot import
+
+## State right now
+- Pushed to `main`: `1aa84c0` (My entries screenshot import), `db781e6` (model review + 3-pick card). Backend 231 tests pass; frontend build clean (the one lint error, `useAuth.tsx`, predates this session).
+- **Blocked:** both AI accounts are out of credits (OpenAI `insufficient_quota`, Anthropic "credit balance too low"), so the screenshot import is untested end to end, and the app's other AI features fail too. Test image: the founder's 6-pick Power screenshot (arrows for More/Less, two goblins, page 1/2).
+- The founder's first real entry is logged (McCaffrey Less 36.5 rec + Irving More 51.5 rush, $10→$30, week 5); grades itself after SF @ SEA (Sun).
+
+## What the review found (full evidence: BETTING_GUIDE.md section 9; scripts in backend/scripts/experiments/)
+- Game-line model had no edge on real closing lines (2025: 50-58-1, −17.4u; 2026 wk 1–4: 3-4) → `GAME_MODEL_WEIGHT = 0`; key-number spread distribution (`KEY_MARGIN_LOG_WEIGHTS`, SD 13.26).
+- Correlations measured (`LEG_CORRELATION`, `COVER_TOTAL_RHO` 0.15 → 0.03); teammates in 3+ pick entries were treated as independent (bug, fixed).
+- ESPN check not required for passing yards (`ESPN_CHECK_EXEMPT`).
+- Sleeper's mean projection and our prop distributions are already near the best of everything tested; rejected list in the guide.
+- Founder's rule: the card always has 3+ picks. Fills are "Best available" (confidence `fill`, 0.5u, `fill_card`, stable via `fill_keys`), tracked as their own tier.
+
+## Open items (priority order)
+1. Fund an AI provider, then test the screenshot import on the founder's screenshot.
+2. Founder decisions: $30 Odds API month for 2025 historical props (the only way to backtest props on real lines); the "promising" items (passing yards as a normal, higher `MIN_EV`, TD blend, logging forecast wind).
+3. Watch week 5 grade (first real prop results; fills vs bets in Results → By confidence).
+4. Rest of session 19's list below still applies (Florida 3–6 pick payouts, phone layout, etc.).
+
+---
+
 # START HERE — Session 19 wrap (2026-10-06 → 10-07): the Bets feature, end to end
 
 > Read this first, then `docs/guides/BETTING_GUIDE.md` (the full record: method, decisions log with
