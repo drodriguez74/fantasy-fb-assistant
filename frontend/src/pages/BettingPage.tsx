@@ -3,6 +3,8 @@ import { betting, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { BettingResults } from '../components/betting/BettingResults'
 import { PrizePicksPairs, type PrizePicksBoard } from '../components/betting/PrizePicksPairs'
+import { PrizePicksEntries } from '../components/betting/PrizePicksEntries'
+import { GameCombos, type GameComboSet } from '../components/betting/GameCombos'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
@@ -34,8 +36,12 @@ interface BoardRow {
   projection_outlier?: boolean
   espn_projection?: number | null
   espn_agrees?: boolean
+  // Positive EV every source agrees with, too small to size.
+  watch?: boolean
   // game lines
   consensus_line?: number
+  model_line?: number | null
+  check_line?: number | null
 }
 
 interface Board {
@@ -46,6 +52,8 @@ interface Board {
   player_props?: BoardRow[]
   game_props?: BoardRow[]
   prizepicks?: PrizePicksBoard
+  game_combos?: GameComboSet[]
+  watch_count?: number
   recommended_count?: number
   evaluated?: { player_props: number; games: number; props_without_projection: number }
   games_without_props?: string[]
@@ -65,11 +73,18 @@ const CONFIDENCE_STYLE: Record<BoardRow['confidence'], string> = {
 const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(1)}%`)
 const price = (p: number) => (p > 0 ? `+${p}` : `${p}`)
 
-function UnitsBadge({ units, confidence }: { units: number; confidence: BoardRow['confidence'] }) {
+function UnitsBadge({ units, confidence, watch }: { units: number; confidence: BoardRow['confidence']; watch?: boolean }) {
+  const isWatch = units === 0 && watch
   return (
-    <div className={`shrink-0 rounded-md px-2.5 py-1.5 text-center ${CONFIDENCE_STYLE[confidence]}`}>
+    <div
+      className={`shrink-0 rounded-md px-2.5 py-1.5 text-center ${
+        isWatch ? 'border border-accent-ink text-accent-ink' : CONFIDENCE_STYLE[confidence]
+      }`}
+    >
       <div className="stat-nums text-base font-semibold leading-none">{units > 0 ? `${units}u` : '—'}</div>
-      <div className="stat-nums text-[9px] tracking-wider uppercase mt-0.5">{confidence === 'none' ? 'no bet' : confidence}</div>
+      <div className="stat-nums text-[9px] tracking-wider uppercase mt-0.5">
+        {isWatch ? 'watch' : confidence === 'none' ? 'no bet' : confidence}
+      </div>
     </div>
   )
 }
@@ -81,9 +96,9 @@ function RowCard({ row }: { row: BoardRow }) {
       ? 'Anytime TD'
       : `${row.side} ${row.line != null ? (row.market === 'spread' && row.line > 0 ? `+${row.line}` : row.line) : ''}`
   return (
-    <div className="border border-hairline rounded-lg p-4 bg-surface">
+    <div className={`border border-hairline rounded-lg p-4 bg-surface ${row.projection_outlier ? 'opacity-60' : ''}`}>
       <div className="flex items-start gap-3">
-        <UnitsBadge units={row.units} confidence={row.confidence} />
+        <UnitsBadge units={row.units} confidence={row.confidence} watch={row.watch} />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-baseline gap-x-2">
             <h4 className="font-medium text-body">{title}</h4>
@@ -116,6 +131,8 @@ function RowCard({ row }: { row: BoardRow }) {
           {row.type === 'game' && (
             <p className="stat-nums text-[11px] text-faint mt-1.5">
               Consensus {row.market === 'spread' ? 'home spread' : 'total'} {row.consensus_line}
+              {row.model_line != null && ` · model ${row.model_line}`}
+              {row.check_line != null && ` · ESPN ${row.check_line}`}
               {row.p_push > 0 && ` · push ${pct(row.p_push)}`} · {row.books_quoting} books
             </p>
           )}
@@ -126,7 +143,8 @@ function RowCard({ row }: { row: BoardRow }) {
           )}
           {row.projection_outlier && (
             <p className="text-[11px] text-warning-700 mt-1">
-              Projection is far from the market line -- usually a stale projection (role change, injury news), so no units.
+              Don't play this one: the projection is far from the market line, which almost always means the projection is
+              stale (role change, injury news), not that the books are wrong. The EV shown is the stale projection talking.
             </p>
           )}
         </div>
@@ -161,7 +179,7 @@ export function BettingPage() {
   }, [load])
 
   const rows = (tab === 'props' ? board?.player_props : board?.game_props) ?? []
-  const shown = recommendedOnly ? rows.filter((r) => r.units > 0) : rows.slice(0, 60)
+  const shown = recommendedOnly ? rows.filter((r) => r.units > 0 || r.watch) : rows.slice(0, 60)
 
   return (
     <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -205,6 +223,7 @@ export function BettingPage() {
           <div className="flex flex-wrap items-center gap-x-6 gap-y-2 stat-nums text-xs text-muted">
             <span>WEEK {board.week}</span>
             <span><span className="text-body font-semibold">{board.recommended_count}</span> recommended</span>
+            {board.watch_count != null && <span>{board.watch_count} on watch</span>}
             <span>{board.evaluated?.player_props} props · {board.evaluated?.games} games priced</span>
             {board.credits_remaining != null && <span>{board.credits_remaining} odds credits left</span>}
             <DataConfidenceBadge level="computed" label="Simulated" />
@@ -224,7 +243,7 @@ export function BettingPage() {
                 <p>{board.method}</p>
                 <p>
                   Win prob is the blended estimate; Market is the de-vigged consensus; Model is the simulation alone.
-                  EV is expected profit per unit at the listed price. Lean = 0.5–1u, Strong = 1.5–2u, High = 2.5–3u.
+                  EV is expected profit per unit at the listed price. Lean = 0.5–1u, Strong = 1.5–2u, High = 2.5–3u. Watch = positive EV that every source agrees with, but under the 3% bar, so no units.
                 </p>
                 <p>Sources: {board.sources?.odds}; {board.sources?.projections}.</p>
                 {board.evaluated && board.evaluated.props_without_projection > 0 && (
@@ -259,7 +278,7 @@ export function BettingPage() {
                 onChange={(e) => setRecommendedOnly(e.target.checked)}
                 className="rounded border-line text-accent-ink focus:ring-volt"
               />
-              Recommended only
+              Bets + watch list
             </label>
             )}
           </div>
@@ -267,12 +286,15 @@ export function BettingPage() {
           {tab === 'results' ? (
             <BettingResults />
           ) : tab === 'prizepicks' ? (
-            <PrizePicksPairs data={board.prizepicks} onUploaded={() => load(true)} />
+            <div className="space-y-8">
+              <PrizePicksPairs data={board.prizepicks} onUploaded={() => load(true)} />
+              <PrizePicksEntries />
+            </div>
           ) : shown.length === 0 ? (
             <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
               {tab === 'games'
-                ? 'No game line clears the bar -- the books agree with each other, so there is no price to exploit. That is the normal state of an efficient market.'
-                : 'No player prop clears the bar right now.'}
+                ? 'No game line clears the bar or makes the watch list right now.'
+                : 'No player prop clears the bar or makes the watch list right now.'}
               {recommendedOnly && rows.length > 0 && (
                 <button onClick={() => setRecommendedOnly(false)} className="block mx-auto mt-2 text-accent-ink underline">
                   Show everything we priced
@@ -286,6 +308,7 @@ export function BettingPage() {
               ))}
             </div>
           )}
+          {tab === 'games' && <GameCombos games={board.game_combos} />}
         </div>
       )}
     </div>

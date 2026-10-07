@@ -10,7 +10,8 @@ player lands, the "edge" is usually one source's noise, so the board
 requires ESPN to agree before sizing a bet.
 
 Rows are returned keyed by normalized name with Sleeper's stat keys, so
-betting_service's market -> stat mapping works unchanged.
+betting_service's market -> stat mapping works unchanged; each row's "team"
+is the player's team abbreviation (used to sum team scoring for game lines).
 """
 import json
 import logging
@@ -19,6 +20,7 @@ from typing import Any, Dict, Tuple
 
 import httpx
 
+from app.services.espn_service import ESPN_PRO_TEAM_ABBR
 from app.services.weekly_projections import normalize_name
 
 logger = logging.getLogger(__name__)
@@ -29,10 +31,10 @@ _TTL_SECONDS = 3 * 3600
 ESPN_STAT_KEYS = {"3": "pass_yd", "24": "rush_yd", "25": "rush_td", "42": "rec_yd", "43": "rec_td", "53": "rec"}
 _SLOTS = [0, 2, 4, 6]  # QB, RB, WR, TE
 
-_cache: Dict[Tuple[int, int], Tuple[float, Dict[str, Dict[str, float]]]] = {}
+_cache: Dict[Tuple[int, int], Tuple[float, Dict[str, Dict[str, Any]]]] = {}
 
 
-async def fetch_espn_weekly_projections(season: int, week: int) -> Dict[str, Dict[str, float]]:
+async def fetch_espn_weekly_projections(season: int, week: int) -> Dict[str, Dict[str, Any]]:
     """{normalized player name: {sleeper stat key: projected value}} for the
     week. {} on any failure -- the board then runs without the cross-check."""
     key = (int(season), int(week))
@@ -59,15 +61,17 @@ async def fetch_espn_weekly_projections(season: int, week: int) -> Dict[str, Dic
     except (httpx.RequestError, httpx.HTTPStatusError, ValueError) as e:
         logger.warning("ESPN projections fetch failed: %s", type(e).__name__)
         return {}
-    out: Dict[str, Dict[str, float]] = {}
+    out: Dict[str, Dict[str, Any]] = {}
     for entry in players:
         player = entry.get("player") or {}
         for stat in player.get("stats") or []:
             if stat.get("statSourceId") == 1 and stat.get("scoringPeriodId") == int(week):
                 raw: Dict[str, Any] = stat.get("stats") or {}
-                out[normalize_name(player.get("fullName") or "")] = {
+                row: Dict[str, Any] = {
                     sleeper_key: float(raw[espn_id]) for espn_id, sleeper_key in ESPN_STAT_KEYS.items() if espn_id in raw
                 }
+                row["team"] = ESPN_PRO_TEAM_ABBR.get(player.get("proTeamId"))
+                out[normalize_name(player.get("fullName") or "")] = row
     if out:
         _cache[key] = (time.monotonic(), out)
     return out

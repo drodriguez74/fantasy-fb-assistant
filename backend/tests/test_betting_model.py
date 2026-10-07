@@ -182,3 +182,28 @@ def test_prizepicks_pairs_skip_legs_espn_disagrees_with():
                                                     "espn_prob": None, "espn_agrees": agrees}}
     out = prizepicks_pairs([prop("A", True), prop("B", None), prop("C", False)])
     assert [{l["player"] for l in r["legs"]} for r in out["pairs"]] == [{"A", "B"}]
+
+
+def test_hit_count_distribution_and_entry_ev():
+    dist = bm.hit_count_distribution([0.5, 0.5, 0.5])
+    assert np.allclose(dist, [0.125, 0.375, 0.375, 0.125])
+    # 3-pick Power at 6x with 55% legs is about break-even (0.55^3 * 6 = 0.998).
+    assert abs(bm.entry_ev(bm.hit_count_distribution([0.55] * 3), {3: 6.0})) < 0.01
+    # Positive same-game correlation raises P(all hit).
+    corr = np.array([[1, 0.4, 0], [0.4, 1, 0], [0, 0, 1.0]])
+    assert bm.hit_count_distribution([0.55] * 3, corr)[3] > 0.55 ** 3
+
+
+def test_prizepicks_entries_respect_rules():
+    from app.services.betting_service import prizepicks_entries
+
+    def leg(player, team, game, p):
+        return {"player": player, "team": team, "game": game, "market": "player_rush_yds", "market_label": "",
+                "side": "More", "line": 50.5, "p_win": p}
+    legs = [leg("A", "KC", "BUF @ KC", 0.6), leg("B", "KC", "BUF @ KC", 0.6), leg("C", "KC", "BUF @ KC", 0.6),
+            leg("D", "BUF", "BUF @ KC", 0.55), leg("E", "SF", "SF @ SEA", 0.55)]
+    entries = prizepicks_entries(legs)
+    assert entries and {e["size"] for e in entries} <= {2, 3, 4, 5}
+    for e in entries:
+        assert len({l["team"] for l in e["legs"]}) >= 2
+        assert len({l["player"] for l in e["legs"]}) == e["size"]

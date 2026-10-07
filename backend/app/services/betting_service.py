@@ -13,10 +13,13 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+import numpy as np
+
 from app.services import betting_model as bm
 from app.services.betting_tracking import record_board
 from app.services.espn_projections import fetch_espn_weekly_projections
 from app.services import prizepicks_board
+from app.services.espn_game_predictor import fetch_home_win_probs
 from app.services import odds_service
 from app.services.sleeper_service import sleeper_service
 from app.services.weekly_projections import fetch_weekly_projections, normalize_name
@@ -50,8 +53,9 @@ METHOD = (
     "the projection itself. Each week, projections for each stat are rescaled so the model agrees with the "
     "market on the typical prop -- edges come from players projected unusually far from their line. ESPN's "
     "projection must also favor the side over the market, or the bet gets no units. Blended 30/70 with the de-vigged consensus of DraftKings, FanDuel and Hard Rock "
-    "Bet. Game lines: simulations centered on the consensus spread and total, so they flag only books off "
-    "the market. Stakes are quarter-Kelly, capped at 3 units, and only when expected value is at least 3% "
+    "Bet. Game lines: projected scores from Sleeper's player projections (touchdowns and kicker points), "
+    "blended 30/70 with the consensus, with ESPN's matchup predictor and player projections as the cross-check. "
+    "Stakes are quarter-Kelly, capped at 3 units, and only when expected value is at least 3% "
     "and the model agrees with the side."
 )
 
@@ -200,6 +204,9 @@ def evaluate_player_prop(
     if outlier:
         candidates = [{**c, "units": 0.0, "confidence": "none"} for c in candidates]
     best = max(candidates, key=lambda c: c["ev"])
+    # Watch: positive EV that every source agrees with but too small to size.
+    best["watch"] = bool(best["units"] == 0 and best["ev"] > 0 and not outlier and best["model_agrees"]
+                         and best.get("espn_agrees") is not False)
     pp_line = offers.get("prizepicks")
     pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples)
               if pp_line is not None and market != "player_anytime_td" and not outlier else None)
@@ -374,6 +381,47 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
             "goblins": ranked("goblin"), "demons": ranked("demon")}
 
 
+def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, float]] = None,
+                       flex: Optional[Dict[int, Dict[int, float]]] = None, pool: int = 12,
+                       per_size: int = 3) -> List[Dict[str, Any]]:
+    """Best PrizePicks entries -- 3-6 pick Power (2-pick Power is the pairs
+    list) and 2-6 pick Flex -- from the most likely
+    legs. Rules: one pick per player and players from at least two teams.
+    Opposing players in the same game are simulated together (leg
+    correlation); everything else is independent."""
+    from itertools import combinations
+    power = power or bm.POWER_PAYOUTS
+    flex = flex or bm.FLEX_PAYOUTS
+    top = sorted(legs, key=lambda l: -l["p_win"])[:pool]
+    out: List[Dict[str, Any]] = []
+    for size in range(2, 7):
+        if size not in power and size not in flex:
+            continue
+        found: Dict[str, List[Dict[str, Any]]] = {"power": [], "flex": []}
+        for combo in combinations(top, size):
+            if len({l["player"] for l in combo}) < size or len({l.get("team") for l in combo}) < 2:
+                continue
+            corr = np.eye(size)
+            for i, a in enumerate(combo):
+                for j in range(i + 1, size):
+                    b = combo[j]
+                    if a.get("game") == b.get("game") and a.get("team") != b.get("team"):
+                        sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
+                        corr[i, j] = corr[j, i] = sign * bm.leg_correlation(a["market"], b["market"], True, False)
+            dist = bm.hit_count_distribution([l["p_win"] for l in combo], corr, "|".join(l["player"] for l in combo))
+            power_table = {size: power[size]} if size >= 3 and power.get(size) else None
+            for kind, table in (("power", power_table), ("flex", flex.get(size))):
+                if not table:
+                    continue
+                found[kind].append({"size": size, "type": kind, "ev": round(bm.entry_ev(dist, table), 4),
+                                    "p_all": round(float(dist[size]), 4), "payouts": table,
+                                    "p_paid": round(float(sum(dist[k] for k in table)), 4),
+                                    "legs": list(combo)})
+        for kind in ("power", "flex"):
+            out.extend(sorted(found[kind], key=lambda e: -e["ev"])[:per_size])
+    return out
+
+
 def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str, Any]:
     p = bm.blend(p_model, p_market)
     priced = bm.price_offer(p, price, p_push)
@@ -381,6 +429,7 @@ def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str,
     if p_model <= p_market:
         priced = {**priced, "units": 0.0, "confidence": "none"}
     return {
+        "model_agrees": p_model > p_market,
         "side": side,
         "line": point,
         "book": BOOK_LABELS.get(book, book),
@@ -395,8 +444,15 @@ def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str,
 # Game lines
 # ---------------------------------------------------------------------------
 
-def evaluate_game(game: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Best-priced side of the spread and the total for one game."""
+def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+    """Best-priced side of the spread and the total for one game.
+
+    `model` (optional): {"margin", "total"} -- the projected home margin and
+    total (Sleeper team points) -- plus "check_margin" (ESPN's matchup
+    predictor) and "check_total" (ESPN player projections). With a model the
+    win probability is blended 30/70 with the consensus and a side needs the
+    model and the check to favor it; without one, sims center on consensus
+    and only an off-market book's price can show an edge."""
     home, away = game.get("home_team"), game.get("away_team")
     spreads: List[Tuple[str, str, float, float]] = []   # (book, team, point, price)
     totals: List[Tuple[str, str, float, float]] = []    # (book, Over/Under, point, price)
@@ -411,22 +467,43 @@ def evaluate_game(game: Dict[str, Any]) -> List[Dict[str, Any]]:
     total_line = bm.median(pt for _, side, pt, _ in totals if side == "Over")
     if home_spread is None or total_line is None:
         return []
-    margin, total = bm.simulate_game(home_spread, total_line, f"{game.get('id')}|game")
+    seed = f"{game.get('id')}|game"
+    market = bm.simulate_game(home_spread, total_line, seed)
+    sims = {"model": None, "check": None}
+    if model and model.get("margin") is not None and model.get("total") is not None:
+        sims["model"] = bm.simulate_game(-model["margin"], model["total"], seed + "|model")
+        if model.get("check_margin") is not None or model.get("check_total") is not None:
+            sims["check"] = bm.simulate_game(-(model.get("check_margin") if model.get("check_margin") is not None else model["margin"]),
+                                             model.get("check_total") if model.get("check_total") is not None else model["total"],
+                                             seed + "|check")
     label = f"{_team(away) or away} @ {_team(home) or home}"
     out = []
+
+    def side_probs(sim, kind, name, point):
+        margin, total = sim
+        if kind == "spread":
+            diff = (margin if name == home else -margin) + point
+        else:
+            diff = (total - point) if name == "Over" else (point - total)
+        return float((diff > 0).mean()), float((diff == 0).mean())
 
     def best_of(rows, kind):
         cands = []
         for book, name, point, price in rows:
-            if kind == "spread":
-                diff = (margin if name == home else -margin) + point
-            else:
-                diff = (total - point) if name == "Over" else (point - total)
-            p_win, p_push = float((diff > 0).mean()), float((diff == 0).mean())
-            priced = bm.price_offer(p_win, price, p_push)
+            p_mkt, p_push = side_probs(market, kind, name, point)
+            p_mod = side_probs(sims["model"], kind, name, point)[0] if sims["model"] else None
+            p_check = side_probs(sims["check"], kind, name, point)[0] if sims["check"] else None
+            priced = bm.price_offer(bm.blend(p_mod, p_mkt), price, p_push)
+            agrees = p_mod is None or p_mod > p_mkt
+            check_ok = None if p_check is None else p_check > p_mkt
+            if not agrees or check_ok is False:
+                priced = {**priced, "units": 0.0, "confidence": "none"}
             side = (_team(name) or name) if kind == "spread" else name
             cands.append({"side": side, "line": point, "book": BOOK_LABELS.get(book, book), "price": int(price),
-                          "model_prob": round(p_win, 4), "market_prob": None, **priced})
+                          "model_prob": round(p_mod, 4) if p_mod is not None else None,
+                          "market_prob": round(p_mkt, 4), "check_prob": round(p_check, 4) if p_check is not None else None,
+                          "watch": bool(p_mod is not None and agrees and check_ok is not False and priced["ev"] > 0),
+                          **priced})
         return max(cands, key=lambda c: c["ev"]) if cands else None
 
     for kind, rows, consensus in (("spread", spreads, home_spread), ("total", totals, total_line)):
@@ -439,9 +516,106 @@ def evaluate_game(game: Dict[str, Any]) -> List[Dict[str, Any]]:
                 "market": kind,
                 "market_label": "Spread" if kind == "spread" else "Total",
                 "consensus_line": consensus,
+                # Model projections in the market's terms: home spread (negative =
+                # home favored) or total points.
+                "model_line": (round(-model["margin"], 1) if kind == "spread" else round(model["total"], 1)) if sims["model"] else None,
+                "check_line": ((round(-model["check_margin"], 1) if model.get("check_margin") is not None else None) if kind == "spread"
+                               else (round(model["check_total"], 1) if model.get("check_total") is not None else None)) if sims["model"] else None,
                 "books_quoting": len({r[0] for r in rows}),
                 **best,
             })
+    return out
+
+
+def game_combos(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Cover + over/under same-game parlays at the consensus spread and
+    total: the chance each combo hits and its fair (no-vig) odds. The Odds
+    API has no same-game-parlay prices, so these are for comparing with the
+    sportsbook's own SGP price -- value is a book paying more than fair."""
+    home, away = game.get("home_team"), game.get("away_team")
+    rows = [(m.get("key"), o) for b in game.get("bookmakers") or [] for m in b.get("markets") or []
+            for o in m.get("outcomes") or [] if o.get("point") is not None]
+    home_spread = bm.median(o["point"] for k, o in rows if k == "spreads" and o["name"] == home)
+    total_line = bm.median(o["point"] for k, o in rows if k == "totals" and o["name"] == "Over")
+    if home_spread is None or total_line is None:
+        return None
+    margin_mean, total_mean = -home_spread, total_line
+    if model and model.get("margin") is not None and model.get("total") is not None:
+        margin_mean = bm.blend(model["margin"], -home_spread)
+        total_mean = bm.blend(model["total"], total_line)
+    home_favored = home_spread < 0
+    rho = bm.COVER_TOTAL_RHO * (1 if home_favored else -1)
+    margin, total = bm.simulate_game_joint(margin_mean, total_mean, rho, f"{game.get('id')}|combo")
+    h, a = _team(home) or home, _team(away) or away
+    combos = []
+    for team, cover in ((h, margin + home_spread > 0), (a, -margin - home_spread > 0)):
+        team_line = home_spread if team == h else -home_spread
+        for side, hit in (("Over", total > total_line), ("Under", total < total_line)):
+            p = float((cover & hit).mean())
+            combos.append({"label": f"{team} {'+' if team_line > 0 else ''}{team_line:g} & {side} {total_line:g}",
+                           "team": team, "spread": team_line, "total_side": side, "total": total_line,
+                           "prob": round(p, 4), "fair_odds": bm.fair_american(p)})
+    combos.sort(key=lambda c: -c["prob"])
+    return {"game": f"{a} @ {h}", "kickoff": game.get("commence_time"), "favorite": h if home_favored else a,
+            "modeled": bool(model), "combos": combos}
+
+
+def _team_points(sleeper_rows: List[Dict[str, Any]], espn: Dict[str, Dict[str, Any]]) -> Tuple[Dict[str, float], Dict[str, float]]:
+    """Projected points per team: 6 x rushing/receiving TDs + kicker points.
+    Returns (Sleeper, ESPN) -- ESPN's projections here have no kickers, so
+    its version reuses Sleeper's kicker points."""
+    sleeper: Dict[str, float] = {}
+    kicker: Dict[str, float] = {}
+    for r in sleeper_rows:
+        st = r.get("stats") or {}
+        p = r.get("player") or {}
+        team = odds_service.normalize_team(r.get("team") or p.get("team"))
+        if not team:
+            continue
+        if p.get("position") in ("QB", "RB", "WR", "TE"):
+            sleeper[team] = sleeper.get(team, 0.0) + 6 * (float(st.get("rush_td") or 0) + float(st.get("rec_td") or 0))
+        elif p.get("position") == "K":
+            k = 3 * float(st.get("fgm") or 0) + float(st.get("xpm") or 0)
+            kicker[team] = kicker.get(team, 0.0) + k
+    espn_pts: Dict[str, float] = {}
+    for row in espn.values():
+        team = odds_service.normalize_team(row.get("team"))
+        if team:
+            espn_pts[team] = espn_pts.get(team, 0.0) + 6 * (float(row.get("rush_td") or 0) + float(row.get("rec_td") or 0))
+    for team, k in kicker.items():
+        sleeper[team] = sleeper.get(team, 0.0) + k
+        if team in espn_pts:
+            espn_pts[team] += k
+    return sleeper, espn_pts
+
+
+def game_models(games: List[Dict[str, Any]], sleeper_pts: Dict[str, float], espn_pts: Dict[str, float],
+                win_probs: Dict[str, float]) -> Dict[str, Dict[str, Any]]:
+    """Per game id: projected home margin / total (Sleeper), and the ESPN
+    checks. Totals are centered so the slate's median model total matches
+    the market's (same idea as betting_model.fit_projection_scale)."""
+    def consensus_total(g):
+        return _consensus_total(g)
+
+    raw = {}
+    for g in games:
+        h, a = _team(g.get("home_team")), _team(g.get("away_team"))
+        if h in sleeper_pts and a in sleeper_pts:
+            raw[g["id"]] = (g, h, a)
+    ratios = [(sleeper_pts[h] + sleeper_pts[a]) / consensus_total(g)
+              for g, h, a in raw.values() if consensus_total(g)]
+    espn_ratios = [(espn_pts[h] + espn_pts[a]) / consensus_total(g)
+                   for g, h, a in raw.values() if consensus_total(g) and h in espn_pts and a in espn_pts]
+    scale = 1 / bm.median(ratios) if len(ratios) >= bm.CENTERING_MIN_PROPS else 1.0
+    espn_scale = 1 / bm.median(espn_ratios) if len(espn_ratios) >= bm.CENTERING_MIN_PROPS else 1.0
+    out = {}
+    for gid, (g, h, a) in raw.items():
+        out[gid] = {
+            "margin": (sleeper_pts[h] - sleeper_pts[a]) * scale,
+            "total": (sleeper_pts[h] + sleeper_pts[a]) * scale,
+            "check_margin": bm.margin_from_win_prob(win_probs[h]) if h in win_probs else None,
+            "check_total": (espn_pts[h] + espn_pts[a]) * espn_scale if h in espn_pts and a in espn_pts else None,
+        }
     return out
 
 
@@ -476,8 +650,9 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     if not games or not week:
         return {"available": False, "detail": "No NFL lines available right now.", "disclaimer": DISCLAIMER}
 
-    rows, espn = await asyncio.gather(fetch_weekly_projections(season, int(week)),
-                                      fetch_espn_weekly_projections(season, int(week)))
+    rows, espn, win_probs = await asyncio.gather(fetch_weekly_projections(season, int(week)),
+                                                 fetch_espn_weekly_projections(season, int(week)),
+                                                 fetch_home_win_probs(season, int(week)))
     projections = _projection_index(rows)
 
     sem = asyncio.Semaphore(_PROP_CONCURRENCY)
@@ -547,17 +722,22 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
             rec.update(game=label, kickoff=g.get("commence_time"), team=team, home=home, away=away)
             player_props.append(rec)
 
+    sleeper_pts, espn_pts = _team_points(rows, espn)
+    models = game_models(games, sleeper_pts, espn_pts, win_probs)
     game_props = [
         {**rec, "home": _team(g.get("home_team")), "away": _team(g.get("away_team"))}
-        for g in games for rec in evaluate_game(g)
+        for g in games for rec in evaluate_game(g, models.get(g["id"]))
     ]
+    combos = [c for g in games for c in [game_combos(g, models.get(g["id"]))] if c]
     try:
         await asyncio.to_thread(record_board, season, int(week), player_props + game_props)
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
         logger.warning("Recording betting board failed: %s", e)
 
     def ranked(recs):
-        return sorted(recs, key=lambda r: (-r["units"], -r["ev"]))
+        # Bets first, then the watch list, then the rest; stale-projection
+        # rows last -- their "EV" is the stale projection talking.
+        return sorted(recs, key=lambda r: (-r["units"], not r.get("watch"), bool(r.get("projection_outlier")), -r["ev"]))
 
     board = {
         "available": True,
@@ -572,6 +752,8 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
                        if uploaded else {**prizepicks_pairs(player_props), "source": "odds_api"}),
         "projection_scale": scales,
         "espn_projection_scale": espn_scales,
+        "game_combos": combos,
+        "watch_count": sum(1 for r in player_props + game_props if r.get("watch")),
         "recommended_count": sum(1 for r in player_props + game_props if r["units"] > 0),
         "evaluated": {"player_props": len(player_props), "games": len(games), "props_without_projection": unmatched},
         "games_without_props": games_without_props,

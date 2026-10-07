@@ -4,6 +4,16 @@ import asyncio
 from datetime import datetime
 from app.core.config import settings
 
+# ESPN's numeric proTeamId -> team abbreviation.
+ESPN_PRO_TEAM_ABBR = {
+    1: "ATL", 2: "BUF", 3: "CHI", 4: "CIN", 5: "CLE", 6: "DAL",
+    7: "DEN", 8: "DET", 9: "GB", 10: "TEN", 11: "IND", 12: "KC",
+    13: "LV", 14: "LAR", 15: "MIA", 16: "MIN", 17: "NE", 18: "NO",
+    19: "NYG", 20: "NYJ", 21: "PHI", 22: "ARI", 23: "PIT", 24: "LAC",
+    25: "SF", 26: "SEA", 27: "TB", 28: "WAS", 29: "CAR", 30: "JAX",
+    33: "BAL", 34: "HOU",
+}
+
 
 class ESPNFantasyService:
     def __init__(self):
@@ -218,16 +228,7 @@ class ESPNFantasyService:
 
     def _get_team_name(self, team_id: int) -> str:
         """Convert ESPN team ID to team abbreviation"""
-        # This is a simplified mapping - ESPN uses numeric team IDs
-        team_map = {
-            1: "ATL", 2: "BUF", 3: "CHI", 4: "CIN", 5: "CLE", 6: "DAL", 
-            7: "DEN", 8: "DET", 9: "GB", 10: "TEN", 11: "IND", 12: "KC", 
-            13: "LV", 14: "LAR", 15: "MIA", 16: "MIN", 17: "NE", 18: "NO", 
-            19: "NYG", 20: "NYJ", 21: "PHI", 22: "ARI", 23: "PIT", 24: "LAC", 
-            25: "SF", 26: "SEA", 27: "TB", 28: "WAS", 29: "CAR", 30: "JAX", 
-            33: "BAL", 34: "HOU"
-        }
-        return team_map.get(team_id, "FA")
+        return ESPN_PRO_TEAM_ABBR.get(team_id, "FA")
 
     def _get_projected_points(self, player: Dict[str, Any]) -> float:
         """Extract projected points from player data"""

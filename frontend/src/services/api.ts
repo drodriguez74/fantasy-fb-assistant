@@ -270,6 +270,9 @@ export const betting = {
   getResults: () => api.get('/betting/results'),
   // Today's saved PrizePicks board (api.prizepicks.com/projections?league_id=9,
   // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
+  // Best 3-6 pick Power/Flex entries; payouts default to PrizePicks' standard ones.
+  getPrizePicksEntries: (payouts: { power?: Record<string, number>; flex?: Record<string, Record<string, number>> }) =>
+    api.post('/betting/prizepicks-entries', payouts),
   uploadPrizePicksBoard: (file: File) => {
     const form = new FormData()
     form.append('file', file)

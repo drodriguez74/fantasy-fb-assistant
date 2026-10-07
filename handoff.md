@@ -1,3 +1,26 @@
+# Handoff (2026-10-07, session 19 cont.) — watch tier, game model, combos, 3-6 pick entries
+
+**Status:** built and tested (208 pass, frontend build + lint clean), not committed. Not visually
+checked in a browser (local login needs the founder).
+
+- **Props watch tier:** positive-EV props that every source agrees with but that are under the 3% bar get no units.
+  Week 5: 0 bets, 9 watch.
+- **Game lines are now modeled** (Sleeper team points vs consensus; ESPN FPI and ESPN projections as
+  checks). Week 5: **MIN @ NO Over 42 (1u)** (model 46.4, ESPN 44.1), **BUF @ LAR Under 54.5 (0.5u)**,
+  plus 5 game watch plays.
+- **Cover + over/under combos** per game: probability + fair odds (compare with the book's SGP price).
+- **PrizePicks 3-6 pick Power/Flex entries** with editable payouts (localStorage). Week 5 at standard
+  payouts: best 3-pick Power +4.4%, 5-pick Flex +4.8%, 6-pick Flex +8.5%. **Depends on payouts**: the
+  founder (Florida) couldn't see multipliers; they show as "$1 to pay $X" on a built lineup.
+
+**Payout data (Florida):** 2-pick Power = 3x all-standard; one goblin made it 2.6x. Founder nearly
+played two stale-projection rows (Davis Less 10.5 + Gainwell goblin More 9.5, ~23% to hit vs 38.5%
+needed). "Show everything" now sorts stale rows last and dims them.
+**Next:** confirm Florida payouts; grade game-line picks once the week settles; fit COVER_TOTAL_RHO and
+LEG_CORRELATION from results.
+
+---
+
 # Handoff (2026-10-06, session 19 cont.) — PrizePicks full-board upload
 
 **Status:** built and tested (206 pass, frontend build + lint clean), not committed yet.

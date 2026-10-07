@@ -2,9 +2,9 @@
 betting_service (Monte Carlo + de-vigged market, quarter-Kelly units)."""
 import asyncio
 import json
-from typing import Optional
+from typing import Dict, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
@@ -65,3 +65,25 @@ async def upload_prizepicks_board(
     stored = await prizepicks_board.save(parsed)
     betting_service._board_cache.clear()  # reprice on the next board request
     return {"lines": len(parsed["lines"]), "total_projections": parsed["total"], "uploaded_at": stored["uploaded_at"]}
+
+
+@router.post("/prizepicks-entries")
+async def get_prizepicks_entries(
+    power: Optional[Dict[str, float]] = Body(None, description='Power Play payouts by size, e.g. {"3": 6}'),
+    flex: Optional[Dict[str, Dict[str, float]]] = Body(None, description='Flex payouts, e.g. {"5": {"5": 10, "4": 2, "3": 0.4}}'),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Best 3-6 pick PrizePicks Power and Flex entries from this week's
+    board legs, priced with the given payouts (defaults: PrizePicks'
+    standard published multipliers -- they vary by state)."""
+    board = await build_board()
+    legs = (board.get("prizepicks") or {}).get("legs") or []
+    try:
+        power_table = {int(k): float(v) for k, v in power.items() if float(v) > 0} if power else None
+        flex_table = ({int(k): {int(h): float(m) for h, m in tiers.items() if float(m) > 0} for k, tiers in flex.items()}
+                      if flex else None)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Payouts must be numbers keyed by pick count.")
+    entries = await asyncio.to_thread(betting_service.prizepicks_entries, legs, power_table, flex_table)
+    return {"entries": entries, "legs_considered": min(len(legs), 12),
+            "default_power": betting_service.bm.POWER_PAYOUTS, "default_flex": betting_service.bm.FLEX_PAYOUTS}

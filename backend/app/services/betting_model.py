@@ -205,6 +205,48 @@ def td_fair_prob(implied_p: float, rate_scale: Optional[float]) -> float:
     return float(1 - np.exp(-td_rate(implied_p) * scale))
 
 
+# PrizePicks multi-pick entries. Payouts are PrizePicks' standard published
+# multipliers for all-standard lineups; they vary by state and change over
+# time, so the page lets the user override them. Flex maps hits -> payout.
+POWER_PAYOUTS = {2: 3.0, 3: 6.0, 4: 10.0, 5: 20.0, 6: 37.5}  # 2-pick 3x confirmed (Florida)
+FLEX_PAYOUTS = {
+    2: {2: 2.0, 1: 0.5},   # confirmed in the founder's Florida app, 2026-10-07
+    3: {3: 3.0, 2: 1.0},
+    4: {4: 6.0, 3: 1.5},
+    5: {5: 10.0, 4: 2.0, 3: 0.4},
+    6: {6: 25.0, 5: 2.0, 4: 0.4},
+}
+ENTRY_SIMS = 20_000
+
+
+def hit_count_distribution(probs: List[float], corr: Optional[np.ndarray] = None, seed_text: str = "entry") -> np.ndarray:
+    """P(exactly k legs hit), k = 0..n. Exact (Poisson-binomial) for
+    unrelated legs; a Gaussian-copula simulation when `corr` has same-game
+    correlations."""
+    n = len(probs)
+    if corr is None or not np.any(corr[~np.eye(n, dtype=bool)]):
+        dist = np.zeros(n + 1)
+        dist[0] = 1.0
+        for p in probs:
+            dist[1:] = dist[1:] * (1 - p) + dist[:-1] * p
+            dist[0] *= 1 - p
+        return dist
+    from statistics import NormalDist
+    try:
+        chol = np.linalg.cholesky(corr)
+    except np.linalg.LinAlgError:
+        return hit_count_distribution(probs, None)
+    z = _rng(seed_text).standard_normal((ENTRY_SIMS, n)) @ chol.T
+    thresholds = np.array([NormalDist().inv_cdf(min(max(p, 1e-6), 1 - 1e-6)) for p in probs])
+    hits = (z < thresholds).sum(axis=1)
+    return np.bincount(hits, minlength=n + 1) / ENTRY_SIMS
+
+
+def entry_ev(dist: np.ndarray, payouts: Dict[int, float]) -> float:
+    """Expected profit per $1 for an entry paying payouts[hits]."""
+    return float(sum(dist[k] * m for k, m in payouts.items() if k < len(dist)) - 1)
+
+
 # ---------------------------------------------------------------------------
 # Slate centering
 # ---------------------------------------------------------------------------
@@ -248,6 +290,43 @@ def fit_projection_scale(market: str, pairs: List[Tuple[float, float]]) -> float
         else:
             hi = mid
     return round((lo + hi) / 2, 3)
+
+
+# ---------------------------------------------------------------------------
+# Game model (spreads, totals, cover + total combos)
+# ---------------------------------------------------------------------------
+# Independent views of each game, blended with the consensus like props:
+# - margin: projected team points from Sleeper's player projections
+#   (6 x rushing/receiving TDs + kicker points), cross-checked by ESPN's
+#   matchup predictor (its win probability converted to a margin);
+# - total: the same Sleeper team points, cross-checked by ESPN's player
+#   projections. On the week-5 slate Sleeper's totals tracked the market at
+#   0.93 correlation (margins 0.97) yet differed by up to 4 points.
+# A favorite that covers usually means more points, so the favorite's margin
+# and the total are drawn with correlation COVER_TOTAL_RHO for combos.
+COVER_TOTAL_RHO = 0.15
+
+
+def margin_from_win_prob(p_home: float) -> float:
+    """Expected home margin implied by a win probability (normal margin)."""
+    from statistics import NormalDist
+    return float(NormalDist().inv_cdf(min(max(p_home, 0.01), 0.99)) * SPREAD_SD)
+
+
+def simulate_game_joint(home_margin: float, total: float, rho: float, seed_text: str, n: int = N_SIMS):
+    """(home margin, total) draws with correlation rho, rounded to whole
+    points (key-number pushes)."""
+    rng = _rng(seed_text)
+    z1 = rng.standard_normal(n)
+    z2 = rho * z1 + np.sqrt(1 - rho * rho) * rng.standard_normal(n)
+    return np.round(home_margin + SPREAD_SD * z1), np.round(total + TOTAL_SD * z2)
+
+
+def fair_american(p: float) -> Optional[int]:
+    """American odds with no vig for probability p."""
+    if not 0 < p < 1:
+        return None
+    return int(round(-100 * p / (1 - p))) if p >= 0.5 else int(round(100 * (1 - p) / p))
 
 
 # ---------------------------------------------------------------------------
