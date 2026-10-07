@@ -58,6 +58,16 @@ UNIT_STEP = 0.5
 # they can be judged separately from real bets.
 MIN_CARD_PICKS = 3
 FILL_UNITS = 0.5
+# "Most likely to win": PrizePicks picks whose calibrated win chance is at
+# least MOST_LIKELY_MIN. That clears the per-pick break-even of a 2-pick
+# Power at 3x (57.7%) and with one goblin at 2.6x (62%). Standard sportsbook
+# lines at ~-110 can't get there; goblins (lowered lines) can. The 2025
+# backtest showed these high-probability estimates are well calibrated
+# (P(at least half the projection): model vs real 69.2/67.8% rec yds,
+# 74.9/76.3% rush, 90.7/92.1% pass). Tracked (kind "pp_leg") and checked
+# predicted vs actual in Results.
+MOST_LIKELY_MIN = 0.70
+MOST_LIKELY_COUNT = 5
 # Anytime TD is quoted "Yes" only, so it can't be de-vigged pairwise. Summed
 # over a full game, the books' Yes prices imply ~5.5-7.5 rushing/receiving
 # TDs where ~4-5 actually happen: the hold is ~30-40%, not a few percent,

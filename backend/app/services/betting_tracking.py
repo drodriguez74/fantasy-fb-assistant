@@ -34,6 +34,7 @@ _SLEEPER_STATS_URL = "https://api.sleeper.app/stats/nfl/{season}/{week}"
 _ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
 _ESPN_CFB_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
 GAME_KINDS = ("game", "cfb_game")  # NFL / college game lines (same win/loss math)
+PROP_KINDS = ("player_prop", "pp_leg")  # graded from Sleeper stats; pp_leg = a tracked "most likely" PrizePicks pick
 # A game is gradeable once it has surely ended and stats have landed.
 _GRADE_AFTER = timedelta(hours=5)
 
@@ -57,8 +58,26 @@ def _parse_time(value: Optional[str]) -> Optional[datetime]:
         return None
 
 
+def _pp_leg_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
+    """A "most likely to win" PrizePicks pick: tracked for calibration only
+    (no units, no price -- PrizePicks pays per entry, not per pick)."""
+    return {
+        "season": season, "week": week, "kind": "pp_leg", "subject": r["player"], "team": r.get("team"),
+        "game": r.get("game") or "", "home": r.get("home"), "away": r.get("away"),
+        "kickoff": _parse_time(r.get("kickoff")), "market": r["market"],
+        # Over/Under so prop_outcome grades it like any prop.
+        "side": "Over" if r["side"] == "More" else "Under", "line": r.get("line"),
+        "book": f"PrizePicks {r.get('odds_type', 'standard')}", "price": 0, "units": 0.0,
+        "confidence": "likely", "recommended": False, "ev": 0.0, "p_win": float(r["p_win"]), "p_push": 0.0,
+        "model_prob": r.get("model_prob"), "market_prob": r.get("market_prob"),
+        "projection": None, "espn_projection": None,
+    }
+
+
 def _row_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
     kind = r["type"]
+    if kind == "pp_leg":
+        return _pp_leg_values(season, week, r)
     return {
         "season": season,
         "week": week,
@@ -149,6 +168,8 @@ def game_outcome(market: str, side: str, line: float, home: str, home_score: flo
 
 
 def profit(outcome: str, units: float, price: int) -> float:
+    if not units:
+        return 0.0  # tracked-only lines (no bet; pp_leg rows carry no price)
     if outcome == "won":
         return round(units * (bm.american_to_decimal(price) - 1), 3)
     if outcome == "lost":
@@ -235,7 +256,7 @@ async def grade_pending(now: Optional[datetime] = None) -> int:
             college = [p for p in picks if p.kind == "cfb_game"]
             try:
                 finals = await _espn_finals(season, week) if len(college) < len(picks) else {}
-                stats = await _sleeper_stats(season, week) if any(p.kind == "player_prop" for p in picks) else {}
+                stats = await _sleeper_stats(season, week) if any(p.kind in PROP_KINDS for p in picks) else {}
                 cfb_finals = await _espn_cfb_finals(p.kickoff for p in college) if college else {}
             except (httpx.HTTPError, ValueError) as e:
                 logger.warning("Grading week %s/%s skipped: %s", season, week, e)
@@ -289,6 +310,15 @@ def _record(picks: List[BetPick]) -> Dict[str, Any]:
     }
 
 
+def _hit_check(picks: List[BetPick]) -> Dict[str, Any]:
+    decided = [p for p in picks if p.status in ("won", "lost")]
+    return {
+        "picks": len(picks), "decided": len(decided), "pending": sum(p.status == "pending" for p in picks),
+        "predicted": round(sum(p.p_win for p in decided) / len(decided), 4) if decided else None,
+        "actual": round(sum(p.status == "won" for p in decided) / len(decided), 4) if decided else None,
+    }
+
+
 def _brier(pairs: List[Tuple[float, int]]) -> Optional[float]:
     return round(sum((p - y) ** 2 for p, y in pairs) / len(pairs), 4) if pairs else None
 
@@ -333,7 +363,7 @@ def _pick_out(p: BetPick) -> Dict[str, Any]:
 
 
 # Which pick kinds each sport's Results view covers.
-SPORT_KINDS = {"nfl": ("player_prop", "game"), "cfb": ("cfb_game",)}
+SPORT_KINDS = {"nfl": ("player_prop", "game", "pp_leg"), "cfb": ("cfb_game",)}
 
 
 def summarize(season: Optional[int] = None, sport: Optional[str] = None) -> Dict[str, Any]:
@@ -362,7 +392,10 @@ def summarize(season: Optional[int] = None, sport: Optional[str] = None) -> Dict
         "by_confidence": {k: _record(v) for k, v in split(lambda p: p.confidence).items()},
         "by_market": {k: _record(v) for k, v in split(lambda p: p.market).items()},
         "by_week": [{"season": s, "week": w, **_record(v)} for (s, w), v in sorted(by_week.items(), reverse=True)],
-        "calibration": calibration(picks),
+        "calibration": calibration([p for p in picks if p.kind != "pp_leg"]),
+        # "Most likely to win" picks: does a 75% call win ~75% of the time?
+        "most_likely": {**_hit_check([p for p in picks if p.kind == "pp_leg"]),
+                        "calibration": calibration([p for p in picks if p.kind == "pp_leg"])["buckets"]},
         "lines_tracked": len(picks),
         "picks": [_pick_out(p) for p in sorted(recs, key=lambda p: (p.season, p.week, p.units), reverse=True)],
     }

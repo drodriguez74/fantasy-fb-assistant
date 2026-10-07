@@ -48,6 +48,15 @@ interface Results {
   }
   lines_tracked: number
   picks: TrackedPick[]
+  // "Most likely to win" PrizePicks picks: predicted vs actual hit rate.
+  most_likely?: {
+    picks: number
+    decided: number
+    pending: number
+    predicted: number | null
+    actual: number | null
+    calibration: { range: string; n: number; predicted: number; actual: number }[]
+  }
 }
 
 const MARKET_LABELS: Record<string, string> = {
@@ -212,6 +221,18 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
           rows={Object.entries(data.by_market).map(([k, v]) => [MARKET_LABELS[k] ?? k, v])}
         />
         <SplitTable title="By week" rows={data.by_week.map((w) => [`Week ${w.week}`, w])} />
+
+        {data.most_likely && data.most_likely.picks > 0 && (
+          <div className="bg-surface rounded-lg border border-hairline p-4">
+            <h3 className="text-sm font-medium text-body mb-1">Most likely to win</h3>
+            <p className="text-xs text-muted">
+              {data.most_likely.decided === 0
+                ? `${data.most_likely.picks} picks tracked, none graded yet.`
+                : `${data.most_likely.decided} graded: we said ${Math.round((data.most_likely.predicted ?? 0) * 100)}% on average, they hit ${Math.round((data.most_likely.actual ?? 0) * 100)}%.`}
+              {data.most_likely.pending ? ` ${data.most_likely.pending} pending.` : ''}
+            </p>
+          </div>
+        )}
 
         <div className="bg-surface rounded-lg border border-hairline p-4">
           <h3 className="text-sm font-medium text-body mb-1">Calibration</h3>

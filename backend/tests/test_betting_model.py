@@ -312,3 +312,31 @@ def test_card_is_filled_to_three_picks():
     assert {r["player"] for r in recs if r.get("card_fill")} == {"Kept", "Watch", "Best"}
     # Enough real bets: nothing is filled.
     assert fill_card([rec(f"B{i}", 0.05, 1.0) for i in range(3)]) == 0
+
+
+def test_most_likely_picks_and_safest_pair():
+    from app.services.betting_service import most_likely
+
+    def row(player, team, game, p, odds_type="goblin", espn=None, market="player_rush_yds"):
+        return {"player": player, "team": team, "game": game, "market": market, "market_label": "x",
+                "odds_type": odds_type, "prizepicks": {"side": "More", "line": 30.5, "p_win": p, "espn_agrees": espn}}
+    engine_against = row("F", "GB", "GB @ CHI", 0.85)
+    engine_against["prizepicks"].update(model_prob=0.80, market_prob=0.87)
+    out = most_likely([row("A", "KC", "BUF @ KC", 0.82), row("A", "KC", "BUF @ KC", 0.71, "standard"),
+                       row("B", "KC", "BUF @ KC", 0.80), row("C", "SF", "SF @ SEA", 0.76),
+                       row("D", "DAL", "TB @ DAL", 0.90, espn=False), row("E", "NYJ", "NYJ @ CLE", 0.65),
+                       engine_against])
+    # >=70%, engine backs it, ESPN not against, one line per player
+    assert [p["player"] for p in out["picks"]] == ["A", "B", "C"]
+    assert out["picks"][0]["p_win"] == 0.82
+    assert set(out["safest_pair"]["legs"]) == {"A", "C"}             # A+B are teammates: not allowed
+    assert abs(out["safest_pair"]["p_both"] - 0.82 * 0.76) < 1e-6
+
+
+def test_pp_leg_rows_track_without_price():
+    from app.services.betting_tracking import _row_values, profit
+    v = _row_values(2026, 5, {"type": "pp_leg", "player": "A", "team": "KC", "game": "BUF @ KC", "home": "KC",
+                              "away": "BUF", "kickoff": "2026-10-11T17:00:00Z", "market": "player_rush_yds",
+                              "side": "More", "line": 30.5, "p_win": 0.8, "odds_type": "goblin"})
+    assert v["side"] == "Over" and v["kind"] == "pp_leg" and not v["recommended"] and v["confidence"] == "likely"
+    assert profit("won", v["units"], v["price"]) == 0.0

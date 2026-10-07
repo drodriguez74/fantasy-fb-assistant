@@ -2,7 +2,7 @@
 // game lines and PrizePicks, in kickoff order -- what a bettor opens the page
 // for. Everything else on the page is the evidence behind it.
 import { useState } from 'react'
-import { type Board, type BoardRow, SIZE_LABEL, dollars, kickoffLabel, odds } from './betTypes'
+import { type Board, type BoardRow, type MostLikely, SIZE_LABEL, dollars, kickoffLabel, odds } from './betTypes'
 import { rankEntries, type EntriesState } from './prizePicksEntriesData'
 
 function pickLabel(row: BoardRow): string {
@@ -14,6 +14,66 @@ function pickLabel(row: BoardRow): string {
     return `${row.side} ${row.line > 0 ? `+${row.line}` : row.line === 0 ? 'PK' : row.line}`
   }
   return `${row.game} ${row.side} ${row.line}`
+}
+
+const whole = (p: number) => `${Math.round(p * 100)}%`
+
+// The PrizePicks picks most likely to win: calibrated win chance first, then
+// what moved it there -- the books' chance, our engine's edge over it, ESPN.
+function MostLikelySection({ data, onOpen }: { data: MostLikely; onOpen: () => void }) {
+  return (
+    <div className="mt-5">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 className="font-display font-bold uppercase tracking-tight text-sm text-body">Most likely to win</h3>
+        <button onClick={onOpen} className="text-[11px] text-accent-ink underline">
+          PrizePicks tab
+        </button>
+      </div>
+      {data.picks.length === 0 ? (
+        <p className="text-xs text-muted mt-1">
+          No PrizePicks pick reaches {whole(data.min_p_win)} with our engine behind it right now. Upload today's board to
+          include goblins.
+        </p>
+      ) : (
+        <>
+          <ul className="mt-2 divide-y divide-hairline">
+            {data.picks.map((p) => (
+              <li key={`${p.player}-${p.market}`} className="py-2.5 flex items-center gap-3">
+                <div className="w-14 shrink-0 text-center">
+                  <div className="stat-nums text-base font-bold text-body leading-none">{whole(p.p_win)}</div>
+                  <div className="stat-nums text-[9px] uppercase tracking-wider text-faint mt-0.5">to win</div>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-body font-medium truncate">
+                    {p.player} {p.side} {p.line} {(p.market_label ?? '').toLowerCase()}
+                    {p.odds_type === 'goblin' && <span className="ml-1.5 text-[10px] uppercase text-success-700">Goblin</span>}
+                  </p>
+                  <p className="stat-nums text-[11px] text-muted">
+                    {p.market_prob != null && `Books ${whole(p.market_prob)}`}
+                    {p.engine_edge != null && p.engine_edge > 0 && ` · engine +${(p.engine_edge * 100).toFixed(1)} pts`}
+                    {p.espn_agrees === true && ' · ESPN agrees'}
+                    {p.game && ` · ${p.game}`}
+                    {kickoffLabel(p.kickoff) && ` · ${kickoffLabel(p.kickoff)}`}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {data.safest_pair && (
+            <p className="text-xs text-body mt-1">
+              <span className="font-medium">Safest 2-pick:</span> {data.safest_pair.legs.join(' + ')},{' '}
+              <span className="stat-nums">{whole(data.safest_pair.p_both)}</span> both hit. Check the payout PrizePicks
+              shows for goblins.
+            </p>
+          )}
+          <p className="text-[11px] text-faint mt-1 leading-relaxed">
+            Win chance is 70% books, 30% our engine; a pick is listed only if the engine backs it. Results tracks
+            predicted vs actual for these picks.
+          </p>
+        </>
+      )}
+    </div>
+  )
 }
 
 function BankrollInput({ bankroll, onChange }: { bankroll: number | null; onChange: (v: number | null) => void }) {
@@ -67,6 +127,7 @@ export function ThisWeekCard({
           <h2 id="this-week-card" className="font-display font-bold uppercase tracking-tight text-xl text-body">
             This week's card
           </h2>
+          <p className="text-[11px] uppercase tracking-wider text-faint mt-1">Best value</p>
           <p className="text-xs text-muted mt-0.5">
             {bets.length === 0
               ? 'No lines available right now.'
@@ -127,6 +188,8 @@ export function ThisWeekCard({
           </p>
         </button>
       )}
+
+      {board.most_likely && <MostLikelySection data={board.most_likely} onOpen={() => onOpen('prizepicks')} />}
 
       {!bankroll && bets.length > 0 && (
         <p className="text-[11px] text-faint mt-3">Enter your bankroll to see each bet in dollars (1u = 1% of bankroll).</p>

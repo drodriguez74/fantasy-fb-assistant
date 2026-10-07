@@ -378,6 +378,7 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
         if outlier:
             continue  # stale projection: don't rank it
         priced.append({"player": player, "team": team, "game": label, "kickoff": g.get("commence_time"),
+                       "home": home, "away": away,
                        "market": market, "market_label": MARKET_LABELS[market], "projection": round(mean, 2),
                        "espn_projection": round(espn_mean, 2) if espn_mean else None,
                        "odds_type": line.get("odds_type", "standard"), "prizepicks": leg})
@@ -391,7 +392,46 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
 
     return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
             "lines_priced": len(priced), "lines_unmatched": unmatched,
-            "goblins": ranked("goblin"), "demons": ranked("demon")}
+            "goblins": ranked("goblin"), "demons": ranked("demon"),
+            "most_likely": most_likely([p for p in priced if p["odds_type"] != "demon"])}
+
+
+def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The PrizePicks picks most likely to win: calibrated win chance >=
+    MOST_LIKELY_MIN, backed by our engine (its chance >= the books') and not
+    contradicted by ESPN, one pick per player (its likeliest line), best
+    first. `engine_edge` is how far the blended chance sits above the books'. Plus the safest 2-pick from two teams (P(both),
+    same-game correlation included). rows: {player, team, game, kickoff,
+    home, away, market, market_label, odds_type, prizepicks: leg}. Stale
+    projections are already left out by the callers."""
+    best: Dict[str, Dict[str, Any]] = {}
+    for r in rows:
+        leg = r.get("prizepicks") or {}
+        if leg.get("p_win", 0) < bm.MOST_LIKELY_MIN or leg.get("espn_agrees") is False:
+            continue
+        model, books = leg.get("model_prob"), leg.get("market_prob")
+        if model is not None and books is not None and model < books:
+            continue  # the engine doesn't back it: the books alone aren't an edge
+        pick = {"player": r["player"], "team": r.get("team"), "game": r.get("game"), "kickoff": r.get("kickoff"),
+                "home": r.get("home"), "away": r.get("away"), "market": r["market"],
+                "market_label": r.get("market_label"), "odds_type": r.get("odds_type", "standard"),
+                "side": leg["side"], "line": leg["line"], "p_win": leg["p_win"],
+                "market_prob": books, "model_prob": model, "espn_agrees": leg.get("espn_agrees"),
+                "engine_edge": round(leg["p_win"] - books, 4) if books is not None else None}
+        if r["player"] not in best or pick["p_win"] > best[r["player"]]["p_win"]:
+            best[r["player"]] = pick
+    picks = sorted(best.values(), key=lambda p: -p["p_win"])[:bm.MOST_LIKELY_COUNT]
+    pair = None
+    for i, a in enumerate(picks):
+        for b in picks[i + 1:]:
+            if not a.get("team") or a.get("team") == b.get("team"):
+                continue  # PrizePicks needs two teams
+            sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
+            rho = sign * bm.leg_correlation(a["market"], b["market"], a.get("game") == b.get("game"), False)
+            joint = bm.joint_prob(a["p_win"], b["p_win"], rho)
+            if pair is None or joint > pair["p_both"]:
+                pair = {"legs": [a["player"], b["player"]], "p_both": round(joint, 4)}
+    return {"min_p_win": bm.MOST_LIKELY_MIN, "picks": picks, "safest_pair": pair}
 
 
 def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, float]] = None,
@@ -811,6 +851,16 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
         logger.warning("Recording betting board failed: %s", e)
 
+    prizepicks = (price_uploaded_board(uploaded, matched, int(week), scales, td_scales, espn_means, espn_scales)
+                  if uploaded else {**prizepicks_pairs(player_props), "source": "odds_api",
+                                    "most_likely": most_likely([{**p, "odds_type": "standard"} for p in player_props
+                                                                if p.get("prizepicks") and not p.get("projection_outlier")])})
+    try:
+        await asyncio.to_thread(record_board, season, int(week), [{**p, "type": "pp_leg"}
+                                                                   for p in prizepicks["most_likely"]["picks"]])
+    except Exception as e:  # noqa: BLE001 - tracking must never break the board
+        logger.warning("Recording most-likely picks failed: %s", e)
+
     def ranked(recs):
         # Bets first, then the watch list, then the rest; stale-projection
         # rows last -- their "EV" is the stale projection talking.
@@ -825,8 +875,8 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
         "game_props": ranked(game_props),
         # The uploaded PrizePicks board when there's a recent one, else the
         # Odds API's PrizePicks standard lines.
-        "prizepicks": (price_uploaded_board(uploaded, matched, int(week), scales, td_scales, espn_means, espn_scales)
-                       if uploaded else {**prizepicks_pairs(player_props), "source": "odds_api"}),
+        "prizepicks": prizepicks,
+        "most_likely": prizepicks["most_likely"],
         "projection_scale": scales,
         "espn_projection_scale": espn_scales,
         "game_combos": combos,

@@ -48,6 +48,30 @@ export interface BoardRow {
   check_line?: number | null
 }
 
+// A PrizePicks pick with a calibrated win chance of 70%+ that our engine backs.
+export interface LikelyPick {
+  player: string
+  team?: string | null
+  game?: string
+  kickoff?: string
+  market: string
+  market_label?: string
+  odds_type: 'standard' | 'goblin' | 'demon'
+  side: 'More' | 'Less'
+  line: number
+  p_win: number
+  market_prob: number | null
+  model_prob: number | null
+  espn_agrees?: boolean | null
+  engine_edge: number | null
+}
+
+export interface MostLikely {
+  min_p_win: number
+  picks: LikelyPick[]
+  safest_pair: { legs: string[]; p_both: number } | null
+}
+
 export interface Board {
   available: boolean
   detail?: string
@@ -61,6 +85,7 @@ export interface Board {
   watch_count?: number
   recommended_count?: number
   fill_count?: number
+  most_likely?: MostLikely
   evaluated?: { player_props: number; games: number; props_without_projection: number }
   games_without_props?: string[]
   credits_remaining?: number | null
