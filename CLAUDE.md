@@ -82,6 +82,7 @@ Read the guide before touching betting code: it has the method, every decision w
 - **PrizePicks:** never pair teammates (2+ teams required). The board comes only from the founder's browser upload: the Chrome extension blocks prizepicks.com and the API is behind a DataDome CAPTCHA, so never scrape or get around it. `allowed_wager_types` is a string. College league label is `"NCAAFB"`, used as-is. College props are shelved (`CFB_PROPS_ENABLED = False`).
 - **Spread settings are backtested:** `backend/scripts/backtest_projections.py` (free Sleeper data) validated the CVs and projection error on 4,755 real 2025 player-weeks. Change them only if a rerun shows an out-of-sample gain. TimesFM 3 was tested as a projection source and rejected (guide, section 9).
 - **Credits are the constraint** (free tier, 500/month). Every Odds API response is persisted in `odds_cache`; never log the request URL (it carries the key).
+- **My entries** (`user_entries.py`, `user_entries` table): the founder's real PrizePicks entries, snapshotted via `betting_service.snapshot_leg` (needs the last NFL board build's `_pricing_context`) and graded with PrizePicks' push/DNP drop-out rules. They're entered by hand: never try to pull them from PrizePicks.
 - **Tracking:** every priced line is saved once (no-bet lines too); bets are never overwritten. College lines are `kind = "cfb_game"`. Grading uses Sleeper stats and ESPN scoreboards, never credits. Watch for numpy scalars in responses: they 500 FastAPI's encoder.
 
 ### Memory on Render (512 MB free instance)

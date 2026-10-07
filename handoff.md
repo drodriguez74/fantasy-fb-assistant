@@ -1,3 +1,13 @@
+# Handoff (2026-10-07, session 19 cont.) — My entries (the founder's real PrizePicks entries)
+
+**Status:** 220 tests pass, build + lint clean. Migration `8ab3f8bb12ed` (`user_entries`) is **already applied to Supabase**. Committed and pushed (see git log).
+- NFL → "My entries" tab: the form (Power/Flex, fee, "pays if all hit", 2–6 picks with player autocomplete from the board, 13 stat types), the record (W-L, profit, ROI), a "whose read was right" table (books vs model vs actual hit rate, all picks and picks where projections disagreed), and the entry list with per-pick status.
+- `POST /betting/entries` snapshots each pick with `betting_service.snapshot_leg`, using the last NFL board build's context. `GET` grades from Sleeper stats as games go final; push/DNP drop out (standard payouts after a drop-out, 1 pick left = refund).
+- The founder's real entry, snapshotted live: McCaffrey Less 36.5 books 51.3% / model 55.8%; Irving More 51.5 books 56.1% / model 59.9% (stale-projection flag: projections 75–78 vs books 57.5). Books-only both-hit ~29% (EV ~ −14%); model ~33% (break-even).
+- Next: optional screenshot import (Claude vision prefills the form); the founder should log their entry to start the record.
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — Results tab scoped per sport
 
 **Status:** 216 tests pass, build + lint clean, committed and pushed (see git log).

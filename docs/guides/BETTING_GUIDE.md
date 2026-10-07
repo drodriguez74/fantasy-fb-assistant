@@ -18,6 +18,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | PrizePicks | The full board, uploaded daily: 2-pick pairs, 2–6 pick Power/Flex entries, and goblin/demon hit chances. |
 | College football | Game lines only, behind an NFL / College switch. ESPN's predictor models spreads; college props are built but shelved. |
 | Tracking & grading | Every priced line saved, then graded automatically. The Results tab shows record, units, ROI, calibration and NFL vs College. |
+| My entries | The founder's real PrizePicks entries, logged on the page, snapshotted with the engine's view and graded from real stats, including a "whose read was right" check (books vs model). |
 | Bets page | "This week's card" (the actual bets with dollars and kickoff times), tiered cards, and tabs for the evidence. |
 
 ### Timeline (all 2026-10-06/07)
@@ -90,6 +91,8 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | NFL / College switch (not a separate tab) | More intuitive. College view: "CFB Game Lines" + Results. | Founder's call. |
 | College graded without a migration | Saved as `kind = "cfb_game"`, filed under the NFL betting week, graded from ESPN's college scoreboard by full team name. | 54 real finals parsed in testing. |
 | Results scoped per sport, with an "All sports" toggle | Each view shows its own sport's record and calibration by default. College uses a different, less-proven model (ESPN predictor at 0.15 weight), and mixing it with NFL would hide whether either works. "All sports" gives the combined bankroll view and the By-sport table. | Founder asked whether both Results tabs should be the same. |
+| My entries log (`user_entries` table, `user_entries.py`) | The founder places real PrizePicks entries; the app should show their real record and test the engine on them. Each pick saves a snapshot (books-only and blended hit chance, Sleeper/ESPN projections, a `projections_disagree` flag) so graded results answer "does trusting the projections over the books pay?" (e.g. Irving: projections 75–78 vs a 57.5 line). Graded from Sleeper stats as each game goes final (ESPN scoreboard), with PrizePicks' rules: push/DNP drops out, the entry pays as the smaller entry, 1 pick left = refund. | Founder's real 2-pick (McCaffrey Less 36.5 + Irving More 51.5). |
+| Entries are logged by hand, not pulled from PrizePicks | They're behind the founder's login and DataDome bot protection; logging in or getting around that is off the table. A screenshot import (Claude vision reads the entry and prefills the form) was offered as the convenient path. | — |
 | "This week's card" first | Strategist review: bettors want what to bet, how much, by when. | Design review. |
 | Hide near-duplicate PrizePicks entries | The top entries were the same six picks with one swap; playing several is one bet. | Live review. |
 | TimesFM 3 not adopted as a projection source | Backtest on 4,556 2025 player-weeks: worse than Sleeper (avg miss 18.9 vs 18.1; passing 63.8 vs 56.8), barely better than a last-8-games average (19.1). Errors 0.89 correlated with Sleeper's; best out-of-sample blend helps ~1%. Its per-player spread scored worse than ours (pinball 7.42 vs 6.96). It needs ~3 GB RAM (Render has 512 MB). | Section 9. |
@@ -132,7 +135,7 @@ None of it costs credits.
 - **NFL / College** switch and Refresh. A one-line disclaimer (21+, 1-800-GAMBLER) with full text on "More".
 - **This week's card:** the bets in kickoff order with size, price, book, "still a bet at X or better", dollars (bankroll setting, stored in the browser), and the best profitable PrizePicks entry.
 - **Tabs:**
-  - NFL: Player props · Game lines (+ folded combos) · PrizePicks · Results.
+  - NFL: Player props · Game lines (+ folded combos) · PrizePicks · My entries · Results.
   - College: CFB Game Lines (+ combos) · Results.
   - Results shows the current sport only ("NFL only" / "College only"), with an "All sports" toggle for the combined record and the By-sport split.
 - **Card tiers:**
@@ -200,7 +203,7 @@ The harness lived in the session scratchpad; the calibration script above keeps 
 
 1. Verify PrizePicks 3–6 pick payouts in Florida (build an unsubmitted all-standard lineup and read "$1 to pay $X").
 2. After 3–4 graded weeks: tune `MODEL_WEIGHT`, the stale-guard bounds, `LEG_CORRELATION` and `COVER_TOTAL_RHO`; settle Sleeper vs ESPN accuracy from `espn_projection`. The spread settings (CVs, projection error) were already validated by the backtest (section 9); rerun it each season.
-3. Track PrizePicks entries in `bet_picks` so they're graded too.
+3. ~~Track PrizePicks entries~~: done as My entries (the founder's real entries). Optional: a screenshot import to prefill the form; grading the engine's own suggested entries too.
 4. Un-shelve college props when credits allow (league_id=15 verified; set `CFB_PROPS_ENABLED`).
 5. More prop markets and daily refreshes need the paid Odds API tier.
 6. Optional: a scheduled weekly board snapshot so recording doesn't depend on someone opening the page.

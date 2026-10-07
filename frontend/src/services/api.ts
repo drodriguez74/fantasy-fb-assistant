@@ -273,6 +273,16 @@ export const betting = {
   getResults: (sport: 'nfl' | 'cfb' | 'all' = 'all') => api.get('/betting/results', { params: { sport } }),
   // Today's saved PrizePicks board (api.prizepicks.com/projections?league_id=9,
   // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
+  // The user's own PrizePicks entries ("My entries"): graded from real stats.
+  getEntries: () => api.get('/betting/entries'),
+  logEntry: (entry: {
+    entry_type: 'power' | 'flex'
+    stake: number
+    to_win: number
+    legs: { player: string; market: string; side: 'More' | 'Less'; line: number; team?: string }[]
+    notes?: string
+  }) => api.post('/betting/entries', entry),
+  deleteEntry: (id: number) => api.delete(`/betting/entries/${id}`),
   // Best 3-6 pick Power/Flex entries; payouts default to PrizePicks' standard ones.
   getPrizePicksEntries: (
     payouts: { power?: Record<string, number>; flex?: Record<string, Record<string, number>> },

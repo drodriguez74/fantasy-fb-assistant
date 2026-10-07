@@ -8,7 +8,8 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Upload
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
-from app.services import betting_service, prizepicks_board
+from app.services import betting_service, prizepicks_board, user_entries
+from app.services.sleeper_service import sleeper_service
 from app.services.betting_service import build_board
 from app.services.betting_tracking import grade_pending, summarize
 
@@ -97,3 +98,47 @@ async def get_prizepicks_entries(
     entries = await asyncio.to_thread(betting_service.prizepicks_entries, legs, power_table, flex_table)
     return {"entries": entries, "legs_considered": min(len(legs), 12),
             "default_power": betting_service.bm.POWER_PAYOUTS, "default_flex": betting_service.bm.FLEX_PAYOUTS}
+
+
+async def _nfl_week():
+    state = await sleeper_service.get_nfl_state()
+    season = int(state.get("season") or 0) if isinstance(state, dict) else 0
+    week = state.get("week") if isinstance(state, dict) else None
+    return season, (int(week) if week else None)
+
+
+@router.get("/entries")
+async def get_my_entries(current_user: User = Depends(get_current_active_user)):
+    """The user's logged PrizePicks entries. Grades any whose games are final
+    first (Sleeper stats, no credits), then returns the list, the record and
+    a pick-level check of books vs model vs results."""
+    season, week = await _nfl_week()
+    graded = await user_entries.grade_pending(current_user.id, season, week)
+    return {**await asyncio.to_thread(user_entries.summary, current_user.id), "newly_graded": graded}
+
+
+@router.post("/entries")
+async def log_entry(body: Dict = Body(...), current_user: User = Depends(get_current_active_user)):
+    """Log an entry the user placed on PrizePicks: {entry_type: power|flex,
+    stake, to_win, legs: [{player, team?, market, side: More|Less, line}],
+    week?, notes?}. Each pick is snapshotted with the engine's current view."""
+    try:
+        data = user_entries.validate(body)
+    except (user_entries.EntryError, TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    season, week = await _nfl_week()
+    if not week:
+        raise HTTPException(status_code=503, detail="Couldn't determine the current NFL week.")
+    await build_board()  # makes sure the engine's view is loaded for the snapshot
+    snaps = [betting_service.snapshot_leg(leg) for leg in data["legs"]]
+    for leg, snap in zip(data["legs"], snaps):
+        if snap and not leg.get("team"):
+            leg["team"] = snap.get("team")
+    return await asyncio.to_thread(user_entries.create, current_user.id, data, season, week, snaps)
+
+
+@router.delete("/entries/{entry_id}")
+async def delete_entry(entry_id: int, current_user: User = Depends(get_current_active_user)):
+    if not await asyncio.to_thread(user_entries.delete, current_user.id, entry_id):
+        raise HTTPException(status_code=404, detail="Entry not found.")
+    return {"deleted": entry_id}

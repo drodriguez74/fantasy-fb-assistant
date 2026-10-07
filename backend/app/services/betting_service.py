@@ -60,6 +60,7 @@ METHOD = (
 )
 
 _BOARD_TTL_SECONDS = 15 * 60
+_pricing_context: Dict[str, Dict[str, Any]] = {}
 _board_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _PROP_CONCURRENCY = 4
 
@@ -731,6 +732,9 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     espn_scales = {m: await asyncio.to_thread(bm.fit_projection_scale, m, pairs) for m, pairs in espn_centers.items()}
 
     uploaded = await prizepicks_board.load_recent()
+    # Kept so a logged entry's picks can be priced the same way (snapshot_leg).
+    _pricing_context["nfl"] = {"matched": matched, "week": int(week), "scales": scales, "td_scales": td_scales,
+                               "espn_means": espn_means, "espn_scales": espn_scales}
 
     player_props: List[Dict[str, Any]] = []
     for g, label, team, home, away, player, market, offers, mean in matched:
@@ -951,3 +955,51 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
             logger.warning("Recording college board failed: %s", e)
     _board_cache["cfb"] = (time.monotonic(), board)
     return board
+
+
+def snapshot_leg(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """What the engine says about one pick of a user's entry (user_entries),
+    from the last NFL board build: the books-only hit chance, the blended
+    model's, and the projections. None when the books don't price that
+    player and stat this week (the pick is still logged and graded)."""
+    ctx = _pricing_context.get("nfl")
+    if not ctx:
+        return None
+    m = next((x for x in ctx["matched"] if normalize_name(x[5]) == normalize_name(leg["player"]) and x[6] == leg["market"]), None)
+    if not m:
+        return None
+    g, _label, team, _home, _away, player, market, offers, mean = m
+    seed = f"{ctx['week']}|{player}|{market}"
+    model_mean = mean * ctx["scales"].get(market, 1.0)
+    samples = bm.simulate_stat(market, model_mean, seed)
+    espn_mean = ctx["espn_means"].get((player, market))
+    esamp = (bm.simulate_stat(market, espn_mean * ctx["espn_scales"].get(market, 1.0), f"{seed}|espn")
+             if espn_mean and espn_mean > 0 else None)
+    side = "over" if leg["side"] == "More" else "under"
+    if market == "player_anytime_td":
+        p_mkt = _td_market_prob(_td_yes_prices(offers["books"]), ctx["td_scales"].get(g["id"]))
+        if p_mkt is None:
+            return None
+        p_model = bm.blend(float((samples >= 1).mean()), p_mkt)
+        books, model = (p_mkt, p_model) if side == "over" else (1 - p_mkt, 1 - p_model)
+        center, outlier = None, bm.projection_outlier(market, model_mean, market_td_prob=p_mkt)
+    else:
+        fair = _fair_over(offers["books"])
+        if not fair:
+            return None
+        books = _market_leg(leg["line"], market, fair, [side], f"entry|{seed}")["p_win"]
+        model = _prizepicks_leg(leg["line"], samples, fair, esamp, sides={side})["p_win"]
+        center = min(fair, key=lambda pt: abs(fair[pt] - 0.5))
+        outlier = bm.projection_outlier(market, model_mean, market_line=center)
+    return {
+        "team": team,
+        "books_prob": round(float(books), 4),
+        "model_prob": round(float(model), 4),
+        "sleeper_projection": round(mean, 1),
+        "espn_projection": round(espn_mean, 1) if espn_mean else None,
+        "books_line": center,
+        "stale_projection": bool(outlier),
+        # The case the founder asked about: projections far from the books
+        # (Irving 75-78 vs a 57.5 line). Graded results show who was right.
+        "projections_disagree": bool(outlier or abs(model - books) >= 0.05),
+    }

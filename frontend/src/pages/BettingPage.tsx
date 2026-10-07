@@ -7,6 +7,7 @@ import { usePrizePicksEntries } from '../components/betting/prizePicksEntriesDat
 import { GameCombos } from '../components/betting/GameCombos'
 import { BetCard } from '../components/betting/BetCard'
 import { ThisWeekCard } from '../components/betting/ThisWeekCard'
+import { MyEntries } from '../components/betting/MyEntries'
 import { type Board, useBankroll } from '../components/betting/betTypes'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
@@ -15,13 +16,14 @@ import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@hero
 // quarter-Kelly units). Layout: this week's card (the bets) first, then the
 // evidence per tab.
 
-type Tab = 'props' | 'games' | 'college' | 'prizepicks' | 'results'
+type Tab = 'props' | 'games' | 'college' | 'prizepicks' | 'entries' | 'results'
 
 const TAB_LABELS: Record<Tab, string> = {
   props: 'Player props',
   games: 'Game lines',
   college: 'CFB Game Lines',
   prizepicks: 'PrizePicks',
+  entries: 'My entries',
   results: 'Results',
 }
 
@@ -95,7 +97,7 @@ export function BettingPage() {
   }, [sport, college, collegeLoading, collegeError, loadCollege])
 
   // College: game lines + the shared Results (college player props are shelved).
-  const tabs: readonly Tab[] = sport === 'cfb' ? ['college', 'results'] : ['props', 'games', 'prizepicks', 'results']
+  const tabs: readonly Tab[] = sport === 'cfb' ? ['college', 'results'] : ['props', 'games', 'prizepicks', 'entries', 'results']
   const switchSport = (next: 'nfl' | 'cfb') => {
     setSport(next)
     setTab(next === 'cfb' ? 'college' : 'props')
@@ -213,6 +215,19 @@ export function BettingPage() {
 
           {tab === 'results' ? (
             <BettingResults sport={sport} />
+          ) : tab === 'entries' ? (
+            <MyEntries
+              players={[
+                ...new Set([
+                  ...(board?.player_props ?? []).map((r) => r.player ?? ''),
+                  ...(board?.prizepicks?.legs ?? []).map((l) => l.player),
+                  ...(board?.prizepicks?.goblins ?? []).map((l) => l.player),
+                  ...(board?.prizepicks?.demons ?? []).map((l) => l.player),
+                ]),
+              ]
+                .filter(Boolean)
+                .sort()}
+            />
           ) : tab === 'prizepicks' ? (
             <PrizePicksPairs data={view.prizepicks} onUploaded={() => load(true)} entries={entries} />
           ) : shown.length === 0 ? (
