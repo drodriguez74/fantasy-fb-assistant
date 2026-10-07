@@ -265,14 +265,18 @@ export const historical = {
 // This week's betting board (backend/app/services/betting_service.py):
 // player props + game lines with simulated win probability, EV and units.
 export const betting = {
-  getBoard: (refresh = false) => api.get('/betting/board', { params: refresh ? { refresh: true } : undefined }),
+  // sport: 'nfl' (default) or 'cfb' (college football).
+  getBoard: (refresh = false, sport: 'nfl' | 'cfb' = 'nfl') =>
+    api.get('/betting/board', { params: { sport, ...(refresh ? { refresh: true } : {}) } }),
   // Graded track record of past recommendations (grades newly final games first).
   getResults: () => api.get('/betting/results'),
   // Today's saved PrizePicks board (api.prizepicks.com/projections?league_id=9,
   // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
   // Best 3-6 pick Power/Flex entries; payouts default to PrizePicks' standard ones.
-  getPrizePicksEntries: (payouts: { power?: Record<string, number>; flex?: Record<string, Record<string, number>> }) =>
-    api.post('/betting/prizepicks-entries', payouts),
+  getPrizePicksEntries: (
+    payouts: { power?: Record<string, number>; flex?: Record<string, Record<string, number>> },
+    sport: 'nfl' | 'cfb' = 'nfl',
+  ) => api.post('/betting/prizepicks-entries', payouts, { params: { sport } }),
   uploadPrizePicksBoard: (file: File) => {
     const form = new FormData()
     form.append('file', file)

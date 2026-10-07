@@ -1,3 +1,22 @@
+# Handoff (2026-10-07, session 19 cont.) — College football section on /bets
+
+**Status:** 212 tests pass, frontend build + lint clean. **Not committed.** Founder will test.
+/bets has an **NFL / College switch**; College shows one tab, **"CFB Game Lines"** (spreads, totals,
+cover/total combos), loaded the first time College is picked. **College props are shelved** (`CFB_PROPS_ENABLED = False`; uploads of a college
+board are refused), so college costs only the 2-credit lines call per 6h.
+- Spreads: ESPN predictor model (54 of 57 games this week), 0.15 weight, 1u cap → 3 bets
+  (Nevada −8.5 at FanDuel 1u, Coastal Carolina +2.5 0.5u, Memphis −14 0.5u) + 12 watch.
+- Totals: market-only (no college projection source exists).
+- PrizePicks college (shelved): priced against the books only; would fetch props for up to 10 board
+  games (~4 credits each). league_id=15 verified with a real file; the league is stored as PrizePicks'
+  own "NCAAFB".
+- Credits: 277 left this month.
+
+**Next:** college grading (ESPN college scoreboard) so college picks can be tracked; un-shelve
+college props when the budget allows.
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — watch tier, game model, combos, 3-6 pick entries
 
 **Status:** built and tested (208 pass, frontend build + lint clean), not committed. Not visually

@@ -9,12 +9,12 @@ export interface PrizePicksLeg {
   game?: string
   market: string
   market_label: string
-  projection: number
+  projection: number | null
   espn_projection?: number | null
   line: number
   side: 'More' | 'Less'
   p_win: number
-  model_prob: number
+  model_prob: number | null
   market_prob: number
   book_line: number | null
 }
@@ -40,7 +40,8 @@ export interface PrizePicksBoard {
   legs: PrizePicksLeg[]
   pairs: PrizePicksPair[]
   positive_ev_pairs: number
-  source: 'upload' | 'odds_api'
+  source: 'upload' | 'odds_api' | null
+  detail?: string
   uploaded_at?: string
   lines_priced?: number
   lines_unmatched?: number
@@ -64,7 +65,9 @@ function Leg({ leg }: { leg: PrizePicksLeg }) {
         <span className="stat-nums">{leg.line}</span> <span className="text-muted">{leg.market_label}</span>
       </p>
       <p className="stat-nums text-[11px] text-faint">
-        Hit {pct(leg.p_win)} · market {pct(leg.market_prob)} · model {pct(leg.model_prob)} · proj {leg.projection.toFixed(1)}
+        Hit {pct(leg.p_win)} · market {pct(leg.market_prob)}
+        {leg.model_prob != null && ` · model ${pct(leg.model_prob)}`}
+        {leg.projection != null && ` · proj ${leg.projection.toFixed(1)}`}
         {leg.espn_projection != null && ` · ESPN ${leg.espn_projection.toFixed(1)}`}
         {leg.book_line != null && leg.book_line !== leg.line && ` · books at ${leg.book_line}`}
       </p>
@@ -155,7 +158,7 @@ function AltLines({ title, note, rows }: { title: string; note: string; rows?: P
               <span className="stat-nums">{r.line}</span> <span className="text-muted">{r.market_label}</span>
             </span>
             <span className="ml-auto stat-nums text-[11px] text-faint shrink-0 hidden sm:inline">
-              proj {r.projection.toFixed(1)}
+              {r.projection != null ? `proj ${r.projection.toFixed(1)}` : `books at ${r.book_line ?? '—'}`}
               {r.espn_projection != null && ` · ESPN ${r.espn_projection.toFixed(1)}`}
             </span>
           </li>
@@ -172,7 +175,7 @@ export function PrizePicksPairs({ data, onUploaded }: { data?: PrizePicksBoard; 
       <UploadPanel data={data} onUploaded={onUploaded} />
       {!data || data.pairs.length === 0 ? (
         <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
-          No PrizePicks lines matched this week's priced props.
+          {data?.detail ?? "No PrizePicks lines matched this week's priced props."}
         </div>
       ) : (
         <>

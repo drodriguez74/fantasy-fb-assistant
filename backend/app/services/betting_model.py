@@ -176,12 +176,13 @@ def prob_over(samples: np.ndarray, line: float) -> Tuple[float, float]:
     return over, push
 
 
-def simulate_game(consensus_home_spread: float, consensus_total: float, seed_text: str, n: int = N_SIMS):
+def simulate_game(consensus_home_spread: float, consensus_total: float, seed_text: str, n: int = N_SIMS,
+                  margin_sd: float = SPREAD_SD, total_sd: float = TOTAL_SD):
     """(home margin, total points) draws centered on the consensus lines.
     Rounded to whole points so key-number pushes (3, 7, 47...) occur."""
     rng = _rng(seed_text)
-    margin = np.round(rng.normal(-consensus_home_spread, SPREAD_SD, n))
-    total = np.round(rng.normal(consensus_total, TOTAL_SD, n))
+    margin = np.round(rng.normal(-consensus_home_spread, margin_sd, n))
+    total = np.round(rng.normal(consensus_total, total_sd, n))
     return margin, total
 
 
@@ -307,19 +308,32 @@ def fit_projection_scale(market: str, pairs: List[Tuple[float, float]]) -> float
 COVER_TOTAL_RHO = 0.15
 
 
-def margin_from_win_prob(p_home: float) -> float:
+# College games are less predictable than the NFL: wider margin and total
+# errors (standard published magnitudes, not fitted).
+CFB_SPREAD_SD = 15.5
+CFB_TOTAL_SD = 15.0
+# College spreads rest on one unvalidated source (ESPN's predictor, which
+# disagreed with the market by 5+ points on many week-6 games and produced
+# 15 "bets" at the NFL settings), so it gets half the weight and a 1u cap
+# until graded results earn more.
+CFB_MODEL_WEIGHT = 0.15
+CFB_MAX_UNITS = 1.0
+
+
+def margin_from_win_prob(p_home: float, sd: float = SPREAD_SD) -> float:
     """Expected home margin implied by a win probability (normal margin)."""
     from statistics import NormalDist
-    return float(NormalDist().inv_cdf(min(max(p_home, 0.01), 0.99)) * SPREAD_SD)
+    return float(NormalDist().inv_cdf(min(max(p_home, 0.01), 0.99)) * sd)
 
 
-def simulate_game_joint(home_margin: float, total: float, rho: float, seed_text: str, n: int = N_SIMS):
+def simulate_game_joint(home_margin: float, total: float, rho: float, seed_text: str, n: int = N_SIMS,
+                        margin_sd: float = SPREAD_SD, total_sd: float = TOTAL_SD):
     """(home margin, total) draws with correlation rho, rounded to whole
     points (key-number pushes)."""
     rng = _rng(seed_text)
     z1 = rng.standard_normal(n)
     z2 = rho * z1 + np.sqrt(1 - rho * rho) * rng.standard_normal(n)
-    return np.round(home_margin + SPREAD_SD * z1), np.round(total + TOTAL_SD * z2)
+    return np.round(home_margin + margin_sd * z1), np.round(total + total_sd * z2)
 
 
 def fair_american(p: float) -> Optional[int]:
@@ -333,10 +347,10 @@ def fair_american(p: float) -> Optional[int]:
 # Pricing an offer
 # ---------------------------------------------------------------------------
 
-def blend(p_model: Optional[float], p_market: float) -> float:
+def blend(p_model: Optional[float], p_market: float, weight: float = MODEL_WEIGHT) -> float:
     if p_model is None:
         return p_market
-    return MODEL_WEIGHT * p_model + (1 - MODEL_WEIGHT) * p_market
+    return weight * p_model + (1 - weight) * p_market
 
 
 def price_offer(p_win: float, price: float, p_push: float = 0.0) -> Dict[str, float]:

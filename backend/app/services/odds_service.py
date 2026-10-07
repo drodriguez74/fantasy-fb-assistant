@@ -186,8 +186,12 @@ def credits_remaining() -> Optional[int]:
     return _credits["remaining"]
 
 
-async def _get(path: str, params: Dict[str, Any]) -> Optional[Any]:
-    url = f"https://api.the-odds-api.com/v4/sports/americanfootball_nfl{path}"
+NFL = "americanfootball_nfl"
+NCAAF = "americanfootball_ncaaf"
+
+
+async def _get(path: str, params: Dict[str, Any], sport: str = NFL) -> Optional[Any]:
+    url = f"https://api.the-odds-api.com/v4/sports/{sport}{path}"
     try:
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(url, params={"apiKey": settings.ODDS_API_KEY, **params})
@@ -208,18 +212,19 @@ async def _get(path: str, params: Dict[str, Any]) -> Optional[Any]:
     return data
 
 
-async def get_game_lines() -> List[Dict[str, Any]]:
+async def get_game_lines(sport: str = NFL) -> List[Dict[str, Any]]:
     """Every upcoming game's spreads + totals across BOOKMAKERS (raw API
     shape), cached 6h. [] without a key or on failure."""
     if not settings.ODDS_API_KEY:
         return []
-    cached = await _cache_get("games", _CACHE_TTL_SECONDS)
+    key = "games" if sport == NFL else f"games:{sport}"
+    cached = await _cache_get(key, _CACHE_TTL_SECONDS)
     if cached is not None:
         return cached
-    games = await _get("/odds", {"bookmakers": ",".join(BOOKMAKERS), "markets": "spreads,totals", "oddsFormat": "american"})
+    games = await _get("/odds", {"bookmakers": ",".join(BOOKMAKERS), "markets": "spreads,totals", "oddsFormat": "american"}, sport)
     if not isinstance(games, list):
         return []
-    await _cache_put("games", games)
+    await _cache_put(key, games)
     return games
 
 
@@ -236,7 +241,7 @@ def this_week(games: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]
     return out
 
 
-async def get_event_props(event_id: str) -> Optional[Dict[str, Any]]:
+async def get_event_props(event_id: str, sport: str = NFL) -> Optional[Dict[str, Any]]:
     """One game's player props (PROP_MARKETS across PROP_BOOKMAKERS), cached
     12h per game. None when unavailable or when spending would dip below
     CREDIT_RESERVE -- the caller reports that rather than guessing."""
@@ -254,7 +259,7 @@ async def get_event_props(event_id: str) -> Optional[Dict[str, Any]]:
         "bookmakers": ",".join(PROP_BOOKMAKERS),
         "markets": ",".join(PROP_MARKETS),
         "oddsFormat": "american",
-    })
+    }, sport)
     if not isinstance(data, dict):
         return None
     await _cache_put(key, data)

@@ -80,3 +80,67 @@ def test_upload_endpoint_stores_board_and_rejects_captcha_page(monkeypatch):
         assert captcha.status_code == 400
     finally:
         app.dependency_overrides.pop(get_current_active_user, None)
+
+
+def test_parse_board_detects_college_and_keeps_full_team_name():
+    import copy
+    raw = copy.deepcopy(RAW)
+    for p in raw["data"]:
+        p["attributes"]["league_ppid"] = "NCAAFB"  # PrizePicks' real college label
+    raw["included"][0]["attributes"].update({"market": "Alabama", "team_name": "Crimson Tide", "team": "BAMA"})
+    parsed = ppb.parse_board(raw)
+    assert parsed["league"] == "NCAAFB" and parsed["lines"][0]["team_full"] == "Alabama Crimson Tide"
+    for p in raw["data"]:
+        p["attributes"]["league_ppid"] = "NBA"
+    with pytest.raises(ppb.BoardError):
+        ppb.parse_board(raw)
+
+
+def test_market_leg_prices_off_book_line():
+    from app.services.betting_service import _market_leg
+    fair = {60.5: 0.5}
+    easier = _market_leg(52.5, "player_reception_yds", fair, ["over", "under"], "s")
+    assert easier["side"] == "More" and easier["p_win"] > 0.5 and easier["model_prob"] is None
+    same = _market_leg(60.5, "player_reception_yds", fair, ["over"], "s")
+    assert abs(same["p_win"] - 0.5) < 0.01
+
+
+def test_spread_only_model_leaves_totals_market_only():
+    from app.services.betting_service import evaluate_game
+    game = {"id": "g", "home_team": "Home U", "away_team": "Away U", "commence_time": "2026-10-10T16:00:00Z",
+            "bookmakers": [{"key": "draftkings", "markets": [
+                {"key": "spreads", "outcomes": [{"name": "Home U", "point": -3.5, "price": -110},
+                                                {"name": "Away U", "point": 3.5, "price": -110}]},
+                {"key": "totals", "outcomes": [{"name": "Over", "point": 55.5, "price": -110},
+                                               {"name": "Under", "point": 55.5, "price": -110}]}]}]}
+    rows = {r["market"]: r for r in evaluate_game(game, {"margin": 10.0}, (15.5, 15.0), 0.15, 1.0)}
+    assert rows["spread"]["model_prob"] is not None and rows["spread"]["units"] <= 1.0
+    assert rows["total"]["model_prob"] is None and rows["total"]["model_line"] is None
+
+
+def test_college_upload_refused_while_college_props_are_shelved(monkeypatch):
+    import copy
+    import json
+    from fastapi.testclient import TestClient
+    from app.api.deps import get_current_active_user
+    from app.main import app
+    from app.services import betting_service
+
+    assert betting_service.CFB_PROPS_ENABLED is False
+    saved = []
+
+    async def fake_save(parsed):
+        saved.append(parsed)
+        return {**parsed, "uploaded_at": "t"}
+
+    monkeypatch.setattr(ppb, "save", fake_save)
+    raw = copy.deepcopy(RAW)
+    for p in raw["data"]:
+        p["attributes"]["league_ppid"] = "NCAAFB"
+    app.dependency_overrides[get_current_active_user] = lambda: object()
+    try:
+        r = TestClient(app).post("/api/v1/betting/prizepicks-board",
+                                 files={"file": ("cfb.json", json.dumps(raw), "application/json")})
+        assert r.status_code == 400 and "shelved" in r.json()["detail"] and not saved
+    finally:
+        app.dependency_overrides.pop(get_current_active_user, None)

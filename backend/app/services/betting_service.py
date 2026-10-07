@@ -444,15 +444,19 @@ def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str,
 # Game lines
 # ---------------------------------------------------------------------------
 
-def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
+                  sds: Tuple[float, float] = (bm.SPREAD_SD, bm.TOTAL_SD), model_weight: float = bm.MODEL_WEIGHT,
+                  max_units: float = bm.MAX_UNITS) -> List[Dict[str, Any]]:
     """Best-priced side of the spread and the total for one game.
 
     `model` (optional): {"margin", "total"} -- the projected home margin and
-    total (Sleeper team points) -- plus "check_margin" (ESPN's matchup
-    predictor) and "check_total" (ESPN player projections). With a model the
-    win probability is blended 30/70 with the consensus and a side needs the
-    model and the check to favor it; without one, sims center on consensus
-    and only an off-market book's price can show an edge."""
+    total (NFL: Sleeper team points; college: ESPN's predictor margin, no
+    total) -- plus "check_margin" / "check_total" cross-checks. Where the
+    model has a value the win probability is blended 30/70 with the
+    consensus and a side needs the model (and check) to favor it; where it
+    doesn't, sims center on consensus and only an off-market book's price
+    can show an edge. `sds`: (margin, total) error SDs for the sport;
+    `model_weight` / `max_units` let a less-proven model count for less."""
     home, away = game.get("home_team"), game.get("away_team")
     spreads: List[Tuple[str, str, float, float]] = []   # (book, team, point, price)
     totals: List[Tuple[str, str, float, float]] = []    # (book, Over/Under, point, price)
@@ -468,14 +472,21 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) 
     if home_spread is None or total_line is None:
         return []
     seed = f"{game.get('id')}|game"
-    market = bm.simulate_game(home_spread, total_line, seed)
+    margin_sd, total_sd = sds
+    market = bm.simulate_game(home_spread, total_line, seed, margin_sd=margin_sd, total_sd=total_sd)
+    model = model or {}
+    # Which kinds the model (and its check) actually covers.
+    has_model = {"spread": model.get("margin") is not None, "total": model.get("total") is not None}
+    has_check = {"spread": model.get("check_margin") is not None, "total": model.get("check_total") is not None}
     sims = {"model": None, "check": None}
-    if model and model.get("margin") is not None and model.get("total") is not None:
-        sims["model"] = bm.simulate_game(-model["margin"], model["total"], seed + "|model")
-        if model.get("check_margin") is not None or model.get("check_total") is not None:
-            sims["check"] = bm.simulate_game(-(model.get("check_margin") if model.get("check_margin") is not None else model["margin"]),
-                                             model.get("check_total") if model.get("check_total") is not None else model["total"],
-                                             seed + "|check")
+    if any(has_model.values()):
+        sims["model"] = bm.simulate_game(-model["margin"] if has_model["spread"] else home_spread,
+                                         model["total"] if has_model["total"] else total_line,
+                                         seed + "|model", margin_sd=margin_sd, total_sd=total_sd)
+    if any(has_check.values()):
+        sims["check"] = bm.simulate_game(-model["check_margin"] if has_check["spread"] else home_spread,
+                                         model["check_total"] if has_check["total"] else total_line,
+                                         seed + "|check", margin_sd=margin_sd, total_sd=total_sd)
     label = f"{_team(away) or away} @ {_team(home) or home}"
     out = []
 
@@ -491,9 +502,11 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) 
         cands = []
         for book, name, point, price in rows:
             p_mkt, p_push = side_probs(market, kind, name, point)
-            p_mod = side_probs(sims["model"], kind, name, point)[0] if sims["model"] else None
-            p_check = side_probs(sims["check"], kind, name, point)[0] if sims["check"] else None
-            priced = bm.price_offer(bm.blend(p_mod, p_mkt), price, p_push)
+            p_mod = side_probs(sims["model"], kind, name, point)[0] if has_model[kind] else None
+            p_check = side_probs(sims["check"], kind, name, point)[0] if has_check[kind] else None
+            priced = bm.price_offer(bm.blend(p_mod, p_mkt, model_weight), price, p_push)
+            if priced["units"] > max_units:
+                priced = {**priced, "units": max_units, "confidence": bm.confidence_label(max_units)}
             agrees = p_mod is None or p_mod > p_mkt
             check_ok = None if p_check is None else p_check > p_mkt
             if not agrees or check_ok is False:
@@ -502,7 +515,8 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) 
             cands.append({"side": side, "line": point, "book": BOOK_LABELS.get(book, book), "price": int(price),
                           "model_prob": round(p_mod, 4) if p_mod is not None else None,
                           "market_prob": round(p_mkt, 4), "check_prob": round(p_check, 4) if p_check is not None else None,
-                          "watch": bool(p_mod is not None and agrees and check_ok is not False and priced["ev"] > 0),
+                          "watch": bool(p_mod is not None and agrees and check_ok is not False and priced["ev"] > 0
+                                        and priced["units"] == 0),
                           **priced})
         return max(cands, key=lambda c: c["ev"]) if cands else None
 
@@ -518,16 +532,19 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) 
                 "consensus_line": consensus,
                 # Model projections in the market's terms: home spread (negative =
                 # home favored) or total points.
-                "model_line": (round(-model["margin"], 1) if kind == "spread" else round(model["total"], 1)) if sims["model"] else None,
-                "check_line": ((round(-model["check_margin"], 1) if model.get("check_margin") is not None else None) if kind == "spread"
-                               else (round(model["check_total"], 1) if model.get("check_total") is not None else None)) if sims["model"] else None,
+                "model_line": ((round(-model["margin"], 1) if kind == "spread" else round(model["total"], 1))
+                               if has_model[kind] else None),
+                "check_line": ((round(-model["check_margin"], 1) if kind == "spread" else round(model["check_total"], 1))
+                               if has_check[kind] else None),
                 "books_quoting": len({r[0] for r in rows}),
                 **best,
             })
     return out
 
 
-def game_combos(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+def game_combos(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
+                sds: Tuple[float, float] = (bm.SPREAD_SD, bm.TOTAL_SD),
+                model_weight: float = bm.MODEL_WEIGHT) -> Optional[Dict[str, Any]]:
     """Cover + over/under same-game parlays at the consensus spread and
     total: the chance each combo hits and its fair (no-vig) odds. The Odds
     API has no same-game-parlay prices, so these are for comparing with the
@@ -540,12 +557,14 @@ def game_combos(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None) ->
     if home_spread is None or total_line is None:
         return None
     margin_mean, total_mean = -home_spread, total_line
-    if model and model.get("margin") is not None and model.get("total") is not None:
-        margin_mean = bm.blend(model["margin"], -home_spread)
-        total_mean = bm.blend(model["total"], total_line)
+    if model and model.get("margin") is not None:
+        margin_mean = bm.blend(model["margin"], -home_spread, model_weight)
+    if model and model.get("total") is not None:
+        total_mean = bm.blend(model["total"], total_line, model_weight)
     home_favored = home_spread < 0
     rho = bm.COVER_TOTAL_RHO * (1 if home_favored else -1)
-    margin, total = bm.simulate_game_joint(margin_mean, total_mean, rho, f"{game.get('id')}|combo")
+    margin, total = bm.simulate_game_joint(margin_mean, total_mean, rho, f"{game.get('id')}|combo",
+                                           margin_sd=sds[0], total_sd=sds[1])
     h, a = _team(home) or home, _team(away) or away
     combos = []
     for team, cover in ((h, margin + home_spread > 0), (a, -margin - home_spread > 0)):
@@ -764,4 +783,161 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
         "disclaimer": DISCLAIMER,
     }
     _board_cache["board"] = (time.monotonic(), board)
+    return board
+
+
+# ---------------------------------------------------------------------------
+# College football
+# ---------------------------------------------------------------------------
+# What exists for college (checked 2026-10-07): The Odds API has every FBS
+# game's spreads/totals (one call) and player props from FanDuel (plus
+# PrizePicks' lines) at ~4 credits per game; ESPN's matchup predictor covers
+# most FBS games; neither Sleeper nor ESPN fantasy projects college players.
+# So spreads get ESPN's predictor as the model, totals are market-only, and
+# PrizePicks college props are priced against the books alone -- an edge
+# shows only where PrizePicks' line is off the books'. Props are fetched only
+# for games on the user's uploaded college board, at most CFB_PROP_GAME_CAP.
+CFB_PROP_GAME_CAP = 10
+# Shelved 2026-10-07 (founder's call): college props cost ~4 credits per game
+# with this month's budget nearly gone, and game lines are the stronger part
+# of the college data. The pricing below is built and tested; flip this to
+# re-enable it (the upload endpoint then accepts college boards again).
+CFB_PROPS_ENABLED = False
+CFB_DETAIL = "Upload today's PrizePicks college board to price college player props."
+CFB_METHOD = (
+    "College spreads: ESPN's matchup predictor (its win probability as a projected margin), blended 30/70 with "
+    "the de-vigged consensus of DraftKings, FanDuel and Hard Rock Bet. College totals: no public projection "
+    "exists, so only a book that's off the consensus shows an edge. PrizePicks college props: priced against "
+    "the sportsbooks' own lines (FanDuel mostly) -- no player projections exist for college, so a pick only "
+    "rates well when PrizePicks' line is easier than the books'. Stakes are quarter-Kelly, capped at 3 units."
+)
+
+
+def _market_leg(line: float, market: str, fair_over: Dict[float, float], sides, seed: str) -> Optional[Dict[str, Any]]:
+    """PrizePicks leg priced from the books alone (no projection): the books'
+    fair P(over) at the nearest line, shifted to PrizePicks' number along a
+    simulated distribution centered on the books' 50% line."""
+    center = min(fair_over, key=lambda pt: abs(fair_over[pt] - 0.5))
+    samples = bm.simulate_stat(market, max(center, 0.5), seed)
+    nearest = min(fair_over, key=lambda pt: abs(pt - line))
+    over, push = bm.prob_over(samples, line)
+    p_over = min(0.99, max(0.01, fair_over[nearest] + over - bm.prob_over(samples, nearest)[0]))
+    p_under = max(0.0, 1 - p_over - push)
+    if not set(sides) & {"over", "under"}:
+        return None
+    more = (p_over >= p_under and "over" in sides) or "under" not in sides
+    p = p_over if more else p_under
+    return {"line": line, "side": "More" if more else "Less", "p_win": round(p, 4), "p_push": round(push, 4),
+            "model_prob": None, "market_prob": round(p, 4), "book_line": nearest,
+            "espn_prob": None, "espn_agrees": None}
+
+
+async def price_cfb_prizepicks(uploaded: Dict[str, Any], games: List[Dict[str, Any]]) -> Dict[str, Any]:
+    from collections import Counter
+    from app.services.espn_game_predictor import cfb_team_key
+
+    lines = uploaded.get("lines") or []
+    on_board = Counter(cfb_team_key(l.get("team_full")) for l in lines if l.get("team_full"))
+
+    def weight(g):
+        return on_board[cfb_team_key(g.get("home_team"))] + on_board[cfb_team_key(g.get("away_team"))]
+
+    picked = sorted((g for g in games if weight(g) > 0), key=lambda g: -weight(g))[:CFB_PROP_GAME_CAP]
+    sem = asyncio.Semaphore(_PROP_CONCURRENCY)
+
+    async def props_for(g):
+        async with sem:
+            return g, await odds_service.get_event_props(g["id"], odds_service.NCAAF)
+
+    index: Dict[Tuple[str, str], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
+    for g, event in await asyncio.gather(*(props_for(g) for g in picked)):
+        for (player, market), offers in _group_offers(event or {}).items():
+            index[(normalize_name(player), market)] = (g, offers)
+
+    priced, unmatched = [], 0
+    for line in lines:
+        hit = index.get((normalize_name(line["player"]), line["market"]))
+        if not hit:
+            unmatched += 1
+            continue
+        g, offers = hit
+        market = line["market"]
+        sides = line.get("allowed") or ["over", "under"]
+        if market == "player_anytime_td":
+            p = _td_market_prob(_td_yes_prices(offers["books"]), None)
+            if p is None or line["line"] != 0.5 or "over" not in sides:
+                continue
+            leg = {"line": 0.5, "side": "More", "p_win": round(p, 4), "p_push": 0.0, "model_prob": None,
+                   "market_prob": round(p, 4), "book_line": None, "espn_prob": None, "espn_agrees": None}
+        else:
+            fair = _fair_over(offers["books"])
+            leg = _market_leg(line["line"], market, fair, sides, f"cfb|{line['player']}|{market}") if fair else None
+        if not leg:
+            continue
+        priced.append({"player": line["player"], "team": line.get("team_full") or line.get("team"),
+                       "game": f"{g.get('away_team')} @ {g.get('home_team')}", "kickoff": g.get("commence_time"),
+                       "market": market, "market_label": MARKET_LABELS[market], "projection": None,
+                       "espn_projection": None, "odds_type": line.get("odds_type", "standard"), "prizepicks": leg})
+
+    section = prizepicks_pairs([p for p in priced if p["odds_type"] == "standard"])
+
+    def ranked(kind):
+        rows = sorted((p for p in priced if p["odds_type"] == kind), key=lambda p: -p["prizepicks"]["p_win"])
+        return [{k: v for k, v in p.items() if k != "prizepicks"} | p["prizepicks"] for p in rows[:25]]
+
+    return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
+            "lines_priced": len(priced), "lines_unmatched": unmatched, "games_with_props": len(picked),
+            "goblins": ranked("goblin"), "demons": ranked("demon")}
+
+
+async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
+    """College football board: game lines + combos (ESPN predictor as the
+    spread model) and, with an uploaded college PrizePicks board, PrizePicks
+    picks priced against the books. Not recorded in bet_picks yet: grading
+    is NFL-only (Sleeper stats / NFL scoreboard)."""
+    from app.services.espn_game_predictor import cfb_team_key, fetch_cfb_home_win_probs
+
+    cached = _board_cache.get("cfb")
+    if cached and not force and time.monotonic() - cached[0] < _BOARD_TTL_SECONDS:
+        return cached[1]
+    from app.core.config import settings
+    if not settings.ODDS_API_KEY:
+        return {"available": False, "sport": "cfb", "detail": "Betting odds aren't configured (ODDS_API_KEY is not set).",
+                "disclaimer": DISCLAIMER}
+    now = datetime.now(timezone.utc)
+    games = [g for g in odds_service.this_week(await odds_service.get_game_lines(odds_service.NCAAF), now)
+             if g.get("commence_time", "") > now.strftime("%Y-%m-%dT%H:%M:%SZ")]
+    if not games:
+        return {"available": False, "sport": "cfb", "detail": "No college lines available right now.", "disclaimer": DISCLAIMER}
+    win_probs = await fetch_cfb_home_win_probs()
+    sds = (bm.CFB_SPREAD_SD, bm.CFB_TOTAL_SD)
+    models = {g["id"]: {"margin": bm.margin_from_win_prob(win_probs[cfb_team_key(g["home_team"])], bm.CFB_SPREAD_SD)}
+              for g in games if cfb_team_key(g.get("home_team")) in win_probs}
+    game_props = [{**rec, "home": g.get("home_team"), "away": g.get("away_team")}
+                  for g in games for rec in evaluate_game(g, models.get(g["id"]), sds,
+                                                          bm.CFB_MODEL_WEIGHT, bm.CFB_MAX_UNITS)]
+    combos = [c for g in games for c in [game_combos(g, models.get(g["id"]), sds, bm.CFB_MODEL_WEIGHT)] if c]
+    uploaded = await prizepicks_board.load_recent("NCAAFB") if CFB_PROPS_ENABLED else None
+    prizepicks = (await price_cfb_prizepicks(uploaded, games) if uploaded
+                  else {"source": None, "detail": CFB_DETAIL, "pairs": [], "legs": [], "positive_ev_pairs": 0,
+                        "payout": bm.POWER_PLAY_2_PRICE / 100 + 1, "breakeven_leg": round(bm.POWER_PLAY_2_BREAKEVEN, 4)})
+    board = {
+        "available": True,
+        "sport": "cfb",
+        "generated_at": now.isoformat(),
+        "player_props": [],
+        "game_props": sorted(game_props, key=lambda r: (-r["units"], not r.get("watch"), -r["ev"])),
+        "game_combos": combos,
+        "prizepicks": prizepicks,
+        "recommended_count": sum(1 for r in game_props if r["units"] > 0),
+        "watch_count": sum(1 for r in game_props if r.get("watch")),
+        "evaluated": {"player_props": prizepicks.get("lines_priced", 0), "games": len(games), "props_without_projection": 0},
+        "games_modeled": len(models),
+        "games_without_props": [],
+        "credits_remaining": await odds_service.credits_remaining_async(),
+        "sources": {"odds": odds_service.SOURCE, "projections": "ESPN matchup predictor (spreads); sportsbook lines (props)"},
+        "method": CFB_METHOD,
+        "disclaimer": DISCLAIMER,
+    }
+    _board_cache["cfb"] = (time.monotonic(), board)
     return board
