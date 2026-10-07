@@ -1,3 +1,24 @@
+# Handoff (2026-10-06, session 19 cont.) — PrizePicks full-board upload
+
+**Status:** built and tested (206 pass, frontend build + lint clean), not committed yet.
+The founder's board (saved 2026-10-06 evening) is already stored in Supabase `odds_cache`.
+
+**Why upload, not fetch:** the Chrome extension blocks prizepicks.com, and PrizePicks' API
+answers server requests with a DataDome CAPTCHA page. The founder's own browser passes it, so the
+daily flow is: open api.prizepicks.com/projections?league_id=9 → Cmd+S → Upload board on /bets.
+
+**Rule fix:** PrizePicks entries need players from 2+ teams, so same-team pairs are excluded.
+That killed the Daniels/Hurst TB stack, and week 5 now has **0 +EV PrizePicks pairs**.
+**What it prices:** of 3,557 lines, 2,003 are in stats we model; 673 are priced (players the books
+also price), and 513 are skipped for having no sportsbook market. Week 5: one pair with units,
+Jalon Daniels More 179.5 pass yds + Ted Hurst III More 21.5 rec yds (+6.6%, 0.5u; the edge depends on
+the unfitted +0.45 QB-WR correlation). Top goblins hit about 83-88%; their payouts aren't in the file.
+
+**Next:** ask the founder for goblin/demon multipliers to compute their EV; track uploaded-board
+picks in bet_picks for grading.
+
+---
+
 # Handoff (2026-10-06, session 19 cont.) — PrizePicks 2-pick Power Play finder
 
 **Status:** built, NOT committed yet. Backend 198 tests pass; frontend build + lint clean.

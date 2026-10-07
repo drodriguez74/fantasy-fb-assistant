@@ -268,6 +268,13 @@ export const betting = {
   getBoard: (refresh = false) => api.get('/betting/board', { params: refresh ? { refresh: true } : undefined }),
   // Graded track record of past recommendations (grades newly final games first).
   getResults: () => api.get('/betting/results'),
+  // Today's saved PrizePicks board (api.prizepicks.com/projections?league_id=9,
+  // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
+  uploadPrizePicksBoard: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/betting/prizepicks-board', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 // Waiver wire endpoints

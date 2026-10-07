@@ -130,3 +130,6 @@ jspm_packages/
 Optis_*.xlsx
 ProBowl_Fantasy_*.xlsx
 ProBowl_Fantasy_*.csv
+
+# PrizePicks boards saved from the browser for upload (see prizepicks_board.py)
+prizepicks*.json

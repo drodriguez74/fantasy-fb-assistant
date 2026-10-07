@@ -16,6 +16,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from app.services import betting_model as bm
 from app.services.betting_tracking import record_board
 from app.services.espn_projections import fetch_espn_weekly_projections
+from app.services import prizepicks_board
 from app.services import odds_service
 from app.services.sleeper_service import sleeper_service
 from app.services.weekly_projections import fetch_weekly_projections, normalize_name
@@ -237,7 +238,8 @@ def _espn_check(c: Dict[str, Any], espn_samples) -> Dict[str, Any]:
     return c if agrees else {**c, "units": 0.0, "confidence": "none"}
 
 
-def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn_samples=None) -> Dict[str, Any]:
+def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn_samples=None,
+                    sides=frozenset({"over", "under"})) -> Optional[Dict[str, Any]]:
     """Better side of PrizePicks' line, priced like any other offer. The
     books rarely quote PrizePicks' exact number, so the market's fair
     P(over) is taken at the nearest book line and shifted by how much the
@@ -248,7 +250,10 @@ def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn
     market_over = min(0.99, max(0.01, fair_over[nearest] + model_over - model_at_nearest))
     p_over = bm.blend(model_over, market_over)
     p_under = max(0.0, 1 - p_over - push)
-    over = p_over >= p_under
+    # The better side PrizePicks allows (goblins/demons are usually More only).
+    if not sides & {"over", "under"}:
+        return None
+    over = (p_over >= p_under and "over" in sides) or "under" not in sides
     market_side = market_over if over else max(0.0, 1 - market_over - push)
     espn_p = _side_prob(espn_samples, "More" if over else "Less", pp_line) if espn_samples is not None else None
     return {
@@ -268,8 +273,10 @@ def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn
 def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, Any]:
     """Best 2-pick Power Plays (3x) from the board's PrizePicks legs.
     Same-game legs are priced with their correlation (betting_model.
-    leg_correlation); the same player twice isn't allowed on PrizePicks.
-    Legs ESPN's projection disagrees with are left out."""
+    leg_correlation). PrizePicks requires players from at least two
+    different teams, so same-team pairs (e.g. a QB and his receiver) and the
+    same player twice are never built. Legs ESPN's projection disagrees with
+    are left out."""
     legs = [p for p in props if p.get("prizepicks") and p["prizepicks"]["p_win"] >= 0.5
             and p["prizepicks"].get("espn_agrees") is not False]
     legs.sort(key=lambda p: -p["prizepicks"]["p_win"])
@@ -283,7 +290,7 @@ def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, 
     pairs = []
     for i, a in enumerate(legs):
         for b in legs[i + 1:]:
-            if a["player"] == b["player"]:
+            if a["player"] == b["player"] or (a.get("team") and a.get("team") == b.get("team")):
                 continue
             same_game = a.get("game") == b.get("game")
             rho = bm.leg_correlation(a["market"], b["market"], same_game, a.get("team") == b.get("team"))
@@ -302,6 +309,69 @@ def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, 
         "pairs": pairs[:limit],
         "positive_ev_pairs": sum(1 for r in pairs if r["ev"] > 0),
     }
+
+
+def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: int, scales: Dict[str, float],
+                         td_scales: Dict[str, Optional[float]], espn_means: Dict[Tuple[str, str], Optional[float]],
+                         espn_scales: Dict[str, float]) -> Dict[str, Any]:
+    """The prizepicks section from the user's uploaded board (prizepicks_board):
+    every line whose player and stat the books also price, standard lines
+    paired into 2-picks, goblins/demons ranked by hit chance (their payouts
+    aren't in the file, so no EV). Lines without a book market are skipped."""
+    by_key = {(normalize_name(m[5]), m[6]): m for m in matched}
+    priced: List[Dict[str, Any]] = []
+    unmatched = 0
+    for line in uploaded.get("lines") or []:
+        m = by_key.get((normalize_name(line["player"]), line["market"]))
+        if not m:
+            unmatched += 1
+            continue
+        g, label, team, home, away, player, market, offers, mean = m
+        seed = f"{week}|{player}|{market}"
+        model_mean = mean * scales.get(market, 1.0)
+        samples = bm.simulate_stat(market, model_mean, seed)
+        espn_mean = espn_means.get((player, market))
+        esamp = (bm.simulate_stat(market, espn_mean * espn_scales.get(market, 1.0), f"{seed}|espn")
+                 if espn_mean and espn_mean > 0 else None)
+        allowed = set(line.get("allowed") or ["over", "under"])
+        if market == "player_anytime_td":
+            if line["line"] != 0.5 or "over" not in allowed:
+                continue
+            p_mkt = _td_market_prob(_td_yes_prices(offers["books"]), td_scales.get(g["id"]))
+            if p_mkt is None:
+                continue
+            p_mod = float((samples >= 1).mean())
+            ep = float((esamp >= 1).mean()) if esamp is not None else None
+            leg = {"line": 0.5, "side": "More", "p_win": round(bm.blend(p_mod, p_mkt), 4), "p_push": 0.0,
+                   "model_prob": round(p_mod, 4), "market_prob": round(p_mkt, 4), "book_line": None,
+                   "espn_prob": round(ep, 4) if ep is not None else None,
+                   "espn_agrees": (ep > p_mkt) if ep is not None else None}
+            outlier = bm.projection_outlier(market, model_mean, market_td_prob=p_mkt)
+        else:
+            fair = _fair_over(offers["books"])
+            if not fair:
+                continue
+            leg = _prizepicks_leg(line["line"], samples, fair, esamp, sides=allowed)
+            if leg is None:
+                continue
+            outlier = bm.projection_outlier(market, model_mean, market_line=min(fair, key=lambda pt: abs(fair[pt] - 0.5)))
+        if outlier:
+            continue  # stale projection: don't rank it
+        priced.append({"player": player, "team": team, "game": label, "kickoff": g.get("commence_time"),
+                       "market": market, "market_label": MARKET_LABELS[market], "projection": round(mean, 2),
+                       "espn_projection": round(espn_mean, 2) if espn_mean else None,
+                       "odds_type": line.get("odds_type", "standard"), "prizepicks": leg})
+
+    section = prizepicks_pairs([p for p in priced if p["odds_type"] == "standard"])
+
+    def ranked(kind):
+        rows = [p for p in priced if p["odds_type"] == kind and p["prizepicks"].get("espn_agrees") is not False]
+        rows.sort(key=lambda p: -p["prizepicks"]["p_win"])
+        return [{k: v for k, v in p.items() if k != "prizepicks"} | p["prizepicks"] for p in rows[:25]]
+
+    return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
+            "lines_priced": len(priced), "lines_unmatched": unmatched,
+            "goblins": ranked("goblin"), "demons": ranked("demon")}
 
 
 def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str, Any]:
@@ -466,6 +536,8 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
             espn_centers.setdefault(market, []).append((e, c))
     espn_scales = {m: await asyncio.to_thread(bm.fit_projection_scale, m, pairs) for m, pairs in espn_centers.items()}
 
+    uploaded = await prizepicks_board.load_recent()
+
     player_props: List[Dict[str, Any]] = []
     for g, label, team, home, away, player, market, offers, mean in matched:
         rec = evaluate_player_prop(player, market, offers, mean, f"{week}|{player}|{market}",
@@ -494,7 +566,10 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
         "generated_at": now.isoformat(),
         "player_props": ranked(player_props),
         "game_props": ranked(game_props),
-        "prizepicks": prizepicks_pairs(player_props),
+        # The uploaded PrizePicks board when there's a recent one, else the
+        # Odds API's PrizePicks standard lines.
+        "prizepicks": (price_uploaded_board(uploaded, matched, int(week), scales, td_scales, espn_means, espn_scales)
+                       if uploaded else {**prizepicks_pairs(player_props), "source": "odds_api"}),
         "projection_scale": scales,
         "espn_projection_scale": espn_scales,
         "recommended_count": sum(1 for r in player_props + game_props if r["units"] > 0),

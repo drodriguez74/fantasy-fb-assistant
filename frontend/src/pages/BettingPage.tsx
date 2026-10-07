@@ -267,7 +267,7 @@ export function BettingPage() {
           {tab === 'results' ? (
             <BettingResults />
           ) : tab === 'prizepicks' ? (
-            <PrizePicksPairs data={board.prizepicks} />
+            <PrizePicksPairs data={board.prizepicks} onUploaded={() => load(true)} />
           ) : shown.length === 0 ? (
             <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
               {tab === 'games'

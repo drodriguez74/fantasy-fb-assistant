@@ -1,12 +1,14 @@
 """This week's betting board: player props and game lines priced by
 betting_service (Monte Carlo + de-vigged market, quarter-Kelly units)."""
 import asyncio
+import json
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
+from app.services import betting_service, prizepicks_board
 from app.services.betting_service import build_board
 from app.services.betting_tracking import grade_pending, summarize
 
@@ -38,3 +40,28 @@ async def get_betting_results(
     graded = await grade_pending()
     summary = await asyncio.to_thread(summarize, season)
     return {**summary, "newly_graded": graded}
+
+
+_MAX_BOARD_BYTES = 25 * 1024 * 1024
+
+
+@router.post("/prizepicks-board")
+async def upload_prizepicks_board(
+    file: UploadFile = File(..., description="Saved api.prizepicks.com/projections?league_id=9 page"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Store today's PrizePicks NFL board (see prizepicks_board.py for why
+    it's uploaded rather than fetched). The board's PrizePicks tab prices
+    it until a newer upload or it's 36h old."""
+    raw = await file.read(_MAX_BOARD_BYTES + 1)
+    if len(raw) > _MAX_BOARD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large for a PrizePicks board.")
+    try:
+        parsed = prizepicks_board.parse_board(json.loads(raw))
+    except (ValueError, UnicodeDecodeError) as e:
+        detail = str(e) if isinstance(e, prizepicks_board.BoardError) else (
+            "That file isn't JSON. Save the api.prizepicks.com page itself (Cmd+S), not a screenshot or the app page.")
+        raise HTTPException(status_code=400, detail=detail)
+    stored = await prizepicks_board.save(parsed)
+    betting_service._board_cache.clear()  # reprice on the next board request
+    return {"lines": len(parsed["lines"]), "total_projections": parsed["total"], "uploaded_at": stored["uploaded_at"]}

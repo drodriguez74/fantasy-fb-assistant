@@ -118,15 +118,16 @@ def test_prizepicks_leg_uses_market_at_prizepicks_number():
                                                     "model_prob": p, "market_prob": p, "book_line": 1.5}}
     props = [
         prop("QB", "KC", "player_pass_yds", "More", 0.6),
-        prop("WR", "KC", "player_reception_yds", "More", 0.6),
-        prop("WR", "KC", "player_receptions", "More", 0.6),     # same player as above: never paired
+        prop("WR", "KC", "player_reception_yds", "More", 0.6),  # QB's teammate: PrizePicks won't allow the pair
+        prop("OPP QB", "BUF", "player_pass_yds", "More", 0.6),
         prop("RB", "BUF", "player_rush_yds", "Less", 0.45),     # under 50%: not a leg
     ]
     out = prizepicks_pairs(props)
-    assert all(len({l["player"] for l in r["legs"]}) == 2 for r in out["pairs"])
-    assert all(r["legs"][0]["player"] != "RB" and r["legs"][1]["player"] != "RB" for r in out["pairs"])
-    stack = next(r for r in out["pairs"] if {l["market"] for l in r["legs"]} == {"player_pass_yds", "player_reception_yds"})
-    assert stack["correlation"] == 0.45 and stack["joint_prob"] > stack["independent_prob"]
+    teams = [{l["team"] for l in r["legs"]} for r in out["pairs"]]
+    assert teams and all(len(t) == 2 for t in teams)            # never two players from one team
+    assert all("RB" not in {l["player"] for l in r["legs"]} for r in out["pairs"])
+    shootout = next(r for r in out["pairs"] if {l["player"] for l in r["legs"]} == {"QB", "OPP QB"})
+    assert shootout["correlation"] == 0.25 and shootout["joint_prob"] > shootout["independent_prob"]
 
 
 def test_slate_centering_removes_systematic_projection_bias():
@@ -174,7 +175,8 @@ def test_prizepicks_pairs_skip_legs_espn_disagrees_with():
     from app.services.betting_service import prizepicks_pairs
 
     def prop(player, agrees):
-        return {"player": player, "team": "KC", "game": "BUF @ KC", "market": "player_rush_yds", "market_label": "",
+        # One team per player: PrizePicks needs two different teams.
+        return {"player": player, "team": player, "game": "BUF @ KC", "market": "player_rush_yds", "market_label": "",
                 "projection": 1.0, "prizepicks": {"line": 1.5, "side": "More", "p_win": 0.6, "p_push": 0.0,
                                                     "model_prob": 0.6, "market_prob": 0.55, "book_line": 1.5,
                                                     "espn_prob": None, "espn_agrees": agrees}}
