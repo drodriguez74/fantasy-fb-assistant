@@ -71,3 +71,37 @@ def test_college_finals_match_by_full_team_name():
     # College spreads grade with full team names as the side (Nevada -8.5 won by 14).
     outcome, actual = game_outcome("spread", "Nevada Wolf Pack", -8.5, "UTEP Miners", 17, 31)
     assert outcome == "won" and actual == 14
+
+
+def test_results_filter_by_sport(monkeypatch):
+    """summarize(sport=...) only counts that sport's pick kinds."""
+    from app.services import betting_tracking as bt
+
+    class FakeQuery:
+        def __init__(self, picks):
+            self.picks = picks
+        def filter(self, cond):
+            # Only the kind filter is used in this test; read its allowed values.
+            kinds = set(cond.right.value) if hasattr(cond.right, "value") else None
+            return FakeQuery([p for p in self.picks if kinds is None or p.kind in kinds])
+        def all(self):
+            return self.picks
+
+    def pick(kind, status, units=1.0):
+        return SimpleNamespace(kind=kind, status=status, units=units, recommended=True, price=100,
+                               profit_units=units if status == "won" else -units, p_win=0.55, model_prob=0.6,
+                               market_prob=0.5, season=2026, week=6, confidence="lean", market="spread",
+                               id=1, subject="x", game="A @ B", side="A", line=1.5, book="FanDuel", ev=0.05,
+                               projection=None, kickoff=None, actual=None)
+    picks = [pick("game", "won"), pick("player_prop", "lost"), pick("cfb_game", "won"), pick("cfb_game", "won")]
+
+    class FakeSession:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def query(self, _): return FakeQuery(picks)
+
+    monkeypatch.setattr(bt, "SessionLocal", FakeSession)
+    assert bt.summarize(sport="nfl")["overall"]["bets"] == 2
+    assert bt.summarize(sport="cfb")["overall"]["won"] == 2
+    every = bt.summarize()
+    assert every["overall"]["bets"] == 4 and set(every["by_sport"]) == {"NFL", "College"}

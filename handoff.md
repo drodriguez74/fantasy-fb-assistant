@@ -1,3 +1,12 @@
+# Handoff (2026-10-07, session 19 cont.) — Results tab scoped per sport
+
+**Status:** 216 tests pass, build + lint clean, committed and pushed (see git log).
+- `GET /betting/results?sport=nfl|cfb|all` (default all); `summarize(season, sport)` filters by pick kind (NFL = player_prop + game, college = cfb_game).
+- The Results tab shows the current sport by default ("NFL only" / "College only"), with an "All sports" toggle. The By-sport table appears only under All sports.
+- Why: college runs a different, less-proven model, so its record and calibration must be judged separately from NFL's.
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — TimesFM test + spread calibration backtest
 
 **Status:** 215 tests pass. Code: `backend/scripts/backtest_projections.py` (new); `betting_model.py` gained `projection_error()`, `PROJECTION_ERROR_BY_MARKET`, `DUD_PROB` and `apply_duds()`, all deliberately empty or off, so behavior is unchanged. Full write-up: BETTING_GUIDE.md section 9.

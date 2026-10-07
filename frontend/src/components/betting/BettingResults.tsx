@@ -116,28 +116,58 @@ function SplitTable({ title, rows }: { title: string; rows: [string, RecordSumma
   )
 }
 
-export function BettingResults() {
+const SPORT_NAME = { nfl: 'NFL', cfb: 'College' } as const
+
+/** Track record for the current sport (each model is judged on its own), with an "All sports" view. */
+export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
+  const [scope, setScope] = useState<'sport' | 'all'>('sport')
   const [data, setData] = useState<Results | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    betting.getResults()
+    setLoading(true)
+    setError('')
+    betting.getResults(scope === 'all' ? 'all' : sport)
       .then((r) => setData(r.data))
       .catch((err) => setError(getErrorMessage(err, "Couldn't load the track record.")))
       .finally(() => setLoading(false))
-  }, [])
+  }, [sport, scope])
+
+  const scopeToggle = (
+    <div className="flex rounded-lg border border-hairline p-0.5 w-fit" role="tablist" aria-label="Results scope">
+      {(['sport', 'all'] as const).map((s) => (
+        <button
+          key={s}
+          role="tab"
+          aria-selected={scope === s}
+          onClick={() => setScope(s)}
+          className={`px-3 py-1 rounded-md text-xs ${scope === s ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
+        >
+          {s === 'sport' ? `${SPORT_NAME[sport]} only` : 'All sports'}
+        </button>
+      ))}
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="bg-surface rounded-lg shadow p-6 text-center">
-        <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
-        <p className="text-sm text-muted">Grading finished games...</p>
+      <div className="space-y-4">
+        {scopeToggle}
+        <div className="bg-surface rounded-lg shadow p-6 text-center">
+          <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
+          <p className="text-sm text-muted">Grading finished games...</p>
+        </div>
       </div>
     )
   }
   if (error || !data) {
-    return <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">{error}</div>
+    return (
+      <div className="space-y-4">
+        {scopeToggle}
+        <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">{error}</div>
+      </div>
+    )
   }
 
   const o = data.overall
@@ -145,10 +175,12 @@ export function BettingResults() {
   const brier = data.calibration.brier
   return (
     <div className="space-y-4">
+      {scopeToggle}
       <p className="text-xs text-muted">
+        {scope === 'all' ? 'NFL and college combined. ' : `${SPORT_NAME[sport]} only: each sport's model is judged on its own record and calibration. `}
         Every recommendation is saved at the price shown and graded automatically once its game is final (Sleeper stats
-        for props, ESPN scores for games). Voids are players who didn't play. {data.lines_tracked} lines tracked in total,
-        including no-bet lines used to check calibration.
+        for props, ESPN scores for games). Voids are players who didn't play. {data.lines_tracked} lines tracked
+        {scope === 'all' ? ' in total' : ''}, including no-bet lines used to check calibration.
       </p>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -166,7 +198,7 @@ export function BettingResults() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {data.by_sport && Object.keys(data.by_sport).length > 1 && (
+        {scope === 'all' && data.by_sport && Object.keys(data.by_sport).length > 1 && (
           <SplitTable title="By sport" rows={Object.entries(data.by_sport).map(([k, v]) => [k, v])} />
         )}
         <SplitTable

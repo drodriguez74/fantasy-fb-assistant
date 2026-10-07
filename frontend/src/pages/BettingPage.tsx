@@ -212,7 +212,7 @@ export function BettingPage() {
           </div>
 
           {tab === 'results' ? (
-            <BettingResults />
+            <BettingResults sport={sport} />
           ) : tab === 'prizepicks' ? (
             <PrizePicksPairs data={view.prizepicks} onUploaded={() => load(true)} entries={entries} />
           ) : shown.length === 0 ? (

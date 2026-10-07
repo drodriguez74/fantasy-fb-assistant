@@ -269,7 +269,8 @@ export const betting = {
   getBoard: (refresh = false, sport: 'nfl' | 'cfb' = 'nfl') =>
     api.get('/betting/board', { params: { sport, ...(refresh ? { refresh: true } : {}) } }),
   // Graded track record of past recommendations (grades newly final games first).
-  getResults: () => api.get('/betting/results'),
+  // sport: 'nfl' | 'cfb' for one sport's record, 'all' for everything.
+  getResults: (sport: 'nfl' | 'cfb' | 'all' = 'all') => api.get('/betting/results', { params: { sport } }),
   // Today's saved PrizePicks board (api.prizepicks.com/projections?league_id=9,
   // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
   // Best 3-6 pick Power/Flex entries; payouts default to PrizePicks' standard ones.

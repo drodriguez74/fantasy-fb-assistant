@@ -89,6 +89,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | PrizePicks league label "NCAAFB" stored as-is | That's PrizePicks' real college label; never translate it. | Real file; founder's call. |
 | NFL / College switch (not a separate tab) | More intuitive. College view: "CFB Game Lines" + Results. | Founder's call. |
 | College graded without a migration | Saved as `kind = "cfb_game"`, filed under the NFL betting week, graded from ESPN's college scoreboard by full team name. | 54 real finals parsed in testing. |
+| Results scoped per sport, with an "All sports" toggle | Each view shows its own sport's record and calibration by default. College uses a different, less-proven model (ESPN predictor at 0.15 weight), and mixing it with NFL would hide whether either works. "All sports" gives the combined bankroll view and the By-sport table. | Founder asked whether both Results tabs should be the same. |
 | "This week's card" first | Strategist review: bettors want what to bet, how much, by when. | Design review. |
 | Hide near-duplicate PrizePicks entries | The top entries were the same six picks with one swap; playing several is one bet. | Live review. |
 | TimesFM 3 not adopted as a projection source | Backtest on 4,556 2025 player-weeks: worse than Sleeper (avg miss 18.9 vs 18.1; passing 63.8 vs 56.8), barely better than a last-8-games average (19.1). Errors 0.89 correlated with Sleeper's; best out-of-sample blend helps ~1%. Its per-player spread scored worse than ours (pinball 7.42 vs 6.96). It needs ~3 GB RAM (Render has 512 MB). | Section 9. |
@@ -133,6 +134,7 @@ None of it costs credits.
 - **Tabs:**
   - NFL: Player props · Game lines (+ folded combos) · PrizePicks · Results.
   - College: CFB Game Lines (+ combos) · Results.
+  - Results shows the current sport only ("NFL only" / "College only"), with an "All sports" toggle for the combined record and the By-sport split.
 - **Card tiers:**
   - Bet: lime border, units, size, dollars.
   - Watch: outlined.

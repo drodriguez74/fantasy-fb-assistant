@@ -35,15 +35,17 @@ async def get_betting_board(
 @router.get("/results")
 async def get_betting_results(
     season: Optional[int] = Query(None, description="Limit to one season (default: all)"),
+    sport: str = Query("all", pattern="^(nfl|cfb|all)$", description="nfl, cfb (college) or all"),
     current_user: User = Depends(get_current_active_user),
 ):
     """Track record of the board's recommendations. Settles any pending
     picks whose games are final first (Sleeper stats / ESPN scores, no
     Odds API credits), then returns record, units, ROI, splits by
-    confidence / market / week, calibration and the pick list."""
+    sport / confidence / market / week, calibration and the pick list --
+    for one sport, or all of them."""
     graded = await grade_pending()
-    summary = await asyncio.to_thread(summarize, season)
-    return {**summary, "newly_graded": graded}
+    summary = await asyncio.to_thread(summarize, season, None if sport == "all" else sport)
+    return {**summary, "sport": sport, "newly_graded": graded}
 
 
 _MAX_BOARD_BYTES = 25 * 1024 * 1024

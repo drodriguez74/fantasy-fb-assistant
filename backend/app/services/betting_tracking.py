@@ -323,11 +323,20 @@ def _pick_out(p: BetPick) -> Dict[str, Any]:
     }
 
 
-def summarize(season: Optional[int] = None) -> Dict[str, Any]:
+# Which pick kinds each sport's Results view covers.
+SPORT_KINDS = {"nfl": ("player_prop", "game"), "cfb": ("cfb_game",)}
+
+
+def summarize(season: Optional[int] = None, sport: Optional[str] = None) -> Dict[str, Any]:
+    """Record and calibration for one sport ("nfl" / "cfb") or all picks.
+    Sports are judged separately: college uses a different, less-proven
+    model, and mixing them would hide whether either one works."""
     with SessionLocal() as db:
         q = db.query(BetPick)
         if season:
             q = q.filter(BetPick.season == season)
+        if sport in SPORT_KINDS:
+            q = q.filter(BetPick.kind.in_(SPORT_KINDS[sport]))
         picks = q.all()
     recs = [p for p in picks if p.recommended]
 

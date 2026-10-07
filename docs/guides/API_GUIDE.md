@@ -165,10 +165,10 @@ All auth required. Method, decisions and limits: [BETTING_GUIDE.md](BETTING_GUID
   - `available: false` with `detail` when `ODDS_API_KEY` is unset or there are no lines.
 - `POST /betting/prizepicks-board` (multipart `file`) stores today's saved PrizePicks board (`api.prizepicks.com/projections?league_id=9`, saved from the browser) and returns `{league, lines, total_projections, uploaded_at}`. 400 when the file isn't a projections response (e.g. the CAPTCHA page), is another sport, or is a college board while college props are shelved. 413 over 25 MB.
 - `POST /betting/prizepicks-entries?sport=` with body `{power?: {"3": 6, ...}, flex?: {"5": {"5": 10, "4": 2, "3": 0.4}, ...}}` (payouts; defaults are PrizePicks' standard ones). Returns `{entries[{size, type, ev, p_all, p_paid, payouts, legs}], legs_considered, default_power, default_flex}`: the best Power (3–6) and Flex (2–6) entries from the board's legs.
-- `GET /betting/results?season=` first settles pending picks whose games are final (Sleeper stats for props, ESPN NFL and college scoreboards for games, no credits). Returns:
+- `GET /betting/results?season=&sport=nfl|cfb|all` (default `all`) first settles pending picks whose games are final (Sleeper stats for props, ESPN NFL and college scoreboards for games, no credits). `sport` limits everything (record, splits, calibration, picks) to that sport's pick kinds: NFL = `player_prop` + `game`, college = `cfb_game`. Returns:
   - `overall` and `by_sport` (NFL / College) / `by_confidence` / `by_market` / `by_week`. Each has `bets, won, lost, push, void, pending, win_rate, units_staked, units_profit, roi` (recommended picks only).
   - `calibration`: `{lines, buckets[{range, n, predicted, actual}], brier{blend, model, market}}`, over every graded line including no-bet ones.
-  - `picks[]` (with `kind`: `player_prop` / `game` / `cfb_game`) and `newly_graded`.
+  - `picks[]` (with `kind`: `player_prop` / `game` / `cfb_game`), `sport` (the scope used) and `newly_graded`.
 
 ## Matchup Analysis (`/matchup-analysis`) — partially surfaced this session
 
