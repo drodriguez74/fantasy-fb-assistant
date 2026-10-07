@@ -4,9 +4,18 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
-from app.services.advanced_analysis_service import AdvancedAnalysisService
 
 router = APIRouter()
+
+# Imported lazily: these services pull in scikit-learn, statsmodels, pandas and
+# pulp (~200 MB resident). Loading them at startup put the whole app at ~280 MB
+# before any request, and Render's free instance (512 MB) restarted on memory
+# (2026-10-07). Now they load only when an analytics endpoint is used.
+
+
+def _analysis_service(db):
+    from app.services.advanced_analysis_service import AdvancedAnalysisService
+    return AdvancedAnalysisService(db)
 
 class PlayerComparisonRequest(BaseModel):
     player_ids: List[int]
@@ -31,7 +40,7 @@ async def compare_players(
     Compare multiple players across various metrics and generate insights
     """
     try:
-        analysis_service = AdvancedAnalysisService(db)
+        analysis_service = _analysis_service(db)
         
         if len(request.player_ids) < 2:
             raise HTTPException(status_code=400, detail="At least 2 players required for comparison")
@@ -62,7 +71,7 @@ async def analyze_strength_of_schedule(
     Analyze strength of schedule for players over upcoming weeks
     """
     try:
-        analysis_service = AdvancedAnalysisService(db)
+        analysis_service = _analysis_service(db)
         
         if not request.player_ids:
             raise HTTPException(status_code=400, detail="At least 1 player required for schedule analysis")
@@ -96,7 +105,7 @@ async def detect_breakout_candidates(
     Detect potential breakout candidates using ML and statistical analysis
     """
     try:
-        analysis_service = AdvancedAnalysisService(db)
+        analysis_service = _analysis_service(db)
         
         if request.min_ownership < 0 or request.min_ownership > 100:
             raise HTTPException(status_code=400, detail="Min ownership must be between 0 and 100")

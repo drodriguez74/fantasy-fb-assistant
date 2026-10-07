@@ -1,3 +1,19 @@
+# Handoff (2026-10-07, session 19 wrap) — Render memory fix + full betting documentation
+
+**Status:** everything pushed except this entry's commit (see git log). 214 backend tests pass.
+
+**Render out-of-memory restart, root-caused and fixed.** Measured, not guessed:
+- The app used **281 MB before any request**. scikit-learn (113 MB), statsmodels, pandas (47 MB) and pulp were imported at startup by `analytics.py` / `advanced_analysis.py`, for pages the Bets work never touches. Render's free instance has 512 MB.
+- Today's Bets work added ~60 MB on top (peak 348 MB). Normal use elsewhere could then tip it over.
+- Fix: those services are imported lazily inside `_analytics_service` / `_optimization_service` / `_analysis_service`. Idle is now **137 MB**, the Bets peak **209 MB**, and opening every analytics page reaches ~282 MB.
+- No leak: memory held at ~185 MB across 6 full rebuilds of the NFL board, entries and college board.
+
+**Docs:** new `docs/guides/BETTING_GUIDE.md` is the single record: what's built, timeline, method, a decisions log with reasons and evidence, data sources and limits, grading, page layout, operations and open items. CLAUDE.md's Bets section is condensed to the must-not-break rules plus a pointer, and has a new "Memory on Render" rule. The API guide's Betting section is rewritten for every current endpoint and field. current-state.md and memory are updated.
+
+**Next (from the guide's open items):** verify FL 3–6 pick payouts; tune constants after 3–4 graded weeks; grade PrizePicks entries; un-shelve college props when credits allow (paid Odds API tier for more markets).
+
+---
+
 # Handoff (2026-10-07, session 19 cont.) — Bets page UX redesign (strategist + design review)
 
 **Status:** built, 214 backend tests pass, frontend build + lint clean. **Not committed, not seen in a

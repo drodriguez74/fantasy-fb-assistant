@@ -150,17 +150,25 @@ The `/waiver-wire` routes below are the league-wide Sleeper trending feed, shown
 
 ## Betting (`/betting`)
 
-- `GET /betting/board?refresh=` (auth required) returns this week's board:
-  - `player_props[]` and `game_props[]`, each with `side, line, book, price, model_prob, market_prob, p_win, p_push, ev, units, confidence`.
-  - Props also carry `player, projection, market_line, prizepicks_line, projection_outlier`; games carry `consensus_line`.
-  - Board-level fields: `recommended_count`, `evaluated`, `credits_remaining`, `method`, `disclaimer`.
-  - `available: false` with a `detail` when `ODDS_API_KEY` is unset or there are no lines.
-- The board itself is cached 15 minutes. `refresh` recomputes it, but the Odds API fetches stay cached (6h lines, 24h props, persisted in `odds_cache`), so `refresh` never spends credits on data that's already cached. Method: see CLAUDE.md "Bets". Frontend: `BettingPage.tsx` (`/bets`).
+All auth required. Method, decisions and limits: [BETTING_GUIDE.md](BETTING_GUIDE.md). Frontend: `BettingPage.tsx` (`/bets`).
 
-- `GET /betting/results?season=` (auth required) first settles pending picks whose games are final, from Sleeper stats and ESPN scores (no Odds API credits). Returns:
-  - `overall` and `by_confidence` / `by_market` / `by_week`, each with `bets, won, lost, push, void, pending, win_rate, units_staked, units_profit, roi` (recommended picks only).
-  - `calibration`: `{lines, buckets[{range, n, predicted, actual}], brier{blend, model, market}}`, computed over every graded line, including no-bet ones.
-  - `picks[]` and `newly_graded`. Shown on the Bets page's Results tab.
+- `GET /betting/board?sport=nfl|cfb&refresh=` returns the week's board (cached 15 min; `refresh` recomputes but never refetches cached odds).
+  - `player_props[]` and `game_props[]`. Each row has `side, line, book, price, model_prob, market_prob, p_win, p_push, ev, units, confidence, watch, min_price, kickoff, game, home, away`.
+    - `watch`: positive EV that every source agrees with, but under 3%, so no units.
+    - `min_price`: the worst price that still clears the bar (bets only).
+  - Props add `player, team, projection, model_mean, espn_projection, espn_agrees, market_line, prizepicks_line, projection_outlier`.
+  - Games add `consensus_line` (home spread or total), `model_line`, `check_line` (ESPN), `check_prob`.
+  - `game_combos[]`: `{game, kickoff, favorite, modeled, combos[{label, prob, fair_odds}]}`, the cover + over/under same-game parlays.
+  - `prizepicks` (NFL): `{source: "upload"|"odds_api", uploaded_at, lines_priced, lines_unmatched, payout, breakeven_leg, legs[], pairs[], positive_ev_pairs, goblins[], demons[]}`. Pairs never use teammates.
+  - Also: `recommended_count`, `watch_count`, `projection_scale` / `espn_projection_scale` (slate centering), `evaluated`, `credits_remaining`, `method`, `sources`, `disclaimer`.
+  - College (`sport=cfb`) has game lines and combos only (`player_props: []`), plus `games_modeled` (games with ESPN's predictor).
+  - `available: false` with `detail` when `ODDS_API_KEY` is unset or there are no lines.
+- `POST /betting/prizepicks-board` (multipart `file`) stores today's saved PrizePicks board (`api.prizepicks.com/projections?league_id=9`, saved from the browser) and returns `{league, lines, total_projections, uploaded_at}`. 400 when the file isn't a projections response (e.g. the CAPTCHA page), is another sport, or is a college board while college props are shelved. 413 over 25 MB.
+- `POST /betting/prizepicks-entries?sport=` with body `{power?: {"3": 6, ...}, flex?: {"5": {"5": 10, "4": 2, "3": 0.4}, ...}}` (payouts; defaults are PrizePicks' standard ones). Returns `{entries[{size, type, ev, p_all, p_paid, payouts, legs}], legs_considered, default_power, default_flex}`: the best Power (3–6) and Flex (2–6) entries from the board's legs.
+- `GET /betting/results?season=` first settles pending picks whose games are final (Sleeper stats for props, ESPN NFL and college scoreboards for games, no credits). Returns:
+  - `overall` and `by_sport` (NFL / College) / `by_confidence` / `by_market` / `by_week`. Each has `bets, won, lost, push, void, pending, win_rate, units_staked, units_profit, roi` (recommended picks only).
+  - `calibration`: `{lines, buckets[{range, n, predicted, actual}], brier{blend, model, market}}`, over every graded line including no-bet ones.
+  - `picks[]` (with `kind`: `player_prop` / `game` / `cfb_game`) and `newly_graded`.
 
 ## Matchup Analysis (`/matchup-analysis`) — partially surfaced this session
 

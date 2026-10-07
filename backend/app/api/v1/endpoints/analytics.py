@@ -12,10 +12,23 @@ from pydantic import BaseModel
 
 from app.api.deps import get_db, get_current_active_user
 from app.models.user import User
-from app.services.advanced_analytics_service import AdvancedAnalyticsService
-from app.services.optimization_service import OptimizationService
 
 router = APIRouter()
+
+# Imported lazily: these services pull in scikit-learn, statsmodels, pandas and
+# pulp (~200 MB resident). Loading them at startup put the whole app at ~280 MB
+# before any request, and Render's free instance (512 MB) restarted on memory
+# (2026-10-07). Now they load only when an analytics endpoint is used.
+
+
+def _analytics_service(db):
+    from app.services.advanced_analytics_service import AdvancedAnalyticsService
+    return AdvancedAnalyticsService(db)
+
+
+def _optimization_service(db):
+    from app.services.optimization_service import OptimizationService
+    return OptimizationService(db)
 
 
 # Request Models
@@ -60,7 +73,7 @@ async def predict_player_performance(
 ):
     """Predict player performance using machine learning models"""
     try:
-        analytics_service = AdvancedAnalyticsService(db)
+        analytics_service = _analytics_service(db)
         result = await analytics_service.predict_player_performance(
             player_id=request.player_id,
             weeks_ahead=request.weeks_ahead,
@@ -85,7 +98,7 @@ async def analyze_player_correlations(
 ):
     """Analyze correlations between player performances"""
     try:
-        analytics_service = AdvancedAnalyticsService(db)
+        analytics_service = _analytics_service(db)
         result = await analytics_service.analyze_player_correlations(
             position=position,
             min_games=min_games
@@ -109,7 +122,7 @@ async def cluster_players_by_performance(
 ):
     """Cluster players based on performance characteristics"""
     try:
-        analytics_service = AdvancedAnalyticsService(db)
+        analytics_service = _analytics_service(db)
         result = await analytics_service.cluster_players_by_performance(
             position=position,
             n_clusters=n_clusters
@@ -133,7 +146,7 @@ async def analyze_performance_trends(
 ):
     """Perform time series analysis and forecasting for a player"""
     try:
-        analytics_service = AdvancedAnalyticsService(db)
+        analytics_service = _analytics_service(db)
         result = await analytics_service.analyze_performance_trends(
             player_id=player_id,
             forecast_weeks=forecast_weeks
@@ -158,7 +171,7 @@ async def optimize_lineup(
 ):
     """Optimize fantasy lineup using linear programming"""
     try:
-        optimization_service = OptimizationService(db)
+        optimization_service = _optimization_service(db)
         result = await optimization_service.optimize_lineup(
             players=request.players,
             salary_cap=request.salary_cap,
@@ -183,7 +196,7 @@ async def optimize_multi_lineup(
 ):
     """Generate multiple optimized lineups with diversity constraints"""
     try:
-        optimization_service = OptimizationService(db)
+        optimization_service = _optimization_service(db)
         result = await optimization_service.optimize_multi_lineup(
             players=request.players,
             num_lineups=request.num_lineups,
@@ -208,7 +221,7 @@ async def optimize_season_roster(
 ):
     """Optimize full season roster construction"""
     try:
-        optimization_service = OptimizationService(db)
+        optimization_service = _optimization_service(db)
         result = await optimization_service.optimize_season_roster(
             available_players=request.available_players,
             roster_constraints=request.roster_constraints,
@@ -233,7 +246,7 @@ async def analyze_portfolio_risk(
 ):
     """Analyze risk metrics for a fantasy roster"""
     try:
-        optimization_service = OptimizationService(db)
+        optimization_service = _optimization_service(db)
         result = await optimization_service.portfolio_risk_analysis(
             roster_players=request.roster_players
         )
@@ -420,7 +433,7 @@ async def get_correlation_matrix_data(
 ):
     """Get correlation matrix data for visualization"""
     try:
-        analytics_service = AdvancedAnalyticsService(db)
+        analytics_service = _analytics_service(db)
         correlation_data = await analytics_service.analyze_player_correlations(
             position=position,
             min_games=8
@@ -457,7 +470,7 @@ async def get_performance_cluster_data(
 ):
     """Get performance cluster data for visualization"""
     try:
-        analytics_service = AdvancedAnalyticsService(db)
+        analytics_service = _analytics_service(db)
         cluster_data = await analytics_service.cluster_players_by_performance(
             position=position,
             n_clusters=5
