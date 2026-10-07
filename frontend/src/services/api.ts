@@ -283,6 +283,12 @@ export const betting = {
     notes?: string
   }) => api.post('/betting/entries', entry),
   deleteEntry: (id: number) => api.delete(`/betting/entries/${id}`),
+  // Reads a screenshot of a placed entry into the form fields; saves nothing.
+  readEntryScreenshot: (file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post('/betting/entries/read-screenshot', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   // Best 3-6 pick Power/Flex entries; payouts default to PrizePicks' standard ones.
   getPrizePicksEntries: (
     payouts: { power?: Record<string, number>; flex?: Record<string, Record<string, number>> },

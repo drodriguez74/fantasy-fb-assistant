@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Upload
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
-from app.services import betting_service, prizepicks_board, user_entries
+from app.services import betting_service, entry_screenshot, prizepicks_board, user_entries
 from app.services.sleeper_service import sleeper_service
 from app.services.betting_service import build_board
 from app.services.betting_tracking import grade_pending, summarize
@@ -135,6 +135,21 @@ async def log_entry(body: Dict = Body(...), current_user: User = Depends(get_cur
         if snap and not leg.get("team"):
             leg["team"] = snap.get("team")
     return await asyncio.to_thread(user_entries.create, current_user.id, data, season, week, snaps)
+
+
+@router.post("/entries/read-screenshot")
+async def read_entry_screenshot(
+    file: UploadFile = File(..., description="Screenshot of a placed PrizePicks entry"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Read a PrizePicks entry screenshot into the My entries form fields
+    (entry_type, stake, to_win, picks, warnings). Nothing is saved: the user
+    checks the prefilled form and saves it via POST /entries."""
+    image = await file.read(entry_screenshot.MAX_BYTES + 1)
+    try:
+        return await entry_screenshot.read_screenshot(image, file.content_type or "")
+    except entry_screenshot.ScreenshotError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 @router.delete("/entries/{entry_id}")

@@ -54,9 +54,19 @@ interface EntriesData {
 
 interface DraftLeg {
   player: string
+  team?: string | null
   market: string
   side: 'More' | 'Less'
   line: string
+}
+
+// What /betting/entries/read-screenshot returns: the form, prefilled.
+interface ScreenshotRead {
+  entry_type: 'power' | 'flex' | null
+  stake: number | null
+  to_win: number | null
+  picks: { player: string; team: string | null; market: string; side: 'More' | 'Less'; line: number }[]
+  warnings: string[]
 }
 
 const blankLeg = (): DraftLeg => ({ player: '', market: 'player_reception_yds', side: 'More', line: '' })
@@ -80,6 +90,35 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
   const [legs, setLegs] = useState<DraftLeg[]>([blankLeg(), blankLeg()])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [reading, setReading] = useState(false)
+  const [warnings, setWarnings] = useState<string[]>([])
+
+  // Prefills the form from a screenshot; the user checks it and saves.
+  const importScreenshot = async (file: File | null | undefined) => {
+    if (!file) return
+    setReading(true)
+    setError('')
+    setWarnings([])
+    try {
+      const r: ScreenshotRead = (await betting.readEntryScreenshot(file)).data
+      if (r.entry_type) setEntryType(r.entry_type)
+      setStake(r.stake != null ? String(r.stake) : '')
+      setToWin(r.to_win != null ? String(r.to_win) : '')
+      const read = r.picks.slice(0, 6).map((p) => ({
+        player: p.player,
+        team: p.team,
+        market: p.market in markets ? p.market : blankLeg().market,
+        side: p.side,
+        line: String(p.line),
+      }))
+      setLegs(read.length >= 2 ? read : [...read, ...Array.from({ length: 2 - read.length }, blankLeg)])
+      setWarnings(['Read from your screenshot: check every pick before saving.', ...r.warnings])
+    } catch (err) {
+      setError(getErrorMessage(err, "Couldn't read that screenshot."))
+    } finally {
+      setReading(false)
+    }
+  }
 
   const update = (i: number, patch: Partial<DraftLeg>) => setLegs((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)))
 
@@ -91,11 +130,12 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
         entry_type: entryType,
         stake: Number(stake),
         to_win: Number(toWin),
-        legs: legs.map((l) => ({ player: l.player, market: l.market, side: l.side, line: Number(l.line) })),
+        legs: legs.map((l) => ({ player: l.player, market: l.market, side: l.side, line: Number(l.line), ...(l.team ? { team: l.team } : {}) })),
       })
       setStake('')
       setToWin('')
       setLegs([blankLeg(), blankLeg()])
+      setWarnings([])
       onSaved()
     } catch (err) {
       setError(getErrorMessage(err, "Couldn't save that entry."))
@@ -105,8 +145,40 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
   }
 
   return (
-    <div className="rounded-lg border border-hairline bg-surface p-4 space-y-3">
-      <h3 className="text-sm font-medium text-body">Log an entry you placed</h3>
+    <div
+      className="rounded-lg border border-hairline bg-surface p-4 space-y-3"
+      onPaste={(e) => {
+        const file = Array.from(e.clipboardData.files).find((f) => f.type.startsWith('image/'))
+        if (file) {
+          e.preventDefault()
+          importScreenshot(file)
+        }
+      }}
+    >
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+        <h3 className="text-sm font-medium text-body">Log an entry you placed</h3>
+        <label className={`text-xs text-accent-ink underline cursor-pointer ${reading ? 'opacity-50 pointer-events-none' : ''}`}>
+          {reading ? 'Reading screenshot...' : 'Import from screenshot'}
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/webp,image/gif"
+            className="sr-only"
+            disabled={reading}
+            onChange={(e) => {
+              importScreenshot(e.target.files?.[0])
+              e.target.value = ''
+            }}
+          />
+        </label>
+        <span className="text-[11px] text-faint">or paste one here</span>
+      </div>
+      {warnings.length > 0 && (
+        <ul className="text-xs text-warning-700 space-y-0.5">
+          {warnings.map((w, i) => (
+            <li key={i}>{w}</li>
+          ))}
+        </ul>
+      )}
       <div className="flex flex-wrap items-end gap-3 text-xs">
         <div className="flex rounded-lg border border-hairline p-0.5" role="tablist" aria-label="Entry type">
           {(['power', 'flex'] as const).map((t) => (
@@ -143,7 +215,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
               list="entry-players"
               placeholder="Player"
               value={l.player}
-              onChange={(e) => update(i, { player: e.target.value })}
+              onChange={(e) => update(i, { player: e.target.value, team: null })}
               className="w-44 rounded border-line bg-surface-2 px-2 py-1 text-body"
               aria-label={`Pick ${i + 1} player`}
             />
