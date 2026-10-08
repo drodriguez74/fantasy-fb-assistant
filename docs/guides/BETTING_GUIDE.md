@@ -154,15 +154,16 @@ None of it costs credits.
 
 ## 6. The Bets page
 
-Redesigned 2026-10-08 after a creative-director + UX review ("data overload"): one place per piece of information, one big number per row, details on tap. Phase 1 (noise) is shipped; Phase 2 (tabs reorganized around the weekly task: Play / PrizePicks / My entries / Track record) and Phase 3 (an entry-builder tray with the goblin payout check) are planned.
+Redesigned 2026-10-08 after a creative-director + UX review ("data overload"): one place per piece of information, one big number per row, details on tap. Phases 1 (noise) and 2 (tabs around the weekly loop) are shipped; Phase 3 (an entry-builder tray with the goblin payout check) is planned.
 
-- **Header:** NFL / College switch and Refresh; one-line disclaimer (21+, 1-800-GAMBLER). Loads come from the saved board (section 7 / `serve_board`); "Updated N min ago · refreshing" while a fresh one builds.
-- **This week's best bets:** the top 5 bets by size (fills last) with units/dollars, win %, price, book and kickoff, then "See all N bets" (jumps to the tabs). Below: the best profitable PrizePicks entry and **Safest picks** (top 3 "most likely to win" goblins with a payout reminder).
+- **Header:** NFL / College switch, an ⓘ button (week, props/games priced, odds credits, refresh days, the method and sources) and Refresh; one-line disclaimer (21+, 1-800-GAMBLER). Loads come from the saved board (`serve_board`).
+- **This week's best bets:** the top 5 bets by size (fills last) with units/dollars, win %, price, book and kickoff, then "See all N bets" (opens Play). Below: one-line links to the best profitable PrizePicks entry and to the Safest picks.
 - **Pick rows** (`BetCard`): collapsed, two lines (the pick; price · book · game · kickoff) and the win chance as the one big number. A tap opens edge ("Edge +x%", expected profit per $1), "Good down to" (bets) or "Bet if it reaches" (watch), units/dollars, books vs Sleeper vs ESPN, and "Alert me if it becomes a bet". Stale-projection and ESPN-disagrees warnings stay visible collapsed. Toggle: Recommended / All lines.
 - **Visual rules:** volt only means "act on this" (solid chip on a real bet, outlined on a Best-available fill, the main button, the active tab). Green/red only mean outcome or edge sign; More/Less, links and pending states are neutral. Nothing under 12px.
-- **Tabs:** NFL: Player props · Game lines (+ folded combos) · PrizePicks · My entries · Results. College: CFB Game Lines · Results.
-- **Results:** one sentence until something is graded (then record/units/ROI tiles), the **Audit** (week picker, every recommendation hit/miss by section, CSV), and **Model performance** collapsed (by bet size, market, week, model version, Safest-picks hit rate, calibration). Toggles: sport / All sports, All picks / Current model. The old Recommendations list was removed (the Audit covers it).
-- **PrizePicks tab:** board freshness + Upload ("How to upload" collapsed when there's a board from today) → best entries → 2-pick pairs → goblins / demons (folded).
+- **Tabs:** NFL: Play · PrizePicks · My entries · Track record. College: Play · Track record.
+- **Play:** sportsbook bets with a Player props / Game lines switch and a Bets / All lines switch; the watch list is one collapsible row (open a pick to set an alert); game combos sit under Game lines.
+- **Track record** (was Results): one sentence until something is graded (then record/units/ROI tiles), the **Audit** (week picker, every recommendation hit/miss by section, CSV), and **Model performance** collapsed (by bet size, market, week, model version, Safest-picks hit rate, calibration). Toggles: sport / All sports, All picks / Current model. The old Recommendations list was removed (the Audit covers it).
+- **PrizePicks tab:** board freshness + Upload ("How to upload" collapsed when there's a board from today) → **Safest picks** (70%+ to win; the safest 2-pick shows the payout it needs, 1 / P(both)) → best entries with an entry-size filter → 2-pick pairs → goblins / demons (folded).
 - **My entries:** "Log an entry" (with screenshot import) collapsed once you have entries; tiles only once something settles; a dot per pick (won / lost / pending).
 
 ---
