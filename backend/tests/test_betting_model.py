@@ -429,3 +429,14 @@ def test_four_pick_stack_qb_and_two_receivers():
     assert four and {l["player"] for l in four[0]["legs"]} == {"QB", "WR1", "WR2", "RB"}
     assert four[0]["p_all"] > four[0]["p_independent"] * 1.2   # two positively correlated pairs
     assert len({l["team"] for l in four[0]["legs"]}) == 2        # PrizePicks: 2+ teams
+
+
+def test_units_only_at_my_books(monkeypatch):
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "BETTING_MY_BOOKS", "hardrockbet", raising=False)
+    off_dk = _spread_game([("draftkings", -7.0, 130, -110), ("fanduel", -7.0, -110, -110), ("hardrockbet", -7.0, -110, -110)])
+    spread = next(r for r in evaluate_game(off_dk) if r["market"] == "spread")
+    assert spread["units"] == 0.0 and spread["book"] == "Hard Rock Bet"   # DraftKings' price isn't playable here
+    off_hr = _spread_game([("draftkings", -7.0, -110, -110), ("fanduel", -7.0, -110, -110), ("hardrockbet", -7.0, 130, -110)])
+    spread = next(r for r in evaluate_game(off_hr) if r["market"] == "spread")
+    assert spread["units"] > 0 and spread["book"] == "Hard Rock Bet"

@@ -18,6 +18,9 @@ interface AuditRow {
   engine_prob: number | null
   units: number | null
   engine_version: string
+  close_line?: number | null
+  close_books_prob?: number | null
+  beat_close?: boolean | null
   status: string
   actual: number | string | null
   profit: number | null
@@ -178,6 +181,8 @@ export function BettingAudit() {
                         {r.units ? ` · ${r.units}u` : ''}
                         {r.book && ` · ${r.book}`}
                         {r.actual != null && ` · actual ${r.actual}`}
+                        {r.beat_close != null &&
+                          ` · ${r.beat_close ? 'beat' : 'lost to'} the close${r.close_line != null && r.close_line !== r.line ? ` (${r.close_line})` : ''}`}
                         {r.profit != null && r.status !== 'pending' &&
                           ` · ${r.profit > 0 ? '+' : ''}${r.profit_unit === '$' ? `$${r.profit}` : `${r.profit}${r.profit_unit === 'u' ? 'u' : 'x'}`}`}
                         {` · ${r.engine_version === 'pre-versioning' ? 'v0 (before tracking)' : `model ${r.engine_version}`}`}

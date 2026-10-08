@@ -41,7 +41,28 @@ MARKET_STATS = {
     "player_receptions": ("rec",),
     "player_anytime_td": ("rush_td", "rec_td"),
 }
-BOOK_LABELS = {"draftkings": "DraftKings", "fanduel": "FanDuel", "hardrockbet": "Hard Rock Bet", "prizepicks": "PrizePicks"}
+BOOK_LABELS = {"draftkings": "DraftKings", "fanduel": "FanDuel", "hardrockbet": "Hard Rock Bet", "prizepicks": "PrizePicks",
+               "betmgm": "BetMGM", "espnbet": "ESPN BET", "betrivers": "BetRivers", "ballybet": "Bally Bet"}
+
+
+def my_books() -> Optional[frozenset]:
+    """Books the user can bet at (settings.BETTING_MY_BOOKS), or None for all."""
+    from app.core.config import settings
+    raw = (settings.BETTING_MY_BOOKS or "").strip()
+    return frozenset(b.strip().lower() for b in raw.split(",") if b.strip()) or None
+
+
+def _playable(c: Dict[str, Any]) -> Dict[str, Any]:
+    """A candidate at a book the user can't use keeps its price for reference
+    but gets no units."""
+    if c.get("playable", True):
+        return c
+    return {**c, "units": 0.0, "confidence": "none", "min_price": None}
+
+
+def _best(cands: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """The best offer the user can actually take (any book if none of theirs quotes it)."""
+    return max(cands, key=lambda c: (c.get("playable", True), c["ev"]))
 
 DISCLAIMER = (
     "For entertainment and research. These are model estimates, not guarantees -- markets are efficient "
@@ -292,7 +313,8 @@ def evaluate_player_prop(
         outlier = bm.projection_outlier(market, mean, market_line=market_line)
     if outlier:
         candidates = [{**c, "units": 0.0, "confidence": "none"} for c in candidates]
-    best = max(candidates, key=lambda c: c["ev"])
+    candidates = [_playable(c) for c in candidates]
+    best = _best(candidates)
     # Watch: positive EV that every source agrees with but too small to size.
     best["watch"] = bool(best["units"] == 0 and best["ev"] > 0 and not outlier and best["model_agrees"]
                          and best.get("espn_agrees") is not False)
@@ -771,11 +793,17 @@ def _candidate(side, point, book, price, p_model, p_market, p_push) -> Dict[str,
         "side": side,
         "line": point,
         "book": BOOK_LABELS.get(book, book),
+        "playable": _is_mine(book),
         "price": int(price),
         "model_prob": round(p_model, 4),
         "market_prob": round(p_market, 4),
         **priced,
     }
+
+
+def _is_mine(book: str) -> bool:
+    mine = my_books()
+    return mine is None or book in mine
 
 
 # ---------------------------------------------------------------------------
@@ -860,7 +888,10 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
             if not agrees or check_ok is False:
                 priced = {**priced, "units": 0.0, "confidence": "none"}
             side = (_team(name) or name) if kind == "spread" else name
+            if not _is_mine(book):
+                priced = {**priced, "units": 0.0, "confidence": "none", "min_price": None}
             cands.append({"side": side, "line": point, "book": BOOK_LABELS.get(book, book), "price": int(price),
+                          "playable": _is_mine(book),
                           "model_prob": round(p_mod, 4) if p_mod is not None else None,
                           "market_prob": round(p_mkt, 4), "check_prob": round(p_check, 4) if p_check is not None else None,
                           "watch": bool((p_mod is not None or not gated) and agrees and check_ok is not False
@@ -868,7 +899,7 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
                           **priced})
             if cands[-1]["watch"]:
                 cands[-1]["bet_at"] = bm.worst_price(priced["p_win"], priced["p_push"])
-        return max(cands, key=lambda c: c["ev"]) if cands else None
+        return _best(cands) if cands else None
 
     for kind, rows, consensus in (("spread", spreads, home_spread), ("total", totals, total_line)):
         best = best_of(rows, kind)
@@ -1126,6 +1157,11 @@ async def _build_board_now() -> Dict[str, Any]:
     ]
     combos = [c for g in games for c in [game_combos(g, models.get(g["id"]))] if c]
     filled = fill_card(player_props + game_props, await _fill_keys(season, int(week)))
+    try:  # closing line: the latest market for every pick not yet started
+        from app.services.betting_tracking import update_closing
+        await asyncio.to_thread(update_closing, season, int(week), player_props + game_props)
+    except Exception as e:  # noqa: BLE001 - tracking must never break the board
+        logger.warning("Updating closing lines failed: %s", e)
     try:
         from app.services import watch_alerts
         await asyncio.to_thread(watch_alerts.check, player_props + game_props, season, int(week))
@@ -1337,6 +1373,11 @@ async def _build_cfb_board_now() -> Dict[str, Any]:
     season = int(state.get("season") or now.year) if isinstance(state, dict) else now.year
     filled = fill_card(game_props, await _fill_keys(season, int(week)) if week else frozenset(), kind="cfb_game")
     if week:
+        try:
+            from app.services.betting_tracking import update_closing
+            await asyncio.to_thread(update_closing, season, int(week), game_props, "cfb_game")
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Updating college closing lines failed: %s", e)
         try:
             from app.services import watch_alerts
             await asyncio.to_thread(watch_alerts.check, game_props, season, int(week), "cfb_game")

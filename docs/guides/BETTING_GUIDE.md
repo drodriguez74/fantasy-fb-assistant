@@ -42,7 +42,9 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 ## 2. The method (current)
 
-**Market.** Each book's two-way prices are de-vigged (multiplicative) and the median taken across DraftKings, FanDuel and Hard Rock Bet. This is the anchor: 70% of every estimate.
+**Market.** Each book's two-way prices are de-vigged (multiplicative) and the median taken across DraftKings, FanDuel, Hard Rock Bet, BetMGM, ESPN BET, BetRivers and Bally Bet (seven books since 2026-10-08; up to 10 cost the same credits as one -- verified: 9 requested, 2 credits). This is the anchor: 70% of every estimate.
+
+**Your books.** `BETTING_MY_BOOKS` (comma-separated Odds API keys, e.g. `hardrockbet` in Florida, where it's the only legal online sportsbook) limits units to books the user can bet at; every book still feeds the consensus, and a pick shows the best price at the user's books (`_best`, `_playable`). Unset = all books.
 
 **Player model (30%).** A two-level Monte Carlo of Sleeper's weekly projected stat line, 20,000 draws:
 1. The true mean is drawn around the projection (SD 30% of it).
@@ -135,6 +137,8 @@ More stat types (pass TDs, rush+rec, pass+rush, completions, attempts, INT, rush
 ---
 
 ## 5. Tracking, grading and how to judge the model
+
+**Closing-line value (CLV, 2026-10-08).** Every board build stores, for each pending pick whose game hasn't started, the latest market for the pick's own side (`update_closing`: `close_line`, `close_market_prob`, `close_price`, `close_book`), freezing at kickoff. If the board's best side has flipped, our side is derived from the other side, so picks the market moved against don't drop out. `beat_close`: same line, the books' chance for our side rose; moved line, our number got better. Track record shows "beat the closing line: X of N" and the average move; the audit and CSV carry it per pick. Consistently beating the close is the early sign of a real edge. On the free tier props only refresh Wednesdays and Sundays, so a prop's "close" is the last refresh before kickoff.
 
 Every priced line is saved once to `bet_picks`, including no-bet lines (they're what calibration checks), frozen at the first price seen. A no-bet row can be upgraded to a bet; a bet is never overwritten. Grading happens when someone opens Results, 5h after kickoff:
 - **NFL props:** Sleeper stats. No stat line or 0 games played = void.

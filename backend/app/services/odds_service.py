@@ -28,7 +28,11 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-BOOKMAKERS = ("draftkings", "fanduel", "hardrockbet")
+# Up to 10 bookmakers count as one region, so these seven cost the same 2
+# credits per game-line call as three did (verified 2026-10-08: 9 requested,
+# 2 credits). More books = a sharper consensus and more off-market prices.
+# Caesars ("williamhill_us") and Fanatics returned nothing for NFL then.
+BOOKMAKERS = ("draftkings", "fanduel", "hardrockbet", "betmgm", "espnbet", "betrivers", "ballybet")
 SOURCE = "Vegas consensus (DraftKings, FanDuel, Hard Rock Bet)"
 _CACHE_TTL_SECONDS = 6 * 3600
 _cache: Dict[str, Any] = {}

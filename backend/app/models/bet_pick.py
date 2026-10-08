@@ -54,4 +54,13 @@ class BetPick(Base):
     status = Column(String, nullable=False, default="pending", index=True)  # pending|won|lost|push|void
     actual = Column(Float, nullable=True)        # real stat / margin / total it was graded on
     profit_units = Column(Float, nullable=True)  # units won (+) or lost (-); 0 for push/void/no-bet
+    # Closing line (CLV): the last market seen for this pick's side before
+    # kickoff (betting_tracking.update_closing), refreshed on every board
+    # build until the game starts. Beating the close is the fastest sign of a
+    # real edge.
+    close_line = Column(Float, nullable=True)         # our side's line at the last look
+    close_market_prob = Column(Float, nullable=True)  # books' fair chance for our side at close_line
+    close_price = Column(Integer, nullable=True)      # best price for our side then (same side only)
+    close_book = Column(String, nullable=True)
+    close_seen_at = Column(DateTime(timezone=True), nullable=True)
     graded_at = Column(DateTime(timezone=True), nullable=True)

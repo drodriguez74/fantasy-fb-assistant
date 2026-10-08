@@ -18,13 +18,15 @@ from typing import Any, Dict, List, Optional
 
 from app.db.base import SessionLocal
 from app.models.bet_pick import BetPick
+from app.services.betting_tracking import beat_close
 from app.models.tracked_entry import TrackedEntry
 from app.models.user_entry import UserEntry
 from app.services import betting_model as bm
 
 SECTIONS = ("Bets", "Best available", "Watch list", "Most likely to win", "Suggested tickets", "My entries")
 COLUMNS = ("section", "pick", "market", "side", "line", "book", "price", "p_win", "books_prob", "engine_prob",
-           "units", "engine_version", "status", "actual", "profit", "profit_unit", "kickoff", "graded_at")
+           "units", "engine_version", "status", "actual", "profit", "profit_unit", "kickoff", "graded_at",
+           "close_line", "close_books_prob", "beat_close")
 DECIDED = ("won", "lost", "partial")
 
 MARKET_LABELS = {
@@ -59,6 +61,9 @@ def pick_row(p: BetPick) -> Dict[str, Any]:
         "status": p.status, "actual": p.actual,
         "profit": p.profit_units if p.kind != "pp_leg" else None, "profit_unit": "u" if p.kind != "pp_leg" else None,
         "kickoff": _iso(p.kickoff), "graded_at": _iso(p.graded_at),
+        # Closing line: the last market seen for this side before kickoff.
+        "close_line": getattr(p, "close_line", None), "close_books_prob": getattr(p, "close_market_prob", None),
+        "beat_close": beat_close(p) if p.kind != "pp_leg" and getattr(p, "close_seen_at", None) else None,
     }
 
 

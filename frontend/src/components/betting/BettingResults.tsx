@@ -49,6 +49,8 @@ interface Results {
   }
   lines_tracked: number
   picks: TrackedPick[]
+  // Closing-line value: did the market move toward our picks by kickoff?
+  clv?: { picks: number; moved: number; beat: number; beat_rate: number | null; avg_prob_move: number | null }
   // Which engine version made each pick ("pre-versioning" before 2026-10-07).
   by_engine_version?: Record<string, RecordSummary>
   engine_version?: string
@@ -214,6 +216,28 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
           <Tile label="Units" value={`${signed(o.units_profit)}u`} tone={o.units_profit > 0 ? 'good' : o.units_profit < 0 ? 'bad' : undefined} />
           <Tile label="ROI" value={pct(o.roi)} tone={(o.roi ?? 0) > 0 ? 'good' : (o.roi ?? 0) < 0 ? 'bad' : undefined} />
           <Tile label="Pending" value={String(o.pending)} />
+        </div>
+      )}
+
+      {data.clv && data.clv.moved > 0 && (
+        <div className="bg-surface rounded-lg border border-hairline p-4 text-sm">
+          <p className="text-body">
+            <span className="font-medium">Beat the closing line:</span>{' '}
+            <span className="stat-nums">
+              {data.clv.beat} of {data.clv.moved} ({Math.round((data.clv.beat_rate ?? 0) * 100)}%)
+            </span>
+            {data.clv.avg_prob_move != null && (
+              <span className={`stat-nums ${data.clv.avg_prob_move > 0 ? 'text-success-700' : 'text-danger-700'}`}>
+                {' '}
+                · books moved {data.clv.avg_prob_move > 0 ? '+' : ''}
+                {(data.clv.avg_prob_move * 100).toFixed(1)} pts toward us on average
+              </span>
+            )}
+          </p>
+          <p className="text-xs text-muted mt-1">
+            The early sign of a real edge: if the market keeps moving toward our picks before kickoff, we're ahead of it,
+            long before wins and losses can show it. Above 50% consistently is good.
+          </p>
         </div>
       )}
 

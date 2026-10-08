@@ -142,6 +142,92 @@ def record_board(season: int, week: int, rows: Iterable[Dict[str, Any]]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Closing line (CLV)
+# ---------------------------------------------------------------------------
+
+def _our_side(pick_side: str, pick_kind: str, pick_market: str, r: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """The board row's market from the pick's own side: line, the books'
+    fair chance and (same side only) the price. When the board's best side
+    has flipped, our side is derived from the other side -- otherwise picks
+    the market moved against would silently drop out and CLV would look
+    better than it is."""
+    same = r["side"] == pick_side
+    line = r.get("line")
+    if line is not None and not same and pick_market == "spread":
+        line = -line  # the other team's spread
+    mp, push = r.get("market_prob"), float(r.get("p_push") or 0.0)
+    if mp is None:
+        return None
+    return {"line": line, "prob": float(mp) if same else max(0.0, 1 - float(mp) - push),
+            "price": int(r["price"]) if same else None, "book": r.get("book") if same else None}
+
+
+def update_closing(season: int, week: int, rows: Iterable[Dict[str, Any]], kind_override: Optional[str] = None,
+                   now: Optional[datetime] = None) -> int:  # noqa: C901
+    """Store the latest market for each pending pick whose game hasn't
+    started (it freezes at kickoff). Called on every board build."""
+    now = now or datetime.now(timezone.utc)
+    by_key: Dict[Tuple[str, str, str], Dict[str, Any]] = {}
+    for r in rows:
+        kind = kind_override or r["type"]
+        by_key[(kind, r["player"] if kind == "player_prop" else r["game"], r["market"])] = r
+    updated = 0
+    with SessionLocal() as db:
+        picks = db.query(BetPick).filter(BetPick.season == season, BetPick.week == week, BetPick.status == "pending",
+                                         BetPick.kind.in_(("player_prop", "game", "cfb_game")),
+                                         BetPick.kickoff.isnot(None), BetPick.kickoff > now).all()
+        for p in picks:
+            r = by_key.get((p.kind, p.subject, p.market))
+            ours = _our_side(p.side, p.kind, p.market, r) if r else None
+            if ours is None:
+                continue
+            p.close_line, p.close_market_prob = ours["line"], round(ours["prob"], 4)
+            p.close_price, p.close_book, p.close_seen_at = ours["price"], ours["book"], now
+            updated += 1
+        db.commit()
+    return updated
+
+
+def beat_close(p: BetPick) -> Optional[bool]:
+    """Did the market move toward this pick by kickoff? Same line: the books'
+    fair chance for our side rose. Moved line: a better number for our side
+    (higher for Over, lower for Under, fewer points for a spread side)."""
+    if p.close_market_prob is None or p.market_prob is None:
+        return None
+    if p.line is None or p.close_line is None or p.close_line == p.line:
+        if abs(p.close_market_prob - p.market_prob) < 0.0025:
+            return None  # no real move
+        return p.close_market_prob > p.market_prob
+    if p.side in ("Over", "More", "Yes"):
+        return p.close_line > p.line
+    if p.side in ("Under", "Less"):
+        return p.close_line < p.line
+    return p.close_line < p.line  # spread side: the number got worse after we took it
+
+
+def clv_summary(picks: List[BetPick]) -> Dict[str, Any]:
+    """Of the picks whose game has started and that have a closing look: how
+    many beat the close, and the average move in the books' chance (same
+    line) -- a positive average is the early sign of a real edge."""
+    now = datetime.now(timezone.utc)
+
+    def kicked_off(p):
+        k = p.kickoff
+        if k is None:
+            return False
+        return (k.replace(tzinfo=timezone.utc) if k.tzinfo is None else k) <= now
+    started = [p for p in picks if getattr(p, "close_seen_at", None) is not None and kicked_off(p)]
+    verdicts = [(p, beat_close(p)) for p in started]
+    moved = [(p, v) for p, v in verdicts if v is not None]
+    same_line = [p.close_market_prob - p.market_prob for p in started
+                 if p.close_market_prob is not None and p.market_prob is not None
+                 and (p.line is None or p.close_line == p.line)]
+    return {"picks": len(started), "moved": len(moved), "beat": sum(v for _, v in moved),
+            "beat_rate": round(sum(v for _, v in moved) / len(moved), 4) if moved else None,
+            "avg_prob_move": round(sum(same_line) / len(same_line), 4) if same_line else None}
+
+
+# ---------------------------------------------------------------------------
 # Grading (pure outcome rules)
 # ---------------------------------------------------------------------------
 
@@ -406,6 +492,8 @@ def summarize(season: Optional[int] = None, sport: Optional[str] = None,
         "by_engine_version": {k: _record(v) for k, v in split(lambda p: p.engine_version or "pre-versioning").items()},
         "engine_version": bm.ENGINE_VERSION,
         "calibration": calibration([p for p in picks if p.kind != "pp_leg"]),
+        # Closing-line value for the recommendations (bets + fills).
+        "clv": clv_summary(recs),
         # "Most likely to win" picks: does a 75% call win ~75% of the time?
         "most_likely": {**_hit_check([p for p in picks if p.kind == "pp_leg"]),
                         "calibration": calibration([p for p in picks if p.kind == "pp_leg"])["buckets"]},

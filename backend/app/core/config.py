@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     # totals (odds_service.py). Optional: absent means odds context is
     # simply left off, never a crash. Free tier is 500 credits/month.
     ODDS_API_KEY: Optional[str] = None
+    # Sportsbooks the user can actually bet at (Odds API keys, comma-separated,
+    # e.g. "hardrockbet" in Florida). Every book still feeds the consensus;
+    # only these get units. Empty = all books.
+    BETTING_MY_BOOKS: Optional[str] = None
 
     # Outbound email (SMTP) for real verification/password-reset delivery --
     # see email_service.py. Optional like the API keys above: when
