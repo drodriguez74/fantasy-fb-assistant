@@ -30,7 +30,7 @@ export function SafestPicks({ data, ticket }: { data?: MostLikely; ticket?: Tick
             {data.picks.map((p) => (
               <li key={`${p.player}-${p.market}`} className="py-2 flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-body truncate">
+                  <p className="text-sm text-body break-words">
                     <span className="font-medium">{p.player}</span> {p.side} {p.line} {(p.market_label ?? '').toLowerCase()}
                     {p.odds_type !== 'standard' && (
                       <span className="ml-1.5 text-xs text-muted border border-hairline rounded px-1 capitalize">{p.odds_type}</span>

@@ -98,7 +98,7 @@ export function ThisWeekCard({
                 <div className="text-xs mt-0.5 leading-none">{dollars(r.units, bankroll) ?? (r.card_fill ? 'fill' : '')}</div>
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm text-body font-medium truncate">{pickLabel(r)}</p>
+                <p className="text-sm text-body font-medium break-words">{pickLabel(r)}</p>
                 <p className="stat-nums text-xs text-muted truncate">
                   {odds(r.price)} at {r.book}
                   {r.type === 'player_prop' || r.market === 'spread' ? ` · ${r.game}` : ''}

@@ -98,7 +98,7 @@ export function BetCard({
       >
         <SizeChip row={row} bankroll={bankroll} />
         <div className="min-w-0 flex-1">
-          <p className="text-sm text-body truncate">
+          <p className="text-sm text-body break-words">
             <span className="font-medium">{title}</span>{' '}
             <span className="font-semibold">{pickText(row)}</span> <span className="text-muted">{what}</span>
           </p>
