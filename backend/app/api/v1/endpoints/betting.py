@@ -194,6 +194,44 @@ async def read_entry_screenshot(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.get("/watch-alerts")
+async def get_watch_alerts(current_user: User = Depends(get_current_active_user)):
+    """The user's "alert me if it becomes a bet" alerts (active, triggered, expired)."""
+    from app.services import watch_alerts
+    return {"alerts": await asyncio.to_thread(watch_alerts.list_for, current_user.id)}
+
+
+@router.post("/watch-alerts")
+async def add_watch_alert(body: Dict = Body(...), current_user: User = Depends(get_current_active_user)):
+    """Alert me if this watch-list line becomes a bet: {sport: nfl|cfb, type:
+    player_prop|game, subject (player or game label), market, side}. The pick
+    is looked up on the current board; its target price is saved with it."""
+    from app.services import watch_alerts
+    sport = body.get("sport") or "nfl"
+    board = await (betting_service.build_cfb_board() if sport == "cfb" else build_board())
+    rows = (board.get("player_props") or []) + (board.get("game_props") or [])
+    row = watch_alerts.find_row(rows, body.get("type") or "player_prop", body.get("subject") or "",
+                                body.get("market") or "", body.get("side") or "")
+    if row is None:
+        raise HTTPException(status_code=404, detail="That line isn't on the current board.")
+    season, week = await _nfl_week()
+    if not week:
+        raise HTTPException(status_code=503, detail="Couldn't determine the current NFL week.")
+    try:
+        return await asyncio.to_thread(watch_alerts.create, current_user.id, season, week, row,
+                                       "cfb_game" if sport == "cfb" else None)
+    except watch_alerts.AlertError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.delete("/watch-alerts/{alert_id}")
+async def delete_watch_alert(alert_id: int, current_user: User = Depends(get_current_active_user)):
+    from app.services import watch_alerts
+    if not await asyncio.to_thread(watch_alerts.delete, current_user.id, alert_id):
+        raise HTTPException(status_code=404, detail="Alert not found.")
+    return {"deleted": alert_id}
+
+
 @router.delete("/entries/{entry_id}")
 async def delete_entry(entry_id: int, current_user: User = Depends(get_current_active_user)):
     if not await asyncio.to_thread(user_entries.delete, current_user.id, entry_id):

@@ -8,7 +8,7 @@ import { GameCombos } from '../components/betting/GameCombos'
 import { BetCard } from '../components/betting/BetCard'
 import { ThisWeekCard } from '../components/betting/ThisWeekCard'
 import { MyEntries } from '../components/betting/MyEntries'
-import { type Board, useBankroll } from '../components/betting/betTypes'
+import { type Board, type BoardRow, type WatchAlert, useBankroll, watchKey } from '../components/betting/betTypes'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
@@ -60,6 +60,8 @@ export function BettingPage() {
   const [showMethod, setShowMethod] = useState(false)
   const [slow, setSlow] = useState(false)
   const [bankroll, setBankroll] = useBankroll()
+  const [alerts, setAlerts] = useState<WatchAlert[]>([])
+  const [alertError, setAlertError] = useState('')
   const entries = usePrizePicksEntries()
 
   const load = useCallback(async (refresh = false) => {
@@ -91,6 +93,44 @@ export function BettingPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  const loadAlerts = useCallback(async () => {
+    try {
+      setAlerts((await betting.getWatchAlerts()).data.alerts)
+    } catch {
+      // alerts are a convenience; the board still works without them
+    }
+  }, [])
+
+  useEffect(() => {
+    loadAlerts()
+  }, [loadAlerts])
+
+  const alertFor = (row: BoardRow) =>
+    alerts.find(
+      (a) =>
+        watchKey(a.kind, a.subject, a.market, a.side) ===
+        watchKey(sport === 'cfb' ? 'cfb_game' : row.type, row.type === 'player_prop' ? row.player ?? '' : row.game, row.market, row.side),
+    )
+
+  const toggleAlert = async (row: BoardRow) => {
+    setAlertError('')
+    const existing = alertFor(row)
+    try {
+      if (existing) await betting.deleteWatchAlert(existing.id)
+      else
+        await betting.addWatchAlert({
+          sport,
+          type: row.type,
+          subject: row.type === 'player_prop' ? row.player ?? '' : row.game,
+          market: row.market,
+          side: row.side,
+        })
+      await loadAlerts()
+    } catch (err) {
+      setAlertError(getErrorMessage(err, "Couldn't update that alert."))
+    }
+  }
 
   useEffect(() => {
     if (sport === 'cfb' && !college && !collegeLoading && !collegeError) loadCollege()
@@ -247,8 +287,15 @@ export function BettingPage() {
                   flag a sportsbook that's off the others, since nothing projects college totals.
                 </p>
               )}
+              {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
               {shown.map((row, i) => (
-                <BetCard key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`} row={row} bankroll={bankroll} />
+                <BetCard
+                  key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`}
+                  row={row}
+                  bankroll={bankroll}
+                  alert={alertFor(row)}
+                  onToggleAlert={toggleAlert}
+                />
               ))}
             </div>
           )}

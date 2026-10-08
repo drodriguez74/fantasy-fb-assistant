@@ -290,6 +290,11 @@ export const betting = {
     notes?: string
   }) => api.post('/betting/entries', entry),
   deleteEntry: (id: number) => api.delete(`/betting/entries/${id}`),
+  // "Alert me if it becomes a bet" on watch-list lines (navbar bell when it fires).
+  getWatchAlerts: () => api.get('/betting/watch-alerts'),
+  addWatchAlert: (alert: { sport: 'nfl' | 'cfb'; type: 'player_prop' | 'game'; subject: string; market: string; side: string }) =>
+    api.post('/betting/watch-alerts', alert),
+  deleteWatchAlert: (id: number) => api.delete(`/betting/watch-alerts/${id}`),
   // Reads a screenshot of a placed entry into the form fields; saves nothing.
   readEntryScreenshot: (file: File) => {
     const form = new FormData()

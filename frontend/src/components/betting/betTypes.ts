@@ -42,6 +42,8 @@ export interface BoardRow {
   watch?: boolean
   // Best available: fills the weekly card; not a measured edge.
   card_fill?: boolean
+  // Watch: the worst price at which it would clear the bar (alerts).
+  bet_at?: number | null
   // game lines (home spread or total; negative spread = home favored)
   consensus_line?: number
   model_line?: number | null
@@ -93,6 +95,23 @@ export interface Board {
   method?: string
   disclaimer: string
 }
+
+// GET /betting/watch-alerts row.
+export interface WatchAlert {
+  id: number
+  kind: string
+  subject: string
+  market: string
+  side: string
+  line: number | null
+  target_price: number | null
+  status: 'active' | 'triggered' | 'expired'
+  triggered_price: number | null
+  triggered_book: string | null
+}
+
+export const watchKey = (kind: string, subject: string, market: string, side: string) =>
+  `${kind}|${subject}|${market}|${side}`
 
 export const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(1)}%`)
 export const odds = (p: number) => (p > 0 ? `+${p}` : `${p}`)

@@ -1,7 +1,7 @@
 // One priced line on the Bets page: a bet (units), a watch-list play, or a
 // line we priced but wouldn't bet. Tiers are visually distinct so a bet
 // never looks like a no-bet.
-import { type BoardRow, SIZE_LABEL, dollars, kickoffLabel, odds, pct, sideSpread, signedPct } from './betTypes'
+import { type BoardRow, type WatchAlert, SIZE_LABEL, dollars, kickoffLabel, odds, pct, sideSpread, signedPct } from './betTypes'
 
 function SizeBadge({ row, bankroll }: { row: BoardRow; bankroll: number | null }) {
   if (row.card_fill) {
@@ -67,7 +67,18 @@ function details(row: BoardRow): string {
   return parts.join(' · ')
 }
 
-export function BetCard({ row, bankroll }: { row: BoardRow; bankroll: number | null }) {
+export function BetCard({
+  row,
+  bankroll,
+  alert,
+  onToggleAlert,
+}: {
+  row: BoardRow
+  bankroll: number | null
+  // The user's alert on this pick, if any (watch-list lines only).
+  alert?: WatchAlert
+  onToggleAlert?: (row: BoardRow) => void
+}) {
   const isBet = row.units > 0
   const title = row.type === 'player_prop' ? row.player : row.game
   const when = kickoffLabel(row.kickoff)
@@ -101,6 +112,24 @@ export function BetCard({ row, bankroll }: { row: BoardRow; bankroll: number | n
             <span className={`stat-nums text-xs ${row.ev > 0 ? 'text-success-700' : 'text-muted'}`}>EV {signedPct(row.ev)}</span>
             {isBet && row.min_price != null && (
               <span className="stat-nums text-xs text-muted">Still a bet at {odds(row.min_price)} or better</span>
+            )}
+            {(row.watch || row.card_fill) && row.bet_at != null && (
+              <span className="stat-nums text-xs text-muted">Becomes a bet at {odds(row.bet_at)} or better</span>
+            )}
+            {(row.watch || row.card_fill) && onToggleAlert && (
+              <button
+                onClick={() => onToggleAlert(row)}
+                className={`ml-auto text-xs rounded-md px-2 py-0.5 border ${
+                  alert?.status === 'triggered'
+                    ? 'border-success-700 text-success-700'
+                    : alert
+                      ? 'border-volt text-body'
+                      : 'border-hairline text-accent-ink hover:border-volt'
+                }`}
+                aria-pressed={Boolean(alert)}
+              >
+                {alert?.status === 'triggered' ? 'Alert sent' : alert ? 'Alert on · cancel' : 'Alert me'}
+              </button>
             )}
           </div>
           <p className="stat-nums text-[11px] text-faint mt-1.5">{details(row)}</p>

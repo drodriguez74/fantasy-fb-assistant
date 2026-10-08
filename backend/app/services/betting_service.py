@@ -228,6 +228,8 @@ def evaluate_player_prop(
     # Watch: positive EV that every source agrees with but too small to size.
     best["watch"] = bool(best["units"] == 0 and best["ev"] > 0 and not outlier and best["model_agrees"]
                          and best.get("espn_agrees") is not False)
+    # Watch: the worst price at which this side would clear the bar (alerts).
+    best["bet_at"] = bm.worst_price(best["p_win"], best["p_push"]) if best["watch"] else None
     pp_line = offers.get("prizepicks")
     pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples, market=market)
               if pp_line is not None and market != "player_anytime_td" and not outlier else None)
@@ -631,6 +633,8 @@ def evaluate_game(game: Dict[str, Any], model: Optional[Dict[str, Any]] = None,
                           "watch": bool((p_mod is not None or not gated) and agrees and check_ok is not False
                                         and priced["ev"] > 0 and priced["units"] == 0),
                           **priced})
+            if cands[-1]["watch"]:
+                cands[-1]["bet_at"] = bm.worst_price(priced["p_win"], priced["p_push"])
         return max(cands, key=lambda c: c["ev"]) if cands else None
 
     for kind, rows, consensus in (("spread", spreads, home_spread), ("total", totals, total_line)):
@@ -877,6 +881,11 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     combos = [c for g in games for c in [game_combos(g, models.get(g["id"]))] if c]
     filled = fill_card(player_props + game_props, await _fill_keys(season, int(week)))
     try:
+        from app.services import watch_alerts
+        await asyncio.to_thread(watch_alerts.check, player_props + game_props, season, int(week))
+    except Exception as e:  # noqa: BLE001 - alerts must never break the board
+        logger.warning("Checking watch alerts failed: %s", e)
+    try:
         await asyncio.to_thread(record_board, season, int(week), player_props + game_props)
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
         logger.warning("Recording betting board failed: %s", e)
@@ -1068,6 +1077,12 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
     week = state.get("week") if isinstance(state, dict) else None
     season = int(state.get("season") or now.year) if isinstance(state, dict) else now.year
     filled = fill_card(game_props, await _fill_keys(season, int(week)) if week else frozenset(), kind="cfb_game")
+    if week:
+        try:
+            from app.services import watch_alerts
+            await asyncio.to_thread(watch_alerts.check, game_props, season, int(week), "cfb_game")
+        except Exception as e:  # noqa: BLE001 - alerts must never break the board
+            logger.warning("Checking college watch alerts failed: %s", e)
     uploaded = await prizepicks_board.load_recent("NCAAFB") if CFB_PROPS_ENABLED else None
     prizepicks = (await price_cfb_prizepicks(uploaded, games) if uploaded
                   else {"source": None, "detail": CFB_DETAIL, "pairs": [], "legs": [], "positive_ev_pairs": 0,
