@@ -321,7 +321,7 @@ def evaluate_player_prop(
     # Watch: the worst price at which this side would clear the bar (alerts).
     best["bet_at"] = bm.worst_price(best["p_win"], best["p_push"]) if best["watch"] else None
     pp_line = offers.get("prizepicks")
-    pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples, market=market)
+    pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples, market=market, player=player)
               if pp_line is not None and market != "player_anytime_td" and not outlier else None)
     return {
         "market_line": market_line,
@@ -395,16 +395,51 @@ def pp_value(p_win: float, espn_p: Optional[float], market_side: float, market: 
     return min(p_win, bm.blend(espn_p, market_side))
 
 
+def _books_chance(market: str, player: Optional[str], book_line: float, fair_at_line: float, line: float) -> float:
+    """The books' fair P(over `line`) for a line far from theirs: the
+    player's outcome distribution (our shape, incl. zero-game mass) with its
+    mean solved so P(over book_line) equals the books' fair chance there."""
+    p_zero = _p_zero(player, market) if player else None
+    lo, hi = 0.2 * max(book_line, 0.5), 4.0 * max(book_line, 0.5)
+    for _ in range(12):  # (hi - lo) / 4096: far finer than the books' own precision
+        mid = (lo + hi) / 2
+        s = bm.simulate_stat(market, mid, f"ppfar|{player}|{market}", n=4000, p_zero=p_zero)
+        if bm.prob_over(s, book_line)[0] < fair_at_line:
+            lo = mid
+        else:
+            hi = mid
+    s = bm.simulate_stat(market, (lo + hi) / 2, f"ppfar|{player}|{market}", n=4000, p_zero=p_zero)
+    return min(0.99, max(0.01, bm.prob_over(s, line)[0]))
+
+
 def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn_samples=None,
-                    sides=frozenset({"over", "under"}), market: Optional[str] = None) -> Optional[Dict[str, Any]]:
+                    sides=frozenset({"over", "under"}), market: Optional[str] = None,
+                    player: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Better side of PrizePicks' line, priced like any other offer. The
     books rarely quote PrizePicks' exact number, so the market's fair
-    P(over) is taken at the nearest book line and shifted by how much the
-    simulated distribution moves between the two lines."""
+    P(over) is taken at the nearest book line and shifted to PrizePicks'
+    number along a distribution centered on the BOOKS' 50% line (2026-10-08
+    fix). Shifting along our own projection's distribution was wrong for
+    lines far from the books' (goblins, demons, promos) whenever the
+    projection disagreed with the books: Bucky Irving More 0.5 rushing yards
+    (books' line 52.5, projections 77) came out 85% where backs projected
+    60+ cleared 0.5 in 498 of 498 real games."""
     nearest = min(fair_over, key=lambda pt: abs(pt - pp_line))
     model_over, push = bm.prob_over(samples, pp_line)
-    model_at_nearest, _ = bm.prob_over(samples, nearest)
-    market_over = min(0.99, max(0.01, fair_over[nearest] + model_over - model_at_nearest))
+    if market is not None and abs(pp_line - nearest) > 0.15 * max(nearest, 1.0):
+        # Far from the books' line: scale a books-shaped distribution until it
+        # gives the books' fair chance at their line, then read PrizePicks' line
+        # off it (an additive shift misreads zero-game mass and skew).
+        market_over = _books_chance(market, player, nearest, fair_over[nearest], pp_line)
+    else:
+        if market is not None:
+            center = min(fair_over, key=lambda pt: abs(fair_over[pt] - 0.5))
+            books_sim = bm.simulate_stat(market, max(center, 0.5), f"ppmkt|{player}|{market}",
+                                         p_zero=_p_zero(player, market) if player else None)
+            shift = bm.prob_over(books_sim, pp_line)[0] - bm.prob_over(books_sim, nearest)[0]
+        else:
+            shift = model_over - bm.prob_over(samples, nearest)[0]
+        market_over = min(0.99, max(0.01, fair_over[nearest] + shift))
     p_over = bm.blend(model_over, market_over)
     p_under = max(0.0, 1 - p_over - push)
     # The better side PrizePicks allows (goblins/demons are usually More only).
@@ -531,7 +566,7 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
             fair = _fair_over(offers["books"])
             if not fair:
                 continue
-            leg = _prizepicks_leg(line["line"], samples, fair, esamp, sides=allowed, market=market)
+            leg = _prizepicks_leg(line["line"], samples, fair, esamp, sides=allowed, market=market, player=player)
             if leg is None:
                 continue
             outlier = bm.projection_outlier(market, model_mean, market_line=min(fair, key=lambda pt: abs(fair[pt] - 0.5)))
@@ -1287,7 +1322,7 @@ CFB_METHOD = (
 
 
 def _market_leg(line: float, market: str, fair_over: Dict[float, float], sides, seed: str,
-                p_zero: Optional[float] = None) -> Optional[Dict[str, Any]]:
+                p_zero: Optional[float] = None, player: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """PrizePicks leg priced from the books alone (no projection): the books'
     fair P(over) at the nearest line, shifted to PrizePicks' number along a
     simulated distribution centered on the books' 50% line."""
@@ -1295,7 +1330,10 @@ def _market_leg(line: float, market: str, fair_over: Dict[float, float], sides, 
     samples = bm.simulate_stat(market, max(center, 0.5), seed, p_zero=p_zero)
     nearest = min(fair_over, key=lambda pt: abs(pt - line))
     over, push = bm.prob_over(samples, line)
-    p_over = min(0.99, max(0.01, fair_over[nearest] + over - bm.prob_over(samples, nearest)[0]))
+    if abs(line - nearest) > 0.15 * max(nearest, 1.0):
+        p_over = _books_chance(market, player, nearest, fair_over[nearest], line)  # far line: see _prizepicks_leg
+    else:
+        p_over = min(0.99, max(0.01, fair_over[nearest] + over - bm.prob_over(samples, nearest)[0]))
     p_under = max(0.0, 1 - p_over - push)
     if not set(sides) & {"over", "under"}:
         return None
@@ -1482,8 +1520,8 @@ def snapshot_leg(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         fair = _fair_over(offers["books"])
         if not fair:
             return None
-        books = _market_leg(leg["line"], market, fair, [side], f"entry|{seed}", _p_zero(player, market))["p_win"]
-        model = _prizepicks_leg(leg["line"], samples, fair, esamp, sides={side}, market=market)["p_win"]
+        books = _market_leg(leg["line"], market, fair, [side], f"entry|{seed}", _p_zero(player, market), player)["p_win"]
+        model = _prizepicks_leg(leg["line"], samples, fair, esamp, sides={side}, market=market, player=player)["p_win"]
         center = min(fair, key=lambda pt: abs(fair[pt] - 0.5))
         outlier = bm.projection_outlier(market, model_mean, market_line=center)
     return {

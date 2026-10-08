@@ -47,7 +47,7 @@ import numpy as np
 # Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
 # with key-number spreads, measured correlations, zero-catch and zero-rush
 # games. Rows from before versioning have NULL ("pre-versioning").
-ENGINE_VERSION = "2026-10-08.5"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal
+ENGINE_VERSION = "2026-10-08.6"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it

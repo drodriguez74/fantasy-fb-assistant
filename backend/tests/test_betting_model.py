@@ -462,3 +462,14 @@ def test_price_ticket_rules_and_correlation():
     for bad in (stack[:1], stack[:2], stack + [dict(stack[0])]):
         with pytest.raises(TicketError):
             price_ticket(bad)     # 1 pick; one team only; same player twice
+
+
+def test_far_prizepicks_lines_follow_the_books_distribution():
+    from app.services.betting_service import _prizepicks_leg
+    # Books: 52.5 rushing yards is a coin flip; our projection says 77 (they disagree).
+    fair = {52.5: 0.50}
+    ours = bm.simulate_stat("player_rush_yds", 77.0, "far")
+    leg = _prizepicks_leg(0.5, ours, fair, sides={"over"}, market="player_rush_yds")
+    assert leg["market_prob"] > 0.95          # a lead back almost never finishes at 0 (was ~0.78 by additive shift)
+    near = _prizepicks_leg(54.5, ours, fair, sides={"over"}, market="player_rush_yds")
+    assert 0.42 < near["market_prob"] < 0.50  # near lines still shift a little from the books' 50%
