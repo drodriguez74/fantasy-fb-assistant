@@ -20,6 +20,7 @@ import statistics
 import time
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -110,7 +111,20 @@ def implied_totals(games: List[Dict[str, Any]], now: datetime) -> Dict[str, Dict
 PROP_MARKETS = ("player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions", "player_anytime_td")
 # PrizePicks lines come back with the props for comparison (pick'em, not odds).
 PROP_BOOKMAKERS = BOOKMAKERS + ("prizepicks",)
-_PROPS_TTL_SECONDS = 24 * 3600  # a full slate is ~70 credits; once a day at most
+_PROPS_TTL_SECONDS = 24 * 3600  # a full slate measured 148 credits (15 games); at most once a day
+# Free tier (500 credits/month): props are refetched only on these weekdays
+# (Eastern; Monday = 0): Wednesday for the week's first lines (Thursday
+# game included), Sunday for the main slate. Other days serve the last
+# fetched props whatever their age. Founder's call 2026-10-07, until the
+# $30 tier; then set it to all seven days.
+PROP_REFRESH_WEEKDAYS = frozenset({2, 6})
+_EASTERN = ZoneInfo("America/New_York")
+
+
+def prop_refresh_day(now: Optional[datetime] = None) -> bool:
+    """True on a day props may be refetched (PROP_REFRESH_WEEKDAYS, Eastern)."""
+    now = now or datetime.now(timezone.utc)
+    return now.astimezone(_EASTERN).weekday() in PROP_REFRESH_WEEKDAYS
 # Never spend the last credits on props: game lines (implied totals) need
 # them too. Prop fetches stop once the account is at or below this.
 CREDIT_RESERVE = 60
@@ -243,14 +257,18 @@ def this_week(games: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]
 
 async def get_event_props(event_id: str, sport: str = NFL) -> Optional[Dict[str, Any]]:
     """One game's player props (PROP_MARKETS across PROP_BOOKMAKERS), cached
-    12h per game. None when unavailable or when spending would dip below
-    CREDIT_RESERVE -- the caller reports that rather than guessing."""
+    24h per game and refetched only on PROP_REFRESH_WEEKDAYS (other days
+    serve the last fetch). None when unavailable or when spending would dip
+    below CREDIT_RESERVE -- the caller reports that rather than guessing."""
     if not settings.ODDS_API_KEY:
         return None
     key = f"props:{event_id}"
     cached = await _cache_get(key, _PROPS_TTL_SECONDS)
     if cached is not None:
         return cached
+    if not prop_refresh_day():
+        # Not a refresh day: the last fetch, however old, or nothing.
+        return await _cache_get(key, float("inf"))
     remaining = await credits_remaining_async()
     if remaining is not None and remaining - len(PROP_MARKETS) < CREDIT_RESERVE:
         logger.warning("Odds API: skipping props for %s, %s credits left (reserve %s)", event_id, remaining, CREDIT_RESERVE)

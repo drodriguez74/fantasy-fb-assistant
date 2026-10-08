@@ -262,6 +262,8 @@ export function BettingPage() {
                 : `${view.evaluated?.player_props} props · ${view.evaluated?.games} games priced`}
             </span>
             {view.credits_remaining != null && <span>{view.credits_remaining} odds credits left</span>}
+            {/* Free-tier credits: odds_service.PROP_REFRESH_WEEKDAYS */}
+            {view.evaluated?.player_props ? <span>Props refresh Wed &amp; Sun</span> : null}
             <DataConfidenceBadge level="computed" label="Simulated" />
           </div>
 

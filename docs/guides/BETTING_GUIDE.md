@@ -118,7 +118,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 | Source | Used for | Cost / limits |
 |---|---|---|
-| The Odds API (`ODDS_API_KEY`) | NFL + college lines, NFL props, PrizePicks standard lines | Free tier: 500 credits/month. Lines 2 credits/call (cached 6h); a full NFL prop slate measured **148 credits** for 15 games on 2026-10-07 (the earlier ~70 estimate was low; cached 24h, so any page visit a day later refetches); college props ~4/game (shelved). Every response is persisted in `odds_cache`. Prop fetches stop at a 60-credit reserve. The $30/20K tier is needed for daily full boards or more prop markets. 277 credits left on 2026-10-07. |
+| The Odds API (`ODDS_API_KEY`) | NFL + college lines, NFL props, PrizePicks standard lines | Free tier: 500 credits/month. Lines 2 credits/call (cached 6h); a full NFL prop slate measured **148 credits** for 15 games on 2026-10-07 (the earlier ~70 estimate was low). **Props refetch only on Wednesdays and Sundays (Eastern)** (`PROP_REFRESH_WEEKDAYS`, founder's call 2026-10-07 until the $30 tier): on those days a fetch older than 24h is refreshed; other days serve the last fetch whatever its age; college props ~4/game (shelved). Every response is persisted in `odds_cache`. Prop fetches stop at a 60-credit reserve. The $30/20K tier is needed for daily full boards or more prop markets. 277 credits left on 2026-10-07. |
 | Sleeper | Weekly projected stat lines; grading stats | Free. No college data. |
 | ESPN fantasy (`lm-api-reads…/leaguedefaults/3`) | Weekly per-stat projections (cross-check) | Free, no login. NFL only. |
 | ESPN site API | Matchup predictor (NFL + FBS); scoreboards for grading | Free. |
