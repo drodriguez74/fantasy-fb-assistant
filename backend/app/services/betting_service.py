@@ -337,14 +337,29 @@ ESPN_CHECK_EXEMPT = frozenset({"player_pass_yds"})
 
 
 def _espn_check(c: Dict[str, Any], espn_samples, market: Optional[str] = None) -> Dict[str, Any]:
-    """ESPN's probability for this side; no units unless it also beats the
-    market (shown but not required for ESPN_CHECK_EXEMPT markets)."""
+    """ESPN's probability for this side. For units, ESPN must confirm the
+    edge on its own: blended with the books exactly as Sleeper is, it has to
+    clear MIN_EV too, and the stake is the smaller of the two sizes. Leaning
+    the same way isn't enough -- on low counts that's nearly free (2026-10-08:
+    10 of week 5's 12 bets, mostly receptions Unders, had an edge from
+    Sleeper alone; e.g. Brian Robinson Jr. Under 35.5 at 2.5u where ESPN had
+    exactly the books' 50%). A side ESPN leans toward but doesn't confirm
+    stays on the watch list (espn_confirms False). Shown but not required for
+    ESPN_CHECK_EXEMPT markets."""
     p = _side_prob(espn_samples, c["side"], c["line"])
     if market in ESPN_CHECK_EXEMPT:
-        return {**c, "espn_prob": round(p, 4), "espn_agrees": None}
+        return {**c, "espn_prob": round(p, 4), "espn_agrees": None, "espn_confirms": None}
     agrees = p > c["market_prob"]
-    c = {**c, "espn_prob": round(p, 4), "espn_agrees": agrees}
-    return c if agrees else {**c, "units": 0.0, "confidence": "none"}
+    c = {**c, "espn_prob": round(p, 4), "espn_agrees": agrees, "espn_confirms": None}
+    if not agrees:
+        return {**c, "units": 0.0, "confidence": "none", "espn_confirms": False}
+    if c["units"] > 0:
+        alt = bm.price_offer(bm.blend(p, c["market_prob"]), c["price"], c.get("p_push", 0.0))
+        if alt["units"] <= 0:
+            return {**c, "units": 0.0, "confidence": "none", "min_price": None, "espn_confirms": False}
+        units = min(c["units"], alt["units"])
+        return {**c, "units": units, "confidence": bm.confidence_label(units), "espn_confirms": True}
+    return c
 
 
 def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn_samples=None,

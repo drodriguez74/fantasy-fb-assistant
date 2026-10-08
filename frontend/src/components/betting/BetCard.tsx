@@ -138,6 +138,11 @@ export function BetCard({
             )}
           </div>
           <p className="stat-nums text-muted">{sources(row).join(' · ')}</p>
+          {row.espn_confirms === false && row.espn_agrees && (
+            <p className="text-muted">
+              No units: ESPN leans this way too, but its projection doesn't show an edge on its own. A bet needs both.
+            </p>
+          )}
           {canAlert && (
             <button
               onClick={() => onToggleAlert(row)}

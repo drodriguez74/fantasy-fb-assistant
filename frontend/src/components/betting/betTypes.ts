@@ -38,6 +38,9 @@ export interface BoardRow {
   projection_outlier?: boolean
   espn_projection?: number | null
   espn_agrees?: boolean
+  // ESPN's projection, blended with the books like Sleeper's, also clears the
+  // bar (required for units). false: it leans our way but doesn't confirm.
+  espn_confirms?: boolean | null
   // Positive EV every source agrees with, too small to size.
   watch?: boolean
   // Best available: fills the weekly card; not a measured edge.

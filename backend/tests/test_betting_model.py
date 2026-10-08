@@ -360,3 +360,15 @@ def test_zero_rush_games():
     goff_old = (bm.simulate_stat("player_rush_yds", 5.4, "zr") > 0.5).mean()
     goff_new = (bm.simulate_stat("player_rush_yds", 5.4, "zr", p_zero=bm.zero_rush_prob(5.4)) > 0.5).mean()
     assert goff_old > 0.85 and goff_new < 0.65  # QBs projected 5-10 clear Over 0.5 ~61% of the time
+
+
+def test_espn_must_confirm_the_edge_for_units():
+    from app.services.betting_service import _espn_check
+    bet = {"side": "Under", "line": 35.5, "market_prob": 0.50, "units": 2.5, "confidence": "high", "price": -109,
+           "p_push": 0.0, "min_price": -124}
+    lean = np.concatenate([np.full(505, 30.0), np.full(495, 40.0)])   # ESPN 50.5% Under: leans, no edge
+    out = _espn_check(bet, lean, "player_rush_yds")
+    assert out["espn_agrees"] and out["espn_confirms"] is False and out["units"] == 0.0
+    strong = np.concatenate([np.full(700, 30.0), np.full(300, 40.0)])  # ESPN 70% Under: its own edge
+    out = _espn_check(bet, strong, "player_rush_yds")
+    assert out["espn_confirms"] and 0 < out["units"] <= 2.5
