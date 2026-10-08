@@ -2,18 +2,20 @@
 betting_service (Monte Carlo + de-vigged market, quarter-Kelly units)."""
 import asyncio
 import json
+import logging
 from typing import Dict, Optional
 
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
-from app.services import betting_service, entry_screenshot, prizepicks_board, user_entries
+from app.services import betting_service, entry_screenshot, prizepicks_board, tracked_entries, user_entries
 from app.services.sleeper_service import sleeper_service
 from app.services.betting_service import build_board
 from app.services.betting_tracking import grade_pending, summarize
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/board")
@@ -37,6 +39,8 @@ async def get_betting_board(
 async def get_betting_results(
     season: Optional[int] = Query(None, description="Limit to one season (default: all)"),
     sport: str = Query("all", pattern="^(nfl|cfb|all)$", description="nfl, cfb (college) or all"),
+    version: str = Query("all", pattern="^(all|current)$",
+                         description="all picks, or only those made by the current engine version"),
     current_user: User = Depends(get_current_active_user),
 ):
     """Track record of the board's recommendations. Settles any pending
@@ -45,8 +49,40 @@ async def get_betting_results(
     sport / confidence / market / week, calibration and the pick list --
     for one sport, or all of them."""
     graded = await grade_pending()
-    summary = await asyncio.to_thread(summarize, season, None if sport == "all" else sport)
-    return {**summary, "sport": sport, "newly_graded": graded}
+    summary = await asyncio.to_thread(summarize, season, None if sport == "all" else sport,
+                                      None if version == "all" else version)
+    return {**summary, "sport": sport, "version": version, "newly_graded": graded}
+
+
+@router.get("/audit")
+async def get_betting_audit(
+    season: Optional[int] = Query(None, description="Season (default: the latest week with tracked picks)"),
+    week: Optional[int] = Query(None, description="NFL week (default: the latest week with tracked picks)"),
+    format: str = Query("json", pattern="^(json|csv)$"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Every recommendation made in one week -- bets, Best available fills,
+    Most likely to win picks, the app's suggested PrizePicks tickets and the
+    user's own entries (separate section) -- with what we said, the engine
+    version and what happened. Grades anything newly final first (free
+    sources). format=csv downloads the same rows."""
+    from fastapi.responses import StreamingResponse
+    from app.services import betting_audit
+
+    await grade_pending()
+    cur_season, cur_week = await _nfl_week()
+    for grade in (lambda: tracked_entries.grade_pending(cur_season, cur_week),
+                  lambda: user_entries.grade_pending(current_user.id, cur_season, cur_week)):
+        try:
+            await grade()
+        except Exception as e:  # noqa: BLE001 - grading retries next time; the audit still shows
+            logger.warning("Audit grading skipped: %s", type(e).__name__)
+    data = await asyncio.to_thread(betting_audit.audit, season, week, current_user.id)
+    if format == "csv":
+        name = f"bets-audit-{data['season']}-week{data['week']}.csv" if data["week"] else "bets-audit.csv"
+        return StreamingResponse(iter([betting_audit.to_csv(data["rows"])]), media_type="text/csv",
+                                 headers={"Content-Disposition": f'attachment; filename="{name}"'})
+    return data
 
 
 _MAX_BOARD_BYTES = 25 * 1024 * 1024
@@ -96,6 +132,12 @@ async def get_prizepicks_entries(
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Payouts must be numbers keyed by pick count.")
     entries = await asyncio.to_thread(betting_service.prizepicks_entries, legs, power_table, flex_table)
+    if sport == "nfl" and board.get("week") and board.get("season"):
+        try:  # the suggested entries are tracked and graded (tracked_entries.py)
+            await asyncio.to_thread(tracked_entries.record, int(board["season"]), int(board["week"]),
+                                    tracked_entries.tickets_from_entries(entries))
+        except Exception as e:  # noqa: BLE001 - tracking must never break the endpoint
+            logger.warning("Recording suggested entries failed: %s", e)
     return {"entries": entries, "legs_considered": min(len(legs), 12),
             "default_power": betting_service.bm.POWER_PAYOUTS, "default_flex": betting_service.bm.FLEX_PAYOUTS}
 

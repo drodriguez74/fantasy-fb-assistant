@@ -33,5 +33,6 @@ class UserEntry(Base):
     status = Column(String, nullable=False, default="pending", index=True)  # pending|won|lost|partial|refunded
     payout = Column(Float, nullable=True)                # what it actually paid
     notes = Column(String, nullable=True)
+    engine_version = Column(String, nullable=True)       # betting_model.ENGINE_VERSION when logged
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     graded_at = Column(DateTime(timezone=True), nullable=True)

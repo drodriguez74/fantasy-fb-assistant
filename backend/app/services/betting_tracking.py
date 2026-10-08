@@ -70,7 +70,7 @@ def _pp_leg_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
         "book": f"PrizePicks {r.get('odds_type', 'standard')}", "price": 0, "units": 0.0,
         "confidence": "likely", "recommended": False, "ev": 0.0, "p_win": float(r["p_win"]), "p_push": 0.0,
         "model_prob": r.get("model_prob"), "market_prob": r.get("market_prob"),
-        "projection": None, "espn_projection": None,
+        "projection": None, "espn_projection": None, "engine_version": bm.ENGINE_VERSION,
     }
 
 
@@ -103,6 +103,7 @@ def _row_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
         "market_prob": r.get("market_prob"),
         "projection": r.get("projection"),
         "espn_projection": r.get("espn_projection"),
+        "engine_version": bm.ENGINE_VERSION,
     }
 
 
@@ -357,6 +358,7 @@ def _pick_out(p: BetPick) -> Dict[str, Any]:
         "id": p.id, "season": p.season, "week": p.week, "kind": p.kind, "subject": p.subject, "game": p.game,
         "market": p.market, "side": p.side, "line": p.line, "book": p.book, "price": p.price,
         "units": p.units, "confidence": p.confidence, "ev": p.ev, "p_win": p.p_win,
+        "engine_version": p.engine_version,
         "projection": p.projection, "kickoff": p.kickoff.isoformat() if p.kickoff else None,
         "status": p.status, "actual": p.actual, "profit_units": p.profit_units,
     }
@@ -366,14 +368,18 @@ def _pick_out(p: BetPick) -> Dict[str, Any]:
 SPORT_KINDS = {"nfl": ("player_prop", "game", "pp_leg"), "cfb": ("cfb_game",)}
 
 
-def summarize(season: Optional[int] = None, sport: Optional[str] = None) -> Dict[str, Any]:
+def summarize(season: Optional[int] = None, sport: Optional[str] = None,
+              version: Optional[str] = None) -> Dict[str, Any]:
     """Record and calibration for one sport ("nfl" / "cfb") or all picks.
     Sports are judged separately: college uses a different, less-proven
-    model, and mixing them would hide whether either one works."""
+    model, and mixing them would hide whether either one works. version
+    "current" limits it to picks made by today's engine (ENGINE_VERSION)."""
     with SessionLocal() as db:
         q = db.query(BetPick)
         if season:
             q = q.filter(BetPick.season == season)
+        if version == "current":
+            q = q.filter(BetPick.engine_version == bm.ENGINE_VERSION)
         if sport in SPORT_KINDS:
             q = q.filter(BetPick.kind.in_(SPORT_KINDS[sport]))
         picks = q.all()
@@ -392,6 +398,9 @@ def summarize(season: Optional[int] = None, sport: Optional[str] = None) -> Dict
         "by_confidence": {k: _record(v) for k, v in split(lambda p: p.confidence).items()},
         "by_market": {k: _record(v) for k, v in split(lambda p: p.market).items()},
         "by_week": [{"season": s, "week": w, **_record(v)} for (s, w), v in sorted(by_week.items(), reverse=True)],
+        # Which engine made the pick (betting_model.ENGINE_VERSION); NULL = before versioning.
+        "by_engine_version": {k: _record(v) for k, v in split(lambda p: p.engine_version or "pre-versioning").items()},
+        "engine_version": bm.ENGINE_VERSION,
         "calibration": calibration([p for p in picks if p.kind != "pp_leg"]),
         # "Most likely to win" picks: does a 75% call win ~75% of the time?
         "most_likely": {**_hit_check([p for p in picks if p.kind == "pp_leg"]),

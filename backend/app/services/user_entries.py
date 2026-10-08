@@ -105,6 +105,7 @@ def _out(e: UserEntry) -> Dict[str, Any]:
         "id": e.id, "entry_type": e.entry_type, "stake": e.stake, "to_win": e.to_win, "season": e.season,
         "week": e.week, "legs": e.legs, "est_hit_prob": e.est_hit_prob, "status": e.status, "payout": e.payout,
         "profit": None if e.payout is None else round(e.payout - e.stake, 2), "notes": e.notes,
+        "engine_version": e.engine_version,
         "created_at": e.created_at.isoformat() if e.created_at else None,
     }
 
@@ -120,7 +121,8 @@ def create(user_id: int, data: Dict[str, Any], season: int, week: int, snapshots
     with SessionLocal() as db:
         e = UserEntry(user_id=user_id, entry_type=data["entry_type"], stake=data["stake"], to_win=data["to_win"],
                       season=season, week=int(data.get("week") or week), legs=legs,
-                      est_hit_prob=round(est, 4) if est is not None else None, notes=data.get("notes"))
+                      est_hit_prob=round(est, 4) if est is not None else None, notes=data.get("notes"),
+                      engine_version=bm.ENGINE_VERSION)
         db.add(e)
         db.commit()
         db.refresh(e)
@@ -135,6 +137,32 @@ def delete(user_id: int, entry_id: int) -> bool:
         db.delete(e)
         db.commit()
         return True
+
+
+def grade_legs(legs: List[Dict[str, Any]], stats: Dict[tuple, Dict[str, Any]], finals: Dict[tuple, Any],
+               week_over: bool) -> List[Dict[str, Any]]:
+    """Grade each pending pick whose game is final (or every pick once the
+    week is over) from Sleeper's stats; returns new leg dicts. Shared with
+    the app's own tracked tickets (tracked_entries.py)."""
+    done_teams = {t for pair in finals for t in pair}
+    by_name: Dict[str, List[tuple]] = {}
+    for (name, team), row in stats.items():
+        by_name.setdefault(name, []).append((team, row))
+    out = [dict(leg) for leg in legs]
+    for leg in out:
+        if leg.get("status", "pending") != "pending":
+            continue
+        candidates = by_name.get(normalize_name(leg["player"]), [])
+        if leg.get("team"):
+            candidates = [c for c in candidates if c[0] == leg["team"]] or candidates
+        team = leg.get("team") or (candidates[0][0] if candidates else None)
+        if not week_over and team not in done_teams:
+            continue  # game not final yet
+        row = candidates[0][1] if candidates else None
+        actual = (float(sum(float(row.get(k) or 0.0) for k in MARKETS[leg["market"]][1]))
+                  if row and row.get("gp") else None)
+        leg["actual"], leg["status"] = actual, leg_outcome(leg["side"], leg["line"], actual)
+    return out
 
 
 async def grade_pending(user_id: int, current_season: int, current_week: Optional[int]) -> int:
@@ -153,24 +181,7 @@ async def grade_pending(user_id: int, current_season: int, current_week: Optiona
             except Exception as err:  # noqa: BLE001 - try again next time
                 logger.warning("Entry %s grading skipped: %s", e.id, type(err).__name__)
                 continue
-            done_teams = {t for pair in finals for t in pair}
-            by_name: Dict[str, List[tuple]] = {}
-            for (name, team), row in stats.items():
-                by_name.setdefault(name, []).append((team, row))
-            legs = [dict(leg) for leg in e.legs]
-            for leg in legs:
-                if leg.get("status") != "pending":
-                    continue
-                candidates = by_name.get(normalize_name(leg["player"]), [])
-                if leg.get("team"):
-                    candidates = [c for c in candidates if c[0] == leg["team"]] or candidates
-                team = leg.get("team") or (candidates[0][0] if candidates else None)
-                if not week_over and team not in done_teams:
-                    continue  # game not final yet
-                row = candidates[0][1] if candidates else None
-                actual = (float(sum(float(row.get(k) or 0.0) for k in MARKETS[leg["market"]][1]))
-                          if row and row.get("gp") else None)
-                leg["actual"], leg["status"] = actual, leg_outcome(leg["side"], leg["line"], actual)
+            legs = grade_legs(e.legs, stats, finals, week_over)
             e.legs = legs
             if all(leg["status"] != "pending" for leg in legs):
                 e.status, e.payout = entry_payout(e.entry_type, e.stake, e.to_win, [leg["status"] for leg in legs])

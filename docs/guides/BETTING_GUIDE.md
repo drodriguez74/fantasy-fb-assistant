@@ -88,6 +88,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | Measured correlations (2026-10-07) | The guessed opponent values were 2–3x too high and made same-game More/More pairs look +EV; opposing backs (−0.19) were missing; `COVER_TOTAL_RHO` was 0.15 vs a measured 0.03; teammates in 3+ pick entries were treated as independent (QB↔own WR is +0.38). | Section 9. |
 | ESPN check not required for passing yards (2026-10-07) | Where ESPN and Sleeper differ by 15%+, the result lands on ESPN's side 53–60% for rush/rec/receptions but 37–45% for passing: the check only filtered noise there. | Two held-out seasons, section 9. |
 | "Most likely to win" section, engine must back it (2026-10-07) | Founder's goal: a high-confidence chance of the bet actually winning, with the engine giving an edge. Win chance is the confidence score; it's honest only if calibrated, and the 2025 backtest showed the engine's high-probability estimates are (rec yds 69.2% vs 67.8% real, rush 74.9/76.3, pass 90.7/92.1). | Week 5 build: 5 goblins at 80–91%, all engine- and ESPN-backed; safest 2-pick 75%. |
+| Every recommendation auditable, per engine version (2026-10-07) | Founder: "Will all recommendations be auditable... I want to know if they all hit or didn't." Tickets the app suggested weren't tracked, the Most likely picks were only a total, and nothing recorded which engine made a pick -- so the fixed engine would have been judged on the old one's picks. | `ENGINE_VERSION` on every row; `tracked_entries`; `/betting/audit` + CSV. |
 | Always 3 picks on the card (2026-10-07) | Founder's call: people bet every week. Fills are the best remaining lines at a flat 0.5u, labeled and tracked separately, so the card never inflates an edge to get there. | Week 5 after the review: 1 bet + 2 fills (both positive EV, from the watch list). |
 | Cover/total combos show fair odds only | The Odds API carries no SGP prices. | — |
 | Watch tier | A quiet week looked broken ("nothing recommended"); positive-EV, all-agree plays are shown without units. | Founder feedback. |
@@ -137,6 +138,11 @@ Every priced line is saved once to `bet_picks`, including no-bet lines (they're 
 
 None of it costs credits.
 
+**Everything is auditable (2026-10-07).**
+- **Engine version:** every tracked pick, suggested ticket and logged entry (and each entry pick's snapshot) carries `betting_model.ENGINE_VERSION` (bump it whenever pricing changes; `2026-10-07.3` = market-only game lines + key numbers, measured correlations, zero-catch and zero-rush). Rows from before versioning are NULL ("pre-versioning"). Results splits by engine version and has a "Current engine only" toggle (`GET /betting/results?version=current`), so a fixed engine isn't judged on the old one's picks (e.g. the fake Goff 3u).
+- **Suggested tickets** (`tracked_entries` table, `tracked_entries.py`): the board's top 5 2-pick pairs, the Most likely safest pair, and the best 3–6 pick Power / 2–6 pick Flex entry of each size shown by the entries endpoint are saved once per week and signature (picks + sides + lines + type; never overwritten) and graded with My entries' PrizePicks rules (`user_entries.grade_legs` / `entry_payout`; push or DNP drops out). Tickets holding a goblin or demon have no known payout, so they grade hit/miss only (`payouts`/`ev` null).
+- **Weekly audit** (`GET /betting/audit?season=&week=&format=json|csv`, `betting_audit.py`): every recommendation that week, by section (Bets, Best available, Most likely to win, Suggested tickets, and the user's own entries separately), with what we said (win chance, books, engine, units), the engine version, the result, the actual stat and profit. Results → Audit shows it with a week picker, per-section hit rate vs predicted, and a CSV download. No-bet lines aren't recommendations, so they stay in Calibration.
+
 **Judge on hundreds of bets and on calibration, not one week.** If the model's Brier score is worse than the market's, lower `MODEL_WEIGHT`. If a size tier loses over a large sample, raise `MIN_EV` for it. Fit `LEG_CORRELATION`, `COVER_TOTAL_RHO` and the CV constants from graded results.
 
 **Week 5 caveat:** its 302 NFL rows (10 recs) were recorded under the original, Under-biased model before the fixes. They'll be graded as-is with no ESPN projection. Consider excluding week 5 from calibration.
@@ -150,7 +156,7 @@ None of it costs credits.
 - **Tabs:**
   - NFL: Player props · Game lines (+ folded combos) · PrizePicks · My entries · Results.
   - College: CFB Game Lines (+ combos) · Results.
-  - Results shows the current sport only ("NFL only" / "College only"), with an "All sports" toggle for the combined record and the By-sport split.
+  - Results shows the current sport only ("NFL only" / "College only"), with an "All sports" toggle for the combined record and the By-sport split, a "Current engine only" toggle, a By engine version split, and the **Audit** section (week picker, every recommendation with hit/miss, per-section hit rate vs predicted, Download CSV).
 - **Card tiers:**
   - Bet: lime border, units, size, dollars.
   - Watch: outlined.
@@ -257,6 +263,7 @@ The prop correlations were measured against projection-centered lines, not real 
 2. After 3–4 graded weeks: tune the prop `MODEL_WEIGHT` and the stale-guard bounds; judge the "Best available" fills (Results → By confidence); settle Sleeper vs ESPN accuracy from `espn_projection`. Game-line weight, `LEG_CORRELATION` and `COVER_TOTAL_RHO` were set from data in the 2026-10-07 review (section 9); rerun `scripts/backtest_game_lines.py --season 2026` and the correlation scripts after the season.
 2a. Decide the "promising" items in section 9: passing yards as a normal, a higher `MIN_EV`, the TD blend, and logging forecast wind.
 3. ~~Track PrizePicks entries~~: done as My entries. Screenshot import shipped (`1aa84c0`) but untested end to end: both AI accounts (OpenAI, Anthropic) were out of credits on 2026-10-07. Optional: grade the engine's own suggested entries too.
+3b. Bump `ENGINE_VERSION` with every pricing change, so Results → By engine version stays honest.
 3a. Backtest props on real lines: one month of The Odds API's paid tier for 2025 (and 2026 wk 1–4) historical props (section 9).
 4. Un-shelve college props when credits allow (league_id=15 verified; set `CFB_PROPS_ENABLED`).
 5. More prop markets and daily refreshes need the paid Odds API tier.

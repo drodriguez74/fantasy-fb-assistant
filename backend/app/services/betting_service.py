@@ -890,6 +890,12 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
                                                                    for p in prizepicks["most_likely"]["picks"]])
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
         logger.warning("Recording most-likely picks failed: %s", e)
+    try:
+        from app.services import tracked_entries
+        await asyncio.to_thread(tracked_entries.record, season, int(week),
+                                tracked_entries.tickets_from_board(prizepicks, prizepicks.get("most_likely")))
+    except Exception as e:  # noqa: BLE001 - tracking must never break the board
+        logger.warning("Recording suggested tickets failed: %s", e)
 
     def ranked(recs):
         # Bets first, then the watch list, then the rest; stale-projection
@@ -1141,4 +1147,5 @@ def snapshot_leg(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         # The case the founder asked about: projections far from the books
         # (Irving 75-78 vs a 57.5 line). Graded results show who was right.
         "projections_disagree": bool(outlier or abs(model - books) >= 0.05),
+        "engine_version": bm.ENGINE_VERSION,
     }

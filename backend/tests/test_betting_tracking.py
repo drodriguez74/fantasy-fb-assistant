@@ -92,7 +92,7 @@ def test_results_filter_by_sport(monkeypatch):
                                profit_units=units if status == "won" else -units, p_win=0.55, model_prob=0.6,
                                market_prob=0.5, season=2026, week=6, confidence="lean", market="spread",
                                id=1, subject="x", game="A @ B", side="A", line=1.5, book="FanDuel", ev=0.05,
-                               projection=None, kickoff=None, actual=None)
+                               projection=None, kickoff=None, actual=None, engine_version=None)
     picks = [pick("game", "won"), pick("player_prop", "lost"), pick("cfb_game", "won"), pick("cfb_game", "won")]
 
     class FakeSession:

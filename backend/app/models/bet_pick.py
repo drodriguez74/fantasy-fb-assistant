@@ -48,6 +48,7 @@ class BetPick(Base):
     market_prob = Column(Float, nullable=True)
     projection = Column(Float, nullable=True)
     espn_projection = Column(Float, nullable=True)  # ESPN's projection, the cross-check source
+    engine_version = Column(String, nullable=True, index=True)  # betting_model.ENGINE_VERSION; NULL = pre-versioning
     first_seen_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     status = Column(String, nullable=False, default="pending", index=True)  # pending|won|lost|push|void

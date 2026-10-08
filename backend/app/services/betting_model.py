@@ -42,6 +42,13 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 import numpy as np
 
+# Stamped on every tracked pick, tracked ticket and logged entry so the
+# record can be judged per engine version (Results "Current engine only").
+# Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
+# with key-number spreads, measured correlations, zero-catch and zero-rush
+# games. Rows from before versioning have NULL ("pre-versioning").
+ENGINE_VERSION = "2026-10-07.3"
+
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
 # Per-market overrides, fitted by scripts/backtest_projections.py (see

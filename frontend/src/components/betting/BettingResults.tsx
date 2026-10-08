@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
 import { ClockIcon } from '@heroicons/react/24/outline'
+import { BettingAudit } from './BettingAudit'
 
 // GET /betting/results -- backend/app/services/betting_tracking.py.
 interface RecordSummary {
@@ -48,6 +49,9 @@ interface Results {
   }
   lines_tracked: number
   picks: TrackedPick[]
+  // Which engine version made each pick ("pre-versioning" before 2026-10-07).
+  by_engine_version?: Record<string, RecordSummary>
+  engine_version?: string
   // "Most likely to win" PrizePicks picks: predicted vs actual hit rate.
   most_likely?: {
     picks: number
@@ -130,6 +134,7 @@ const SPORT_NAME = { nfl: 'NFL', cfb: 'College' } as const
 /** Track record for the current sport (each model is judged on its own), with an "All sports" view. */
 export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
   const [scope, setScope] = useState<'sport' | 'all'>('sport')
+  const [currentOnly, setCurrentOnly] = useState(false)
   const [data, setData] = useState<Results | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -137,13 +142,14 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
   useEffect(() => {
     setLoading(true)
     setError('')
-    betting.getResults(scope === 'all' ? 'all' : sport)
+    betting.getResults(scope === 'all' ? 'all' : sport, currentOnly ? 'current' : 'all')
       .then((r) => setData(r.data))
       .catch((err) => setError(getErrorMessage(err, "Couldn't load the track record.")))
       .finally(() => setLoading(false))
-  }, [sport, scope])
+  }, [sport, scope, currentOnly])
 
   const scopeToggle = (
+    <div className="flex flex-wrap items-center gap-3">
     <div className="flex rounded-lg border border-hairline p-0.5 w-fit" role="tablist" aria-label="Results scope">
       {(['sport', 'all'] as const).map((s) => (
         <button
@@ -156,6 +162,11 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
           {s === 'sport' ? `${SPORT_NAME[sport]} only` : 'All sports'}
         </button>
       ))}
+    </div>
+    <label className="flex items-center gap-1.5 text-xs text-muted">
+      <input type="checkbox" checked={currentOnly} onChange={(e) => setCurrentOnly(e.target.checked)} />
+      Current engine only
+    </label>
     </div>
   )
 
@@ -221,6 +232,15 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
           rows={Object.entries(data.by_market).map(([k, v]) => [MARKET_LABELS[k] ?? k, v])}
         />
         <SplitTable title="By week" rows={data.by_week.map((w) => [`Week ${w.week}`, w])} />
+        {data.by_engine_version && Object.keys(data.by_engine_version).length > 0 && (
+          <SplitTable
+            title="By engine version"
+            rows={Object.entries(data.by_engine_version).map(([k, v]) => [
+              k === data.engine_version ? `${k} (current)` : k,
+              v,
+            ])}
+          />
+        )}
 
         {data.most_likely && data.most_likely.picks > 0 && (
           <div className="bg-surface rounded-lg border border-hairline p-4">
@@ -303,6 +323,7 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
           </div>
         </div>
       )}
+      <BettingAudit />
     </div>
   )
 }
