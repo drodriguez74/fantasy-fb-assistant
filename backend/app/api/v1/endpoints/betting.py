@@ -195,6 +195,19 @@ async def read_entry_screenshot(
         raise HTTPException(status_code=400, detail=str(e))
 
 
+@router.post("/prizepicks-ticket")
+async def price_prizepicks_ticket(body: Dict = Body(...), current_user: User = Depends(get_current_active_user)):
+    """Price a ticket built in the entry-builder tray: {legs: [{player, team,
+    game, market, side: More|Less, line, p_win}]}. Returns the chance every
+    pick hits (same-game correlation included), the hit-count distribution
+    for Flex and the Power payout needed to break even. 400 when PrizePicks'
+    rules aren't met (2-6 picks, one per player, 2+ teams)."""
+    try:
+        return await asyncio.to_thread(betting_service.price_ticket, body.get("legs") or [])
+    except (betting_service.TicketError, KeyError, TypeError, ValueError) as e:
+        raise HTTPException(status_code=400, detail=str(e) or "Invalid ticket.")
+
+
 @router.get("/watch-alerts")
 async def get_watch_alerts(current_user: User = Depends(get_current_active_user)):
     """The user's "alert me if it becomes a bet" alerts (active, triggered, expired)."""

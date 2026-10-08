@@ -4,6 +4,8 @@
 // user can edit them (kept in this browser only).
 import { useState } from 'react'
 import { type EntriesState, type Entry, type Flex, type Power, rankEntries } from './prizePicksEntriesData'
+import { AddButton } from './TicketTray'
+import type { TicketActions } from './ticketTypes'
 
 const pct = (p: number) => `${(p * 100).toFixed(1)}%`
 
@@ -57,7 +59,7 @@ function PayoutEditor({ power, flex, onChange }: { power: Power; flex: Flex; onC
 
 const entryName = (e: Entry) => `${e.size}-pick ${e.type === 'power' ? 'Power' : 'Flex'}`
 
-export function PrizePicksEntries({ state }: { state: EntriesState }) {
+export function PrizePicksEntries({ state, ticket }: { state: EntriesState; ticket?: TicketActions }) {
   const [editing, setEditing] = useState(false)
   const [showAll, setShowAll] = useState(false)
   const [size, setSize] = useState<number | 'all'>('all')
@@ -152,6 +154,11 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
                 <span><span className="text-body">{pct(e.p_all)}</span> <span className="text-faint">all hit</span></span>
                 {e.type === 'flex' && (
                   <span><span className="text-body">{pct(e.p_paid)}</span> <span className="text-faint">pays something</span></span>
+                )}
+                {ticket && (
+                  <span className="ml-auto order-last">
+                    <AddButton active={e.legs.every((l) => ticket.has(l))} onClick={() => ticket.addAll(e.legs)} label="Add entry" />
+                  </span>
                 )}
                 <span className="text-faint">
                   Pays{' '}

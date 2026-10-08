@@ -161,7 +161,7 @@ None of it costs credits.
 
 ## 6. The Bets page
 
-Redesigned 2026-10-08 after a creative-director + UX review ("data overload"): one place per piece of information, one big number per row, details on tap. Phases 1 (noise) and 2 (tabs around the weekly loop) are shipped; Phase 3 (an entry-builder tray with the goblin payout check) is planned.
+Redesigned 2026-10-08 after a creative-director + UX review ("data overload"): one place per piece of information, one big number per row, details on tap. Phases 1 (noise), 2 (tabs around the weekly loop) and 3 (the entry-builder tray) are shipped.
 
 - **Header:** NFL / College switch, an ⓘ button (week, props/games priced, odds credits, refresh days, the method and sources) and Refresh; one-line disclaimer (21+, 1-800-GAMBLER). Loads come from the saved board (`serve_board`).
 - **This week's best bets:** the top 5 bets by size (fills last) with units/dollars, win %, price, book and kickoff, then "See all N bets" (opens Play). Below: one-line links to the best profitable PrizePicks entry and to the Safest picks.
@@ -171,6 +171,7 @@ Redesigned 2026-10-08 after a creative-director + UX review ("data overload"): o
 - **Play:** sportsbook bets with a Player props / Game lines switch and a Bets / All lines switch; the watch list is one collapsible row (open a pick to set an alert); game combos sit under Game lines.
 - **Track record** (was Results): one sentence until something is graded (then record/units/ROI tiles), the **Audit** (week picker, every recommendation hit/miss by section, CSV), and **Model performance** collapsed (by bet size, market, week, model version, Safest-picks hit rate, calibration). Toggles: sport / All sports, All picks / Current model. The old Recommendations list was removed (the Audit covers it).
 - **PrizePicks tab:** board freshness + Upload ("How to upload" collapsed when there's a board from today) → **Correlated stacks** (edge at your payouts, all-hit vs independent, payout needed) → **Safest picks** (70%+ to win; the safest 2-pick shows the payout it needs, 1 / P(both)) → best entries with an entry-size filter → 2-pick pairs → goblins / demons (folded).
+- **Entry-builder tray (PrizePicks tab):** "+ Add" on Safest picks, goblins/demons, "Add stack" and "Add entry" collect picks (one per player) in a tray pinned to the bottom. The server checks PrizePicks' rules (2–6 picks, one per player, 2+ teams) and prices the chance all hit with same-game correlation (`POST /betting/prizepicks-ticket`, `price_ticket`); the user types the payout PrizePicks shows (standard pre-filled; goblins/demons change it) and sees the edge and the break-even payout, then "Log this entry" sends it to My entries.
 - **My entries:** "Log an entry" (with screenshot import) collapsed once you have entries; tiles only once something settles; a dot per pick (won / lost / pending).
 
 ---

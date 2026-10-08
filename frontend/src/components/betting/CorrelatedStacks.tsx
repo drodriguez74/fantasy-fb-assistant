@@ -7,6 +7,8 @@
 // (betting_service.correlated_stacks). Edge uses the payouts set under Best
 // entries, so a state's real multipliers flow through.
 import type { Power } from './prizePicksEntriesData'
+import { AddButton } from './TicketTray'
+import type { TicketActions } from './ticketTypes'
 
 export interface StackLeg {
   player: string
@@ -32,7 +34,7 @@ export interface Stack {
 const whole = (p: number) => `${Math.round(p * 100)}%`
 const oneDp = (p: number) => `${(p * 100).toFixed(1)}%`
 
-export function CorrelatedStacks({ stacks, power }: { stacks?: Stack[]; power: Power | null }) {
+export function CorrelatedStacks({ stacks, power, ticket }: { stacks?: Stack[]; power: Power | null; ticket?: TicketActions }) {
   if (!stacks || stacks.length === 0) return null
   const priced = stacks
     .map((s) => {
@@ -67,6 +69,11 @@ export function CorrelatedStacks({ stacks, power }: { stacks?: Stack[]; power: P
                 </span>
                 <span className="text-faint">vs {oneDp(s.p_independent)} if independent</span>
                 <span className="text-faint">at {s.payout}x · needs {(1 / s.p_all).toFixed(1)}x</span>
+                {ticket && (
+                  <span className="ml-auto">
+                    <AddButton active={s.legs.every((l) => ticket.has(l))} onClick={() => ticket.addAll(s.legs)} label="Add stack" />
+                  </span>
+                )}
               </div>
               <ul className="mt-2 space-y-0.5 text-sm">
                 {s.legs.map((l, i) => (

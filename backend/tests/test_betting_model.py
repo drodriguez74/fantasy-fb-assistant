@@ -447,3 +447,18 @@ def test_passing_yards_are_a_symmetric_normal():
     assert abs(np.median(s) - 240) < 3 and abs(s.std() / 240 - bm.PASS_YDS_NORMAL_CV) < 0.01
     over_demon = float((s > 312.5).mean())     # 1.3x the projection
     assert 0.12 < over_demon < 0.18             # real: 14-18% on held-out seasons (the gamma said ~22%)
+
+
+def test_price_ticket_rules_and_correlation():
+    from app.services.betting_service import TicketError, price_ticket
+
+    def leg(player, team, game, market, side, p):
+        return {"player": player, "team": team, "game": game, "market": market, "side": side, "line": 10.5, "p_win": p}
+    stack = [leg("QB", "KC", "G1", "player_pass_yds", "More", 0.52), leg("WR", "KC", "G1", "player_reception_yds", "More", 0.52),
+             leg("RB", "SF", "G2", "player_rush_yds", "More", 0.55)]
+    out = price_ticket(stack)
+    assert out["p_all"] > out["p_independent"] * 1.15 and abs(sum(out["hits"]) - 1) < 1e-3
+    assert out["breakeven_power"] == round(1 / out["p_all"], 2)
+    for bad in (stack[:1], stack[:2], stack + [dict(stack[0])]):
+        with pytest.raises(TicketError):
+            price_ticket(bad)     # 1 pick; one team only; same player twice

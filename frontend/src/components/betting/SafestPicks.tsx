@@ -5,12 +5,14 @@
 // what the chance requires -- the founder's 2026-10-07 screenshots (1.2x for
 // two goblins, 1.9x for one) were both below it.
 import { type MostLikely, kickoffLabel } from './betTypes'
+import { AddButton } from './TicketTray'
+import type { TicketActions } from './ticketTypes'
 
 const whole = (p: number) => `${Math.round(p * 100)}%`
 // The total payout multiplier at which a ticket with this chance breaks even.
 const breakEven = (p: number) => (p > 0 ? `${(1 / p).toFixed(2)}x` : '—')
 
-export function SafestPicks({ data }: { data?: MostLikely }) {
+export function SafestPicks({ data, ticket }: { data?: MostLikely; ticket?: TicketActions }) {
   if (!data) return null
   return (
     <section className="rounded-lg border border-hairline bg-surface p-4">
@@ -44,6 +46,7 @@ export function SafestPicks({ data }: { data?: MostLikely }) {
                   <div className="stat-nums text-xl font-bold text-body leading-none">{whole(p.p_win)}</div>
                   <div className="text-xs text-faint mt-1">to win</div>
                 </div>
+                {ticket && <AddButton active={ticket.has(p)} onClick={() => ticket.toggle(p)} />}
               </li>
             ))}
           </ul>

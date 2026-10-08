@@ -7,6 +7,8 @@ import { PrizePicksEntries } from './PrizePicksEntries'
 import type { EntriesState } from './prizePicksEntriesData'
 import { SafestPicks } from './SafestPicks'
 import { CorrelatedStacks, type Stack } from './CorrelatedStacks'
+import { AddButton, TicketTray } from './TicketTray'
+import { legKey, type TicketActions, type TicketLeg } from './ticketTypes'
 import type { MostLikely } from './betTypes'
 export interface PrizePicksLeg {
   player: string
@@ -163,7 +165,7 @@ function Fold({ title, summary, defaultOpen = false, children }: { title: string
   )
 }
 
-function AltLines({ rows, note }: { rows?: PrizePicksAltLine[]; note: string }) {
+function AltLines({ rows, note, ticket }: { rows?: PrizePicksAltLine[]; note: string; ticket?: TicketActions }) {
   if (!rows || rows.length === 0) return null
   return (
     <>
@@ -181,6 +183,7 @@ function AltLines({ rows, note }: { rows?: PrizePicksAltLine[]; note: string }) 
               {r.projection != null ? `Sleeper ${r.projection.toFixed(1)}` : `books at ${r.book_line ?? '—'}`}
               {r.espn_projection != null && ` · ESPN ${r.espn_projection.toFixed(1)}`}
             </span>
+            {ticket && <AddButton active={ticket.has(r)} onClick={() => ticket.toggle(r)} />}
           </li>
         ))}
       </ul>
@@ -224,12 +227,28 @@ export function PrizePicksPairs({
   mostLikely?: MostLikely
 }) {
   const positive = data?.pairs.filter((p) => p.ev > 0) ?? []
+  // The entry-builder tray: one pick per player (a new pick replaces that player's old one).
+  const [picks, setPicks] = useState<TicketLeg[]>([])
+  const ticket: TicketActions = {
+    has: (l) => picks.some((p) => legKey(p) === legKey(l) && p.side === l.side && p.line === l.line),
+    toggle: (l) =>
+      setPicks((ps) =>
+        ps.some((p) => legKey(p) === legKey(l) && p.side === l.side && p.line === l.line)
+          ? ps.filter((p) => legKey(p) !== legKey(l))
+          : [...ps.filter((p) => p.player !== l.player), l].slice(0, 6),
+      ),
+    addAll: (ls) =>
+      setPicks((ps) => {
+        const names = new Set(ls.map((l) => l.player))
+        return [...ps.filter((p) => !names.has(p.player)), ...ls].slice(-6)
+      }),
+  }
   return (
-    <div className="space-y-5">
+    <div className={`space-y-5 ${picks.length ? 'pb-40' : ''}`}>
       <UploadPanel data={data} onUploaded={onUploaded} />
-      <CorrelatedStacks stacks={data?.stacks} power={entries.power} />
-      <SafestPicks data={mostLikely} />
-      <PrizePicksEntries state={entries} />
+      <CorrelatedStacks stacks={data?.stacks} power={entries.power} ticket={ticket} />
+      <SafestPicks data={mostLikely} ticket={ticket} />
+      <PrizePicksEntries state={entries} ticket={ticket} />
       {data && data.pairs.length > 0 && (
         <Fold
           title="2-pick pairs"
@@ -251,6 +270,7 @@ export function PrizePicksPairs({
       {(data?.goblins?.length ?? 0) > 0 && (
         <Fold title="Goblins" summary="easier lines, smaller payout · most likely to hit">
           <AltLines
+            ticket={ticket}
             rows={data?.goblins}
             note="The file has no payouts, so compare with PrizePicks' multiplier: two 85% picks hit together about 72% of the time, so that pair needs at least 1.4x."
           />
@@ -258,9 +278,16 @@ export function PrizePicksPairs({
       )}
       {(data?.demons?.length ?? 0) > 0 && (
         <Fold title="Demons" summary="harder lines, bigger payout · most likely to hit">
-          <AltLines rows={data?.demons} note="Compare each hit chance with the multiplier PrizePicks shows." />
+          <AltLines ticket={ticket} rows={data?.demons} note="Compare each hit chance with the multiplier PrizePicks shows." />
         </Fold>
       )}
+      <TicketTray
+        legs={picks}
+        onRemove={(l) => setPicks((ps) => ps.filter((p) => legKey(p) !== legKey(l)))}
+        onClear={() => setPicks([])}
+        power={entries.power}
+        flex={entries.flex}
+      />
     </div>
   )
 }

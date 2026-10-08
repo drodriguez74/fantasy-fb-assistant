@@ -295,6 +295,9 @@ export const betting = {
   addWatchAlert: (alert: { sport: 'nfl' | 'cfb'; type: 'player_prop' | 'game'; subject: string; market: string; side: string }) =>
     api.post('/betting/watch-alerts', alert),
   deleteWatchAlert: (id: number) => api.delete(`/betting/watch-alerts/${id}`),
+  // Entry-builder tray: price a hand-built PrizePicks ticket (rules, correlation, break-even).
+  priceTicket: (legs: { player: string; team?: string | null; game?: string; market: string; side: string; line: number; p_win: number }[]) =>
+    api.post('/betting/prizepicks-ticket', { legs }),
   // Reads a screenshot of a placed entry into the form fields; saves nothing.
   readEntryScreenshot: (file: File) => {
     const form = new FormData()

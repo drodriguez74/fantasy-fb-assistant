@@ -576,6 +576,35 @@ _RECEIVING = ("player_reception_yds", "player_receptions")
 def _p_all(legs: List[Dict[str, Any]]) -> float:
     """P(every pick hits) with same-game legs correlated (teammates and
     opponents, LEG_CORRELATION, More/Less signs applied)."""
+    return float(_hit_distribution(legs)[len(legs)])
+
+
+class TicketError(ValueError):
+    pass
+
+
+def price_ticket(legs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """A user-built PrizePicks ticket (the entry-builder tray): PrizePicks'
+    rules checked (2-6 picks, one per player, 2+ teams), then the hit-count
+    distribution with same-game correlation. legs: {player, team, game,
+    market, side: More|Less, line, p_win}."""
+    if not 2 <= len(legs) <= 6:
+        raise TicketError("An entry has 2 to 6 picks.")
+    if len({normalize_name(l["player"]) for l in legs}) < len(legs):
+        raise TicketError("PrizePicks allows one pick per player.")
+    if len({l.get("team") for l in legs if l.get("team")}) < 2:
+        raise TicketError("PrizePicks needs players from at least two teams.")
+    clean = [{**l, "p_win": min(0.99, max(0.01, float(l["p_win"])))} for l in legs]
+    dist = _hit_distribution(clean)
+    n = len(clean)
+    independent = float(np.prod([l["p_win"] for l in clean]))
+    return {"size": n, "p_all": round(float(dist[n]), 4), "p_independent": round(independent, 4),
+            "hits": [round(float(x), 4) for x in dist],
+            "breakeven_power": round(1 / float(dist[n]), 2) if dist[n] > 0 else None}
+
+
+def _hit_distribution(legs: List[Dict[str, Any]]) -> np.ndarray:
+    """P(k picks hit), k = 0..n, with same-game legs correlated."""
     n = len(legs)
     corr = np.eye(n)
     for i in range(n):
@@ -585,7 +614,7 @@ def _p_all(legs: List[Dict[str, Any]]) -> float:
                 sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
                 same_team = bool(a.get("team")) and a.get("team") == b.get("team")
                 corr[i, j] = corr[j, i] = sign * bm.leg_correlation(a["market"], b["market"], True, same_team)
-    return float(bm.hit_count_distribution([l["p_win"] for l in legs], corr, "stack|" + "|".join(l["player"] for l in legs))[n])
+    return bm.hit_count_distribution([l["p_win"] for l in legs], corr, "stack|" + "|".join(l["player"] for l in legs))
 
 
 def correlated_stacks(rows: List[Dict[str, Any]], payout: float = bm.POWER_PAYOUTS[STACK_SIZE],
