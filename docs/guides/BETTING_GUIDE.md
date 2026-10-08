@@ -1,6 +1,6 @@
 # Bets: how it works, what we decided, and why
 
-The single record for the betting feature (`/bets`). It covers what was built, the method, every decision with its reason and evidence, data-access constraints, and what's still open. Last updated 2026-10-07 (incl. the TimesFM test, the calibration backtest and the model review in section 9).
+The single record for the betting feature (`/bets`). It covers what was built, the method, every decision with its reason and evidence, data-access constraints, and what's still open. Last updated 2026-10-08 (session 20: model review on real outcomes, edge search, auditability, the Bets page redesign; current model version `2026-10-08.6`).
 
 Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` (boards), `betting_tracking.py` (record and grade), `odds_service.py`, `espn_projections.py`, `espn_game_predictor.py`, `prizepicks_board.py`; frontend `frontend/src/pages/BettingPage.tsx` and `frontend/src/components/betting/`. Endpoints: [API_GUIDE.md → Betting](API_GUIDE.md#betting-betting).
 
@@ -19,7 +19,11 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | College football | Game lines only, behind an NFL / College switch. ESPN's predictor models spreads; college props are built but shelved. |
 | Tracking & grading | Every priced line saved, then graded automatically. The Results tab shows record, units, ROI, calibration and NFL vs College. |
 | My entries | The founder's real PrizePicks entries, logged on the page, snapshotted with the engine's view and graded from real stats, including a "whose read was right" check (books vs model). |
-| Bets page | "This week's card" (the actual bets with dollars and kickoff times, always at least 3 picks), tiered cards, and tabs for the evidence. |
+| Bets page | Four tabs around the weekly loop (Play / PrizePicks / My entries / Track record), "This week's best bets" (top 5, always 3+ picks), collapsible two-line pick rows, the entry-builder tray (section 6). |
+| Correlated stacks | 3–4 pick PrizePicks stacks (QB + own receivers, opposing backs) priced from the books' chances plus measured correlations: the one structural edge found so far. |
+| Auditability | Every recommendation stamped with `ENGINE_VERSION`, tracked and graded; weekly Audit with CSV; closing-line value (CLV) per pick; suggested tickets tracked as whole entries; `scripts/tune_from_results.py`. |
+| Watch alerts | "Alert me if it becomes a bet" on watch-list lines; in-app notification when it does. |
+| Books | Seven books feed the consensus at no extra credits; units only at the founder's book (Hard Rock Bet, `BETTING_MY_BOOKS`). |
 
 ### Timeline (all 2026-10-06/07)
 
@@ -37,6 +41,29 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | `f9dcc91` | Analytics libraries lazy-loaded after a Render out-of-memory restart; this guide |
 | (backtest) | TimesFM 3 tested and rejected; spread model validated on 4,755 real player-weeks (`scripts/backtest_projections.py`) |
 | (review) | Model review on real 2025/2026 closing lines and outcomes: game-line model weight 0, key-number spreads, measured correlations (teammates fixed), ESPN check off for passing, "Best available" card fill (section 9) |
+
+### Timeline, session 20 (2026-10-07/08)
+
+| Commit | Change |
+|---|---|
+| `1aa84c0` | My entries screenshot import (untested: AI accounts out of credits) |
+| `db781e6` | Model review: NFL game lines market-only, key-number spreads, measured correlations, ESPN check off for passing, always 3 picks |
+| `e607500` | "Most likely to win" (now Safest picks) + `tune_from_results.py` |
+| `a6028c0`, `d37aa47` | Props refetch only Wed/Sun (free tier); fall back to the last fetch at the credit reserve |
+| `4bd1f23`, `d97ab1b` | Zero-catch and zero-rushing game mass (low lines were overconfident) |
+| `1239797`, `144bde7`, `60a8ee5` | Engine version on every pick, weekly Audit + CSV, tracked tickets; 2026 wk 1–4 calibration check; watch list tracked |
+| `7413f57` | Watch alerts |
+| `baefbc9` | Saved board served instantly, one shared build, fewer simulations (fixed live timeouts) |
+| `ce799ee`, `b5d21a7`, `171b239`, `6ec0e01` | Bets page redesign phases 1–3 (noise cut, four tabs, entry-builder tray), phone wrap fix |
+| `f2be691`, `1e34340` | ESPN must confirm the edge (sportsbook bets, then PrizePicks pairs/entries via `pp_value`) |
+| `1645d5f` | Correlated PrizePicks stacks |
+| `2700153`, `c2eb0ab` | Seven books, units only at Hard Rock Bet, closing-line tracking |
+| `b44e897` | College spreads market-only (2025 backtest: no predictor edge) |
+| `1737f85` | Render only redeploys the API on backend changes (after a Blueprint sync) |
+| `18f1036` | Passing yards as a symmetric normal |
+| `d30369e` | Pregame weather forecasts logged (`game_weather`) |
+| `88b0598` | Far PrizePicks lines priced along the books' distribution (Irving promo bug) |
+| `219dd84` | My entries: team-winner, spread and game-total picks |
 
 ---
 
@@ -92,6 +119,15 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | Measured correlations (2026-10-07) | The guessed opponent values were 2–3x too high and made same-game More/More pairs look +EV; opposing backs (−0.19) were missing; `COVER_TOTAL_RHO` was 0.15 vs a measured 0.03; teammates in 3+ pick entries were treated as independent (QB↔own WR is +0.38). | Section 9. |
 | ESPN check not required for passing yards (2026-10-07) | Where ESPN and Sleeper differ by 15%+, the result lands on ESPN's side 53–60% for rush/rec/receptions but 37–45% for passing: the check only filtered noise there. | Two held-out seasons, section 9. |
 | ESPN must confirm the edge, not just lean (2026-10-08) | Week 5's card had 12 bets, 10 of them Unders and mostly low-count receptions at plus money, whose edge came from Sleeper alone: the old check only needed ESPN to lean the same way, which is nearly free on low counts (Dotson Under 1.5 "agreed" with an ESPN projection of 2.1). Requiring ESPN's own blend to clear 3% EV, sized at the smaller of the two, left 4 bets (Brian Robinson Jr.'s 2.5u Under went: ESPN had exactly the books' 50%). Not yet validated on outcomes (no prop lines before week 5); judge it by the Audit's model-version split and `tune_from_results.py` after a few weeks. | Week-5 board, 2026-10-08. |
+| Zero-catch / zero-rushing games (2026-10-07) | Low lines for low-volume players were overconfident: receivers projected 1–2 catches cleared a line at 20% of their projection 66% of the time vs 84% modeled; QBs projected 5–10 rush yds cleared Over 0.5 61% vs 94% (a fake 3u Goff bet). Logistic zero-game mass by projected receptions / rushing yards; better out of sample on every held-out set. | `experiments/zero_catch.py`, `zero_rush.py` |
+| Every recommendation auditable (2026-10-07) | The founder needs to see whether each pick hit. `ENGINE_VERSION` on every pick (so a rule change is judged on its own record), a weekly Audit with CSV, suggested PrizePicks tickets tracked as whole entries, the watch list tracked as its own tier. | Founder request. |
+| Props refetch only Wed/Sun (2026-10-07) | A full prop slate measured 148 credits (not ~70) with 123 left for the month. Founder's call until the $30 tier. | Credit counter. |
+| Saved board, served instantly (2026-10-08) | The live page timed out ("Network error"): a build took ~18s locally and much longer on Render's free CPU, the page started two builds at once, and uploaded lines re-simulated each player per line. Now the last board is served from `odds_cache` with a background rebuild; one shared build; 9–14s locally. | Live timeout, profiling. |
+| Bets page redesign (2026-10-08) | Founder: "data overload". A creative-director and a UX review agreed: the same picks appeared 4 times, every card had ~10 numbers at equal weight, volt meant nothing. Three phases: noise cut (one big number per row, details on tap, volt only for "act on this"), four tabs around the weekly loop, the entry-builder tray. | Reviews, live checks. |
+| Seven books, units only at Hard Rock Bet (2026-10-08) | Up to 10 books cost the same credits (verified: 9 requested, 2 credits), so the consensus uses seven. The founder bets only at Hard Rock Bet (the only legal online sportsbook in Florida) and PrizePicks, so units go only to Hard Rock prices (`BETTING_MY_BOOKS`). | Credit check; founder. |
+| Closing-line value tracked (2026-10-08) | The fastest sign of a real edge; win-loss needs hundreds of bets. Stored per pick until kickoff, from our side even when the board's best side flips (no survivorship). | Standard practice. |
+| Pregame forecasts logged (2026-10-08) | Wind unders can only be tested on what was knowable before kickoff. | Section 9. |
+| My entries: team-winner, spread, total picks (2026-10-08) | The founder's PrizePicks entries mix game picks with props; graded from final scores. | Founder's tickets. |
 | PrizePicks far lines priced along the books' distribution (2026-10-08, model 2026-10-08.6) | Goblin, demon and promo lines far from the books' line were priced by adding a shift taken from our own projection's distribution, which is wrong whenever the projection disagrees with the books: a promo on Bucky Irving More 0.5 rushing yards (books 52.5, projections 77) came out 85% where backs projected 60+ cleared 0.5 in 498 of 498 games (2024-25). Lines more than 15% from the books' nearest line now use the player's outcome distribution with its mean solved to match the books' fair chance at their line (`_books_chance`), in both the blended and books-only prices. Irving 0.5 → 98%, Hurst 4.5 rec yds 84% → 78%. | Founder's real promo ticket, 2026-10-08. |
 | College spreads market-only (2026-10-08, model 2026-10-08.4) | 2025 backtest, 868 FBS games with ESPN BET pregame lines and ESPN's pregame predictor (`scripts/backtest_cfb_lines.py`): the predictor carried no information against the line (it said 33% → 49% covered, 65% → 54%), scored worse than a coin flip alone (Brier 0.2587) and tied the line at the old 0.15 weight; the 14 bets it made went 8-6 (noise). `CFB_MODEL_WEIGHT = 0`: a college bet comes only from a book off the seven-book consensus. | `backtest_cfb_lines.py` |
 | Correlated stacks (2026-10-08, model 2026-10-08.3) | Every test found the market beats our projections, so the edge has to come from pricing, not forecasting. PrizePicks prices entries as independent; same-team correlations are measured (n=4,508 QB/receiver pairs). Founder confirmed PrizePicks only requires 2+ teams per entry (5 + 1 is fine). Week 5, books-only: the best 4-pick (Bagent + Burden + Swift same way + Roman Wilson) all-hit 10.9% vs 7.3% independent, +9.3% at 10x; best 3-pick +7.7% at 6x. TD props were dropped from stacks: books quote Yes only, so a "No" chance would be our de-vig, not the books' (with them the edges looked like +20%). Not yet validated on outcomes; stacks are tracked (source "stack") and graded. | Week-5 board; `corr_props.py`. |
@@ -270,12 +306,25 @@ The prop correlations were measured against projection-centered lines, not real 
 
 ## 8. Open items
 
-1. Verify PrizePicks 3–6 pick payouts in Florida (build an unsubmitted all-standard lineup and read "$1 to pay $X").
-2. After 3–4 graded weeks: tune the prop `MODEL_WEIGHT` and the stale-guard bounds; judge the "Best available" fills (Results → By confidence); settle Sleeper vs ESPN accuracy from `espn_projection`. Game-line weight, `LEG_CORRELATION` and `COVER_TOTAL_RHO` were set from data in the 2026-10-07 review (section 9); rerun `scripts/backtest_game_lines.py --season 2026` and the correlation scripts after the season.
-2a. Decide the "promising" items in section 9: passing yards as a normal, a higher `MIN_EV`, the TD blend, and logging forecast wind.
-3. ~~Track PrizePicks entries~~: done as My entries. Screenshot import shipped (`1aa84c0`) but untested end to end: both AI accounts (OpenAI, Anthropic) were out of credits on 2026-10-07. Optional: grade the engine's own suggested entries too.
-3b. Bump `ENGINE_VERSION` with every pricing change, so Results → By engine version stays honest.
-3a. Backtest props on real lines: one month of The Odds API's paid tier for 2025 (and 2026 wk 1–4) historical props (section 9).
-4. Un-shelve college props when credits allow (league_id=15 verified; set `CFB_PROPS_ENABLED`).
-5. More prop markets and daily refreshes need the paid Odds API tier.
-6. Optional: a scheduled weekly board snapshot so recording doesn't depend on someone opening the page.
+**What the evidence says so far (2026-10-08).** Every projection source tested -- Sleeper, ESPN, ESPN's college predictor, TimesFM, Elo/situational models -- loses to the closing line. So edges have to come from *pricing*, not forecasting: correlated PrizePicks stacks, promos (the founder's Irving 0.5 promo was ~+40%), books off the consensus (line shopping at the founder's book), and PrizePicks lines lagging the books after news. Goblins are not an edge: PrizePicks prices them like ~91% hits while the books and the model say ~80%. Winner/total picks at PrizePicks are priced at the books' line, so they add risk without edge.
+
+**Founder actions**
+1. Verify Florida payouts for stacks: build (don't submit) the Bagent + Burden + Gibbs 3-pick and the Bagent + Burden + Swift + Roman Wilson 4-pick and read "$1 to pay $X" (model assumes 6x and 10x). If PrizePicks pays less on correlated stacks, the stack edge may vanish.
+2. Upload a fresh PrizePicks board each game day, above all Sunday morning (uploads expire after 36 hours; stacks, safest picks and goblins depend on it).
+3. Decide the $30 Odds API tier: daily prop refreshes (real closing lines for Thursday games, catching PrizePicks lines that lag the books) and the 2025 historical-props backtest (~13.7K credits). Rotate the Odds API key (shared in chat).
+4. Fund an AI provider (OpenAI or Anthropic) so the screenshot import can be tested.
+5. Sync the Render Blueprint so `buildFilter` (backend-only deploys) and `BETTING_MY_BOOKS` apply (the app already defaults to `hardrockbet`).
+
+**Waiting on data (judge, don't guess)**
+6. Week 5 grades (first real results): bets, fills, watch list, Safest picks, stacks, the founder's entries; read them by model version in Track record.
+7. Closing-line value after 2–3 weeks: if picks don't beat the close, raise `MIN_EV` (5–8% was the robust range in `corr_kelly.py`); if they do, keep it.
+8. `scripts/tune_from_results.py` once 300+ graded lines exist (engine weight, calibration per tier).
+9. After the season: rerun `backtest_projections.py --season 2026`, `backtest_game_lines.py --season 2026`, `backtest_cfb_lines.py --season 2026`, the correlation scripts, and test wind unders against `game_weather` forecasts.
+
+**Engineering candidates (not decided)**
+10. Passing-yards guard: a passing bet can be single-source (ESPN is exempt there) -- week 5 had Kyler Murray Under 213.5 at 3u with Sleeper 166 vs ESPN 231. Proposed: cap passing units at 1u when ESPN projects the other side of the line.
+11. Start/finish risk: sportsbook props are void if the player doesn't play, but projections may average in a chance he doesn't start or finish (likely behind several big "Under" gaps). Worth investigating with injury/start data.
+12. Promo checker: promos are the best value seen so far; the tray already prices them if the user adds the pick and types the line -- a dedicated "promo" input could make it one step.
+13. Un-shelve college props when credits allow (`CFB_PROPS_ENABLED`, league_id=15); Caesars/Fanatics book keys returned nothing for NFL (recheck).
+14. A scheduled board build (no background worker exists) so alerts, closing lines and forecasts don't depend on page visits.
+15. Known limits: props refresh Wed/Sun on the free tier, so a Thursday game's "close" is Wednesday's price; local sign-in doesn't work against the shared DB (check UI on the deployed site); Chrome won't resize, so phone checks use a 390px frame.

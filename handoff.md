@@ -1,22 +1,33 @@
-# START HERE — Session 20 (2026-10-07): model review on real outcomes + screenshot import
+# START HERE — Session 20 wrap (2026-10-07 → 10-08): model review, edge search, auditability, Bets redesign
+
+> Read this, then `docs/guides/BETTING_GUIDE.md` (section 3 decisions, section 8 open items, section 9 evidence).
 
 ## State right now
-- Pushed to `main`: `1aa84c0` (My entries screenshot import), `db781e6` (model review + 3-pick card). Backend 231 tests pass; frontend build clean (the one lint error, `useAuth.tsx`, predates this session).
-- **Blocked:** both AI accounts are out of credits (OpenAI `insufficient_quota`, Anthropic "credit balance too low"), so the screenshot import is untested end to end, and the app's other AI features fail too. Test image: the founder's 6-pick Power screenshot (arrows for More/Less, two goblins, page 1/2).
-- The founder's first real entry is logged (McCaffrey Less 36.5 rec + Irving More 51.5 rush, $10→$30, week 5); grades itself after SF @ SEA (Sun).
+- Everything committed and pushed to `main` (last: `219dd84` + this docs commit). Backend **263 tests pass**; frontend build clean (one pre-existing lint error in `src/hooks/useAuth.tsx`).
+- **Model version `2026-10-08.6`** (`betting_model.ENGINE_VERSION`). Bump it with every pricing change.
+- **Migrations, all applied to Supabase** (Render doesn't run them): `5f4393f32987` (engine_version, tracked_entries), `239d834d4609` (watch_alerts), `84bb7a784ff5` (bet_picks closing line), `d8dfb306b6a5` (game_weather). Alembic head = `d8dfb306b6a5`.
+- **Odds API:** ~111 credits left in October (2026-10-08). Props refetch only Wed/Sun. Seven books per call at no extra cost.
+- **Founder's real week-5 entries** logged in My entries (ids 1–6), incl. a promo ticket (Pickens More 63.5 + Irving More 0.5, ~+40% edge). They grade from tonight (TB @ DAL) through Sunday.
 
-## What the review found (full evidence: BETTING_GUIDE.md section 9; scripts in backend/scripts/experiments/)
-- Game-line model had no edge on real closing lines (2025: 50-58-1, −17.4u; 2026 wk 1–4: 3-4) → `GAME_MODEL_WEIGHT = 0`; key-number spread distribution (`KEY_MARGIN_LOG_WEIGHTS`, SD 13.26).
-- Correlations measured (`LEG_CORRELATION`, `COVER_TOTAL_RHO` 0.15 → 0.03); teammates in 3+ pick entries were treated as independent (bug, fixed).
-- ESPN check not required for passing yards (`ESPN_CHECK_EXEMPT`).
-- Sleeper's mean projection and our prop distributions are already near the best of everything tested; rejected list in the guide.
-- Founder's rule: the card always has 3+ picks. Fills are "Best available" (confidence `fill`, 0.5u, `fill_card`, stable via `fill_keys`), tracked as their own tier.
+## What the evidence says
+Projections don't beat the closing line (Sleeper, ESPN, ESPN college predictor, TimesFM, Elo all tested). Edges come from pricing: **correlated PrizePicks stacks**, **promos**, **books off the consensus at the founder's book**, PrizePicks lines lagging the books. Goblins and PrizePicks winner/total picks are not edges.
 
-## Open items (priority order)
-1. Fund an AI provider, then test the screenshot import on the founder's screenshot.
-2. Founder decisions: $30 Odds API month for 2025 historical props (the only way to backtest props on real lines); the "promising" items (passing yards as a normal, higher `MIN_EV`, TD blend, logging forecast wind).
-3. Watch week 5 grade (first real prop results; fills vs bets in Results → By confidence).
-4. Rest of session 19's list below still applies (Florida 3–6 pick payouts, phone layout, etc.).
+## What was built (see the guide's session-20 timeline for commits)
+- **Model:** NFL + college game lines market-only with key-number spreads; measured correlations (teammate bug fixed); zero-catch / zero-rushing mass; passing yards normal; ESPN must confirm the edge (sportsbook) and `pp_value` (PrizePicks pairs/entries); far PrizePicks lines priced along the books' distribution.
+- **Edge tools:** correlated stacks (3–4 pick), entry-builder tray with real-payout edge check, Safest picks with break-even payout.
+- **Auditability:** engine version on every pick, weekly Audit + CSV, tracked tickets (pairs, stacks, safest pair, entries), watch list tier, closing-line value, `tune_from_results.py`.
+- **Ops:** saved board served instantly (fixed live timeouts), seven books, units only at Hard Rock Bet, watch alerts, pregame weather log, Render backend-only deploys (after Blueprint sync).
+- **UX:** Bets page redesign in three phases (creative-director + UX review): top-5 card, two-line pick rows, four tabs (Play / PrizePicks / My entries / Track record), info button, tray; phone wrap fix.
+- **My entries:** screenshot import (untested, no AI credits); team-winner, spread and game-total picks.
+
+## Open items → BETTING_GUIDE.md section 8
+Founder: verify FL stack payouts (6x/10x), upload the board Sunday morning, decide the $30 tier, AI credits, Blueprint sync. Data: week-5 grades, CLV after 2–3 weeks (then decide `MIN_EV`), tuning at 300+ graded lines. Candidates: passing-yards single-source guard (Kyler Murray 3u case), start/finish risk in projections, promo checker, scheduled board build.
+
+## Gotchas (new this session)
+- Run backend scripts from `backend/`. A local board build writes tracking rows to the shared DB unless you stub `record_board`, `fill_keys`, `tracked_entries.record*`, `watch_alerts.check`, `update_closing`, `record_forecasts` (see the snippets used in this session) -- and serve from cache (`_PROPS_TTL_SECONDS`/`_CACHE_TTL_SECONDS` = large) to avoid spending credits.
+- Tests default `BETTING_MY_BOOKS` to all books (conftest); the app default is `hardrockbet`.
+- The NFL odds feed includes next week's games too; match games by both teams and date.
+- Chrome won't resize: check phone layout in a 390px same-origin iframe.
 
 ---
 
