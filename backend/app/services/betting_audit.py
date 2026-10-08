@@ -22,7 +22,7 @@ from app.models.tracked_entry import TrackedEntry
 from app.models.user_entry import UserEntry
 from app.services import betting_model as bm
 
-SECTIONS = ("Bets", "Best available", "Most likely to win", "Suggested tickets", "My entries")
+SECTIONS = ("Bets", "Best available", "Watch list", "Most likely to win", "Suggested tickets", "My entries")
 COLUMNS = ("section", "pick", "market", "side", "line", "book", "price", "p_win", "books_prob", "engine_prob",
            "units", "engine_version", "status", "actual", "profit", "profit_unit", "kickoff", "graded_at")
 DECIDED = ("won", "lost", "partial")
@@ -40,6 +40,8 @@ def _iso(dt) -> Optional[str]:
 def _section(p: BetPick) -> str:
     if p.kind == "pp_leg":
         return "Most likely to win"
+    if p.confidence == "watch":
+        return "Watch list"
     return "Best available" if p.confidence == "fill" else "Bets"
 
 
@@ -120,7 +122,7 @@ def section_summary(rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
 def weeks(user_id: Optional[int]) -> List[Dict[str, int]]:
     with SessionLocal() as db:
         found = {(s, w) for s, w in db.query(BetPick.season, BetPick.week).filter(
-            (BetPick.recommended.is_(True)) | (BetPick.kind == "pp_leg")).distinct()}
+            (BetPick.recommended.is_(True)) | (BetPick.kind == "pp_leg") | (BetPick.confidence == "watch")).distinct()}
         found |= {(s, w) for s, w in db.query(TrackedEntry.season, TrackedEntry.week).distinct()}
         if user_id is not None:
             found |= {(s, w) for s, w in db.query(UserEntry.season, UserEntry.week)
@@ -136,7 +138,7 @@ def audit(season: Optional[int], week: Optional[int], user_id: Optional[int]) ->
     if season is not None and week is not None:
         with SessionLocal() as db:
             picks = db.query(BetPick).filter(BetPick.season == season, BetPick.week == week).filter(
-                (BetPick.recommended.is_(True)) | (BetPick.kind == "pp_leg")).all()
+                (BetPick.recommended.is_(True)) | (BetPick.kind == "pp_leg") | (BetPick.confidence == "watch")).all()
             tickets = db.query(TrackedEntry).filter(TrackedEntry.season == season, TrackedEntry.week == week).all()
             entries = (db.query(UserEntry).filter(UserEntry.user_id == user_id, UserEntry.season == season,
                                                   UserEntry.week == week).all() if user_id is not None else [])

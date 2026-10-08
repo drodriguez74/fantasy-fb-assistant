@@ -94,7 +94,9 @@ def _row_values(season: int, week: int, r: Dict[str, Any]) -> Dict[str, Any]:
         "book": r["book"],
         "price": int(r["price"]),
         "units": float(r["units"]),
-        "confidence": r["confidence"],
+        # Watch-list lines (positive EV, too small to size) are tracked as their
+        # own tier so the audit can judge them; still no units.
+        "confidence": "watch" if r.get("watch") and r["units"] == 0 else r["confidence"],
         "recommended": r["units"] > 0,
         "ev": float(r["ev"]),
         "p_win": float(r["p_win"]),
@@ -129,8 +131,10 @@ def record_board(season: int, week: int, rows: Iterable[Dict[str, Any]]) -> int:
         stmt = stmt.on_conflict_do_update(
             constraint="uq_bet_pick_line",
             set_={**upgrade, "first_seen_at": datetime.now(timezone.utc)},
-            # Only a pending "no bet" row can be upgraded, and only to a recommendation.
-            where=(BetPick.recommended.is_(False)) & (BetPick.status == "pending") & stmt.excluded.recommended,
+            # Only a pending "no bet" row can be upgraded: to a recommendation, or
+            # from a plain priced line to the watch list.
+            where=(BetPick.recommended.is_(False)) & (BetPick.status == "pending") & (
+                stmt.excluded.recommended | ((BetPick.confidence == "none") & (stmt.excluded.confidence == "watch"))),
         )
         result = db.execute(stmt)
         db.commit()

@@ -83,3 +83,16 @@ def test_audit_rows_summary_and_csv():
     assert s["Bets"]["hit_rate"] == 1.0 and s["Best available"]["hit_rate"] == 0.0 and s["Bets"]["predicted"] == 0.56
     parsed = list(csv.DictReader(io.StringIO(audit.to_csv(rows))))
     assert list(parsed[0].keys()) == list(audit.COLUMNS) and len(parsed) == 4 and parsed[0]["status"] == "won"
+
+
+def test_watch_list_is_tracked_as_its_own_section():
+    from types import SimpleNamespace
+    from app.services.betting_audit import _section
+    from app.services.betting_tracking import _row_values
+    row = {"type": "player_prop", "player": "A", "game": "B @ C", "market": "player_rush_yds", "side": "Over",
+           "line": 40.5, "book": "DraftKings", "price": -110, "units": 0.0, "confidence": "none", "ev": 0.02,
+           "p_win": 0.535, "watch": True}
+    v = _row_values(2026, 5, row)
+    assert v["confidence"] == "watch" and not v["recommended"] and v["units"] == 0.0
+    assert _row_values(2026, 5, {**row, "watch": False})["confidence"] == "none"
+    assert _section(SimpleNamespace(kind="player_prop", confidence="watch")) == "Watch list"
