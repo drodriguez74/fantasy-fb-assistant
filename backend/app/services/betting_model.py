@@ -47,7 +47,7 @@ import numpy as np
 # Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
 # with key-number spreads, measured correlations, zero-catch and zero-rush
 # games. Rows from before versioning have NULL ("pre-versioning").
-ENGINE_VERSION = "2026-10-08.3"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks
+ENGINE_VERSION = "2026-10-08.4"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
@@ -499,11 +499,15 @@ GAME_MODEL_WEIGHT = 0.0
 # errors (standard published magnitudes, not fitted).
 CFB_SPREAD_SD = 15.5
 CFB_TOTAL_SD = 15.0
-# College spreads rest on one unvalidated source (ESPN's predictor, which
-# disagreed with the market by 5+ points on many week-6 games and produced
-# 15 "bets" at the NFL settings), so it gets half the weight and a 1u cap
-# until graded results earn more.
-CFB_MODEL_WEIGHT = 0.15
+# College spreads are market-only (2026-10-08). ESPN's predictor, the only
+# college projection, carried no information against the line over the whole
+# 2025 season (868 FBS games, ESPN BET pregame lines; scripts/
+# backtest_cfb_lines.py): games it gave the home side 33% to cover covered
+# 49%, games it gave 65% covered 54%; alone it scored worse than a coin flip
+# (Brier 0.2587 vs 0.2500) and the old 0.15 blend tied the line. As in the
+# NFL, a college bet now comes only from a book off the consensus. The
+# predictor is still shown for reference.
+CFB_MODEL_WEIGHT = 0.0
 CFB_MAX_UNITS = 1.0
 
 

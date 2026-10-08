@@ -1243,9 +1243,10 @@ CFB_PROP_GAME_CAP = 10
 CFB_PROPS_ENABLED = False
 CFB_DETAIL = "Upload today's PrizePicks college board to price college player props."
 CFB_METHOD = (
-    "College spreads: ESPN's matchup predictor (its win probability as a projected margin), blended 30/70 with "
-    "the de-vigged consensus of DraftKings, FanDuel and Hard Rock Bet. College totals: no public projection "
-    "exists, so only a book that's off the consensus shows an edge. PrizePicks college props: priced against "
+    "College spreads and totals: the de-vigged consensus of seven sportsbooks is the price, and a bet shows only "
+    "when a book you can use is off that consensus by the edge bar (line shopping). ESPN's matchup predictor is "
+    "shown for reference but gets no weight: over the 2025 season it carried no information beyond the line. "
+    "PrizePicks college props: priced against "
     "the sportsbooks' own lines (FanDuel mostly) -- no player projections exist for college, so a pick only "
     "rates well when PrizePicks' line is easier than the books'. Stakes are quarter-Kelly, capped at 3 units."
 )

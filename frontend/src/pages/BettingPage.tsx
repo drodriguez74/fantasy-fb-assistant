@@ -383,8 +383,8 @@ export function BettingPage() {
               </div>
               {sport === 'cfb' && (
                 <p className="text-xs text-muted leading-relaxed">
-                  Spreads use ESPN's predictor at half the NFL weight with a 1u cap until results are graded; totals only
-                  flag a sportsbook that's off the others, since nothing projects college totals.
+                  College lines are market-only: a bet shows only when Hard Rock's price beats the other books' consensus.
+                  ESPN's predictor is shown for reference; over the 2025 season it added nothing to the line.
                 </p>
               )}
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
