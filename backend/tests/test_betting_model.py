@@ -340,3 +340,16 @@ def test_pp_leg_rows_track_without_price():
                               "side": "More", "line": 30.5, "p_win": 0.8, "odds_type": "goblin"})
     assert v["side"] == "Over" and v["kind"] == "pp_leg" and not v["recommended"] and v["confidence"] == "likely"
     assert profit("won", v["units"], v["price"]) == 0.0
+
+
+def test_zero_catch_games_for_low_volume_receivers():
+    p_low, p_high = bm.zero_catch_prob(1.7), bm.zero_catch_prob(5.0)
+    assert 0.20 < p_low < 0.35 and p_high < 0.05          # 2025: ~26-38% shut out at <2 projected catches
+    assert bm.zero_catch_prob(None) is None
+    y_old = bm.simulate_stat("player_reception_yds", 26.0, "zc")
+    y_new = bm.simulate_stat("player_reception_yds", 26.0, "zc", p_zero=p_low)
+    assert abs(y_new.mean() - y_old.mean()) / y_old.mean() < 0.05  # the mean is kept
+    assert (y_new > 4.5).mean() < (y_old > 4.5).mean() - 0.10      # a 4.5-yard goblin is no longer ~90%
+    r = bm.simulate_stat("player_receptions", 1.8, "zc", p_zero=p_low)
+    assert abs((r == 0).mean() - p_low) < 0.03 and abs(r.mean() - 1.8) < 0.15
+    assert (bm.simulate_stat("player_rush_yds", 40.0, "zc", p_zero=0.5) > 0).all()  # rushing untouched

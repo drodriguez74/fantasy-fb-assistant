@@ -217,15 +217,64 @@ def _rng(seed_text: str) -> np.random.Generator:
     return np.random.default_rng(zlib.crc32(seed_text.encode()))
 
 
-def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS) -> np.ndarray:
+def _zero_inflation(true_mean: np.ndarray, p_zero: float) -> float:
+    """Extra zero mass pi for a Poisson count with the mean preserved
+    (rate true_mean / (1 - pi)) so that P(0) is about p_zero, counting the
+    zeros the projection uncertainty in true_mean already makes; 0 if a
+    plain Poisson already has that many zeros."""
+    pi = 0.0
+    for _ in range(8):
+        base = float(np.mean(np.exp(-true_mean / (1 - pi))))
+        pi = max(0.0, min(0.9, (p_zero - base) / (1 - base)))
+    return pi
+
+
+def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS,
+                  p_zero: Optional[float] = None) -> np.ndarray:
     """Simulated outcomes for one player stat whose projected mean is
-    `mean`, including uncertainty in the projection itself."""
+    `mean`, including uncertainty in the projection itself. p_zero
+    (receivers): the chance of a zero-catch game (zero_catch_prob) --
+    receiving yards are 0 that often and receptions get the same zero mass,
+    with the other outcomes scaled so the mean is unchanged."""
     rng = _rng(seed_text)
     true_mean = np.clip(rng.normal(mean, projection_error(market) * mean, n), 0.01, None)
+    if p_zero and market in ZERO_CATCH_MARKETS:
+        if market == "player_receptions":
+            pi = _zero_inflation(true_mean, p_zero)
+            counts = rng.poisson(true_mean / (1 - pi)).astype(float)
+            return np.where(rng.random(n) < pi, 0.0, counts)
+        # Given at least one catch the mean is higher, so (volume rule) the spread is tighter.
+        shape = 1 / yards_cv(market, mean / (1 - p_zero)) ** 2
+        yards = rng.gamma(shape, true_mean / (1 - p_zero) / shape)
+        return np.where(rng.random(n) < p_zero, 0.0, yards)
     if market in YARDS_CV:
         shape = 1 / yards_cv(market, mean) ** 2
         return apply_duds(rng.gamma(shape, true_mean / shape), true_mean, DUD_PROB.get(market, 0.0), rng)
     return rng.poisson(true_mean).astype(float)
+
+
+# Zero-catch games: receivers are shut out far more often than a Poisson
+# count says (26% real for 1.5-2.5 projected catches in 2025), and the gamma
+# yardage model had no zero mass, so low receiving-yard lines (goblins) were
+# overconfident for low-volume receivers (84% modeled vs 66% real at 20% of
+# the projection, 1-2 catches). P(0 catches) = logistic(a + b ln(projected
+# receptions)), fitted on 2025 wk 4-10 (scripts/experiments/zero_catch.py).
+ZERO_CATCH_MARKETS = frozenset({"player_reception_yds", "player_receptions"})
+# Out of sample (2025 wk 11-17, 2026 wk 1-4, 2024 wk 4-17) the fitted zero
+# rate matched reality (e.g. 36.6% vs 37.5% for 0.5-2 projected catches),
+# receivers under 3 projected catches scored better on every held-out set
+# (receiving-yards Brier -0.006 / -0.008 / -0.009, CIs excluding 0), lines at
+# 20-40% of the projection went from 75% modeled to 59-61% (real 61%), and
+# receivers at 3+ catches were unchanged.
+ZERO_CATCH_COEF = (-0.393, -1.8579)  # (a, b)
+
+
+def zero_catch_prob(projected_receptions: Optional[float]) -> Optional[float]:
+    """P(a zero-catch game) for a receiver projected for this many catches."""
+    a, b = ZERO_CATCH_COEF
+    if a is None or not projected_receptions or projected_receptions <= 0:
+        return None
+    return float(1 / (1 + np.exp(-(a + b * np.log(projected_receptions)))))
 
 
 def yards_cv(market: str, mean: float) -> float:
@@ -362,22 +411,23 @@ PROJECTION_SCALE_BOUNDS = (0.6, 1.6)
 CENTERING_SIMS = 4000
 
 
-def fit_projection_scale(market: str, pairs: List[Tuple[float, float]]) -> float:
+def fit_projection_scale(market: str, pairs: List[Tuple]) -> float:
     """Multiplier for this slate's projections in `market`. `pairs` are
-    (projection, market center): the market's 50% line for yards and
-    receptions, the fair P(score) for anytime TD."""
+    (projection, market center[, p_zero]): the market's 50% line for yards
+    and receptions, the fair P(score) for anytime TD; p_zero is a receiver's
+    zero-catch chance, so centering simulates exactly what pricing does."""
     lo, hi = PROJECTION_SCALE_BOUNDS
-    pairs = [(proj, c) for proj, c in pairs if proj > 0]
+    pairs = [(t[0], t[1], t[2] if len(t) > 2 else None) for t in pairs if t[0] > 0]
     if len(pairs) < CENTERING_MIN_PROPS:
         return 1.0
     if market == "player_anytime_td":
-        ratios = [-np.log(1 - p) / proj for proj, p in pairs if 0 < p < 1]
+        ratios = [-np.log(1 - p) / proj for proj, p, _ in pairs if 0 < p < 1]
         return round(float(np.clip(np.median(ratios), lo, hi)), 3) if ratios else 1.0
 
     def median_p_over(k: float) -> float:
         return float(np.median([
-            prob_over(simulate_stat(market, proj * k, f"center|{market}|{i}", n=CENTERING_SIMS), line)[0]
-            for i, (proj, line) in enumerate(pairs)
+            prob_over(simulate_stat(market, proj * k, f"center|{market}|{i}", n=CENTERING_SIMS, p_zero=pz), line)[0]
+            for i, (proj, line, pz) in enumerate(pairs)
         ]))
 
     for _ in range(14):  # bisection: P(over) rises with the scale

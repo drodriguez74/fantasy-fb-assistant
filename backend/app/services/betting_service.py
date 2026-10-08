@@ -80,6 +80,20 @@ def _projection_index(rows: List[Dict[str, Any]]) -> Dict[Tuple[str, str], Dict[
     return out
 
 
+# Each receiver's zero-catch chance from his projected receptions
+# (betting_model.zero_catch_prob), by normalized name; refreshed per board build.
+_zero_catch: Dict[str, float] = {}
+
+
+def _p_zero(player: str, market: str) -> Optional[float]:
+    return _zero_catch.get(normalize_name(player)) if market in bm.ZERO_CATCH_MARKETS else None
+
+
+def _sim(market: str, mean: float, seed: str, player: str) -> np.ndarray:
+    """simulate_stat with the player's zero-catch chance for receiver markets."""
+    return bm.simulate_stat(market, mean, seed, p_zero=_p_zero(player, market))
+
+
 def _projected_mean(stats: Dict[str, Any], market: str) -> Optional[float]:
     keys = MARKET_STATS[market]
     if not any(stats.get(k) is not None for k in keys):
@@ -164,8 +178,8 @@ def evaluate_player_prop(
     the market gets no units. None when no book quotes a usable market."""
     books = offers["books"]
     projection, mean = mean, mean * scale
-    samples = bm.simulate_stat(market, mean, seed)
-    espn_samples = (bm.simulate_stat(market, espn_projection * espn_scale, f"{seed}|espn")
+    samples = _sim(market, mean, seed, player)
+    espn_samples = (_sim(market, espn_projection * espn_scale, f"{seed}|espn", player)
                     if espn_projection and espn_projection > 0 else None)
 
     candidates: List[Dict[str, Any]] = []
@@ -349,9 +363,9 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
         g, label, team, home, away, player, market, offers, mean = m
         seed = f"{week}|{player}|{market}"
         model_mean = mean * scales.get(market, 1.0)
-        samples = bm.simulate_stat(market, model_mean, seed)
+        samples = _sim(market, model_mean, seed, player)
         espn_mean = espn_means.get((player, market))
-        esamp = (bm.simulate_stat(market, espn_mean * espn_scales.get(market, 1.0), f"{seed}|espn")
+        esamp = (_sim(market, espn_mean * espn_scales.get(market, 1.0), f"{seed}|espn", player)
                  if espn_mean and espn_mean > 0 else None)
         allowed = set(line.get("allowed") or ["over", "under"])
         if market == "player_anytime_td":
@@ -779,6 +793,7 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     games_without_props: List[str] = []
     unmatched = 0
     matched = []  # (game, label, team, home, away, player, market, offers, mean)
+    _zero_catch.clear()
     for g, event in fetched:
         home, away = _team(g.get("home_team")), _team(g.get("away_team"))
         teams = (home, away)
@@ -794,6 +809,10 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
                 unmatched += 1
                 continue
             matched.append((g, label, team, home, away, player, market, offers, mean))
+            if market in bm.ZERO_CATCH_MARKETS:
+                p0 = bm.zero_catch_prob(_projected_mean(stats, "player_receptions"))
+                if p0 is not None:
+                    _zero_catch[normalize_name(player)] = p0
     espn_means = {(player, market): _projected_mean(espn[normalize_name(player)], market)
                   for *_, player, market, offers, mean in matched if normalize_name(player) in espn}
 
@@ -811,17 +830,17 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     # Center each market's projections on the market across the slate
     # (betting_model.fit_projection_scale) before pricing anything.
     centers: Dict[str, List[Tuple[float, float]]] = {}
-    for g, *_, market, offers, mean in matched:
+    for g, *_, player, market, offers, mean in matched:
         c = market_center(market, offers, td_scales.get(g["id"]))
         if c is not None:
-            centers.setdefault(market, []).append((mean, c))
+            centers.setdefault(market, []).append((mean, c, _p_zero(player, market)))
     scales = {m: await asyncio.to_thread(bm.fit_projection_scale, m, pairs) for m, pairs in centers.items()}
     espn_centers: Dict[str, List[Tuple[float, float]]] = {}
     for g, *_, player, market, offers, mean in matched:
         c = market_center(market, offers, td_scales.get(g["id"]))
         e = espn_means.get((player, market))
         if c is not None and e:
-            espn_centers.setdefault(market, []).append((e, c))
+            espn_centers.setdefault(market, []).append((e, c, _p_zero(player, market)))
     espn_scales = {m: await asyncio.to_thread(bm.fit_projection_scale, m, pairs) for m, pairs in espn_centers.items()}
 
     uploaded = await prizepicks_board.load_recent()
@@ -922,12 +941,13 @@ CFB_METHOD = (
 )
 
 
-def _market_leg(line: float, market: str, fair_over: Dict[float, float], sides, seed: str) -> Optional[Dict[str, Any]]:
+def _market_leg(line: float, market: str, fair_over: Dict[float, float], sides, seed: str,
+                p_zero: Optional[float] = None) -> Optional[Dict[str, Any]]:
     """PrizePicks leg priced from the books alone (no projection): the books'
     fair P(over) at the nearest line, shifted to PrizePicks' number along a
     simulated distribution centered on the books' 50% line."""
     center = min(fair_over, key=lambda pt: abs(fair_over[pt] - 0.5))
-    samples = bm.simulate_stat(market, max(center, 0.5), seed)
+    samples = bm.simulate_stat(market, max(center, 0.5), seed, p_zero=p_zero)
     nearest = min(fair_over, key=lambda pt: abs(pt - line))
     over, push = bm.prob_over(samples, line)
     p_over = min(0.99, max(0.01, fair_over[nearest] + over - bm.prob_over(samples, nearest)[0]))
@@ -1079,9 +1099,9 @@ def snapshot_leg(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     g, _label, team, _home, _away, player, market, offers, mean = m
     seed = f"{ctx['week']}|{player}|{market}"
     model_mean = mean * ctx["scales"].get(market, 1.0)
-    samples = bm.simulate_stat(market, model_mean, seed)
+    samples = _sim(market, model_mean, seed, player)
     espn_mean = ctx["espn_means"].get((player, market))
-    esamp = (bm.simulate_stat(market, espn_mean * ctx["espn_scales"].get(market, 1.0), f"{seed}|espn")
+    esamp = (_sim(market, espn_mean * ctx["espn_scales"].get(market, 1.0), f"{seed}|espn", player)
              if espn_mean and espn_mean > 0 else None)
     side = "over" if leg["side"] == "More" else "under"
     if market == "player_anytime_td":
@@ -1095,7 +1115,7 @@ def snapshot_leg(leg: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         fair = _fair_over(offers["books"])
         if not fair:
             return None
-        books = _market_leg(leg["line"], market, fair, [side], f"entry|{seed}")["p_win"]
+        books = _market_leg(leg["line"], market, fair, [side], f"entry|{seed}", _p_zero(player, market))["p_win"]
         model = _prizepicks_leg(leg["line"], samples, fair, esamp, sides={side}, market=market)["p_win"]
         center = min(fair, key=lambda pt: abs(fair[pt] - 0.5))
         outlier = bm.projection_outlier(market, model_mean, market_line=center)
