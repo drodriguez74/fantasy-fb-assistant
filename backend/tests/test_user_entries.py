@@ -48,3 +48,26 @@ def test_snapshot_uses_the_engine_view():
         assert bs.snapshot_leg({"player": "Nobody", "market": "player_reception_yds", "side": "More", "line": 1}) is None
     finally:
         bs._pricing_context.clear()
+
+
+def test_team_win_and_game_total_picks_grade_from_final_scores():
+    legs = [{"player": "JAX", "team": "JAX", "market": "team_win", "side": "More", "line": 0.5, "status": "pending"},
+            {"player": "PHI @ JAX", "team": "JAX", "market": "game_total", "side": "More", "line": 42.5, "status": "pending"},
+            {"player": "NE", "team": "NE", "market": "team_win", "side": "More", "line": 0.5, "status": "pending"},
+            {"player": "LV @ NE", "team": "NE", "market": "game_total", "side": "More", "line": 45.5, "status": "pending"}]
+    finals = {("JAX", "PHI"): (27.0, 20.0), ("NE", "LV"): (17.0, 20.0)}
+    out = ue.grade_legs(legs, {}, finals, week_over=False)
+    assert [l["status"] for l in out] == ["won", "won", "lost", "lost"]
+    assert out[1]["actual"] == 47.0 and out[2]["actual"] == 0.0
+    tie = ue.grade_legs([legs[0]], {}, {("JAX", "PHI"): (20.0, 20.0)}, week_over=False)
+    assert tie[0]["status"] == "push"
+    assert ue.grade_legs([legs[0]], {}, {}, week_over=True)[0]["status"] == "void"
+    assert ue.validate({"entry_type": "power", "stake": 2.94, "to_win": 20, "legs": [
+        {k: v for k, v in l.items() if k != "status"} for l in legs]})["legs"][0]["market"] == "team_win"
+
+
+def test_spread_pick_grades_on_the_team_margin():
+    fav = {"player": "DAL", "team": "DAL", "market": "team_spread", "side": "More", "line": 7.5, "status": "pending"}
+    dog = {"player": "TB", "team": "TB", "market": "team_spread", "side": "More", "line": -7.5, "status": "pending"}
+    out = ue.grade_legs([fav, dog], {}, {("DAL", "TB"): (31.0, 21.0)}, week_over=False)
+    assert [l["status"] for l in out] == ["won", "lost"] and out[0]["actual"] == 10.0

@@ -73,6 +73,13 @@ const blankLeg = (): DraftLeg => ({ player: '', market: 'player_reception_yds', 
 const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(0)}%`)
 const money = (x: number) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
 
+// Game picks (team wins, spread, total) read the way PrizePicks shows them.
+const GAME_PICK: Record<string, (l: EntryLeg) => string> = {
+  team_win: (l) => `${l.player} to win`,
+  team_spread: (l) => `${l.player} ${l.line > 0 ? `-${l.line}` : `+${-l.line}`} spread`,
+  game_total: (l) => `${l.player} ${l.side === 'More' ? 'Over' : 'Under'} ${l.line} total points`,
+}
+
 // One dot per pick: won / lost / pending (push and void are grey).
 const LEG_DOT: Record<string, string> = {
   won: 'bg-success-700',
@@ -424,11 +431,17 @@ export function MyEntries({ players }: { players: string[] }) {
                     title={l.status}
                     aria-label={l.status}
                   />
-                  <span className="text-body">{l.player}</span>
-                  {l.team && <span className="text-faint text-xs">{l.team}</span>}
-                  <span className="text-body font-medium">{l.side}</span>
-                  <span className="stat-nums">{l.line}</span>
-                  <span className="text-muted">{data.markets[l.market] ?? l.market}</span>
+                  {GAME_PICK[l.market] ? (
+                    <span className="text-body">{GAME_PICK[l.market](l)}</span>
+                  ) : (
+                    <>
+                      <span className="text-body">{l.player}</span>
+                      {l.team && <span className="text-faint text-xs">{l.team}</span>}
+                      <span className="text-body font-medium">{l.side}</span>
+                      <span className="stat-nums">{l.line}</span>
+                      <span className="text-muted">{data.markets[l.market] ?? l.market}</span>
+                    </>
+                  )}
                   {l.actual != null && <span className="stat-nums text-xs text-faint">actual {l.actual}</span>}
                   {l.snapshot && (
                     <span className="stat-nums text-xs text-faint">

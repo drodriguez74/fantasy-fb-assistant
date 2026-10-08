@@ -42,7 +42,17 @@ MARKETS: Dict[str, tuple] = {
     "player_pass_attempts": ("Pass Attempts", ("pass_att",)),
     "player_pass_interceptions": ("INT", ("pass_int",)),
     "player_rec_targets": ("Rec Targets", ("rec_tgt",)),
+    # Game picks PrizePicks also offers (graded from final scores, not stats):
+    # "player" is the team (e.g. "JAX") for a winner pick -- side More, line
+    # 0.5, actual 1 / 0 / 0.5 for a win / loss / tie (a tie lands on the line:
+    # push) -- and the game ("PHI @ JAX") for a total, with team = home team.
+    "team_win": ("Team wins", ()),
+    # Spread: "player" is the team, line the margin it must beat (DAL -7.5 is
+    # More 7.5 on Dallas's margin; a +3.5 underdog is More -3.5).
+    "team_spread": ("Spread (team margin)", ()),
+    "game_total": ("Total points", ()),
 }
+GAME_MARKETS = ("team_win", "team_spread", "game_total")
 
 
 class EntryError(ValueError):
@@ -152,6 +162,9 @@ def grade_legs(legs: List[Dict[str, Any]], stats: Dict[tuple, Dict[str, Any]], f
     for leg in out:
         if leg.get("status", "pending") != "pending":
             continue
+        if leg["market"] in GAME_MARKETS:
+            _grade_game_leg(leg, finals, week_over)
+            continue
         candidates = by_name.get(normalize_name(leg["player"]), [])
         if leg.get("team"):
             candidates = [c for c in candidates if c[0] == leg["team"]] or candidates
@@ -163,6 +176,26 @@ def grade_legs(legs: List[Dict[str, Any]], stats: Dict[tuple, Dict[str, Any]], f
                   if row and row.get("gp") else None)
         leg["actual"], leg["status"] = actual, leg_outcome(leg["side"], leg["line"], actual)
     return out
+
+
+def _grade_game_leg(leg: Dict[str, Any], finals: Dict[tuple, Any], week_over: bool) -> None:
+    """Team-winner and game-total picks, from the final score of the game the
+    leg's team played in; void once the week is over without a final."""
+    team = leg.get("team") or leg["player"]
+    final = next(((home, away, score) for (home, away), score in finals.items() if team in (home, away)), None)
+    if final is None:
+        if week_over:
+            leg["actual"], leg["status"] = None, "void"
+        return
+    home, away, (home_score, away_score) = final
+    mine, theirs = (home_score, away_score) if team == home else (away_score, home_score)
+    if leg["market"] == "team_win":
+        actual = 1.0 if mine > theirs else 0.0 if mine < theirs else 0.5
+    elif leg["market"] == "team_spread":
+        actual = float(mine - theirs)
+    else:
+        actual = float(home_score + away_score)
+    leg["actual"], leg["status"] = actual, leg_outcome(leg["side"], leg["line"], actual)
 
 
 async def grade_pending(user_id: int, current_season: int, current_week: Optional[int]) -> int:
