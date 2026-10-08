@@ -1157,6 +1157,11 @@ async def _build_board_now() -> Dict[str, Any]:
     ]
     combos = [c for g in games for c in [game_combos(g, models.get(g["id"]))] if c]
     filled = fill_card(player_props + game_props, await _fill_keys(season, int(week)))
+    try:  # pregame weather forecasts, logged for the wind-unders test (game_weather.py)
+        from app.services.game_weather import record_forecasts
+        await record_forecasts(season, int(week))
+    except Exception as e:  # noqa: BLE001 - logging must never break the board
+        logger.warning("Recording forecasts failed: %s", e)
     try:  # closing line: the latest market for every pick not yet started
         from app.services.betting_tracking import update_closing
         await asyncio.to_thread(update_closing, season, int(week), player_props + game_props)
