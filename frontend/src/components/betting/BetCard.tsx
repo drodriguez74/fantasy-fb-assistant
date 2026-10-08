@@ -4,6 +4,7 @@
 // opens the evidence (edge, price floor, books vs projections) and the alert.
 // Volt is reserved for real bets, so a bet never looks like a no-bet.
 import { useState } from 'react'
+import { ChevronDownIcon } from '@heroicons/react/24/outline'
 import { type BoardRow, type WatchAlert, dollars, kickoffLabel, odds, pct, sideSpread, signedPct } from './betTypes'
 
 const whole = (p: number) => `${Math.round(p * 100)}%`
@@ -113,9 +114,7 @@ export function BetCard({
           </div>
           <div className="text-xs text-faint mt-1">to win</div>
         </div>
-        <span className={`shrink-0 text-faint text-xs transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden>
-          ▾
-        </span>
+        <ChevronDownIcon className={`h-4 w-4 shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       {warning && <p className="px-3 -mt-1 pb-2 text-xs text-warning-700">{warning}</p>}
       {open && (
