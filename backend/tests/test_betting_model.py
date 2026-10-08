@@ -353,7 +353,7 @@ def test_zero_catch_games_for_low_volume_receivers():
     assert (y_new > 4.5).mean() < (y_old > 4.5).mean() - 0.10      # a 4.5-yard goblin is no longer ~90%
     r = bm.simulate_stat("player_receptions", 1.8, "zc", p_zero=p_low)
     assert abs((r == 0).mean() - p_low) < 0.03 and abs(r.mean() - 1.8) < 0.15
-    assert (bm.simulate_stat("player_pass_yds", 240.0, "zc", p_zero=0.5) > 0).all()  # passing untouched
+    assert (bm.simulate_stat("player_pass_yds", 240.0, "zc", p_zero=0.5) == 0).mean() < 0.01  # no zero-game mass for passing
 
 
 def test_zero_rush_games():
@@ -440,3 +440,10 @@ def test_units_only_at_my_books(monkeypatch):
     off_hr = _spread_game([("draftkings", -7.0, -110, -110), ("fanduel", -7.0, -110, -110), ("hardrockbet", -7.0, 130, -110)])
     spread = next(r for r in evaluate_game(off_hr) if r["market"] == "spread")
     assert spread["units"] > 0 and spread["book"] == "Hard Rock Bet"
+
+
+def test_passing_yards_are_a_symmetric_normal():
+    s = bm.simulate_stat("player_pass_yds", 240.0, "py")
+    assert abs(np.median(s) - 240) < 3 and abs(s.std() / 240 - bm.PASS_YDS_NORMAL_CV) < 0.01
+    over_demon = float((s > 312.5).mean())     # 1.3x the projection
+    assert 0.12 < over_demon < 0.18             # real: 14-18% on held-out seasons (the gamma said ~22%)

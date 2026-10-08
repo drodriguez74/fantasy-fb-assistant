@@ -48,7 +48,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 **Player model (30%).** A two-level Monte Carlo of Sleeper's weekly projected stat line, 20,000 draws:
 1. The true mean is drawn around the projection (SD 30% of it).
-2. The outcome is drawn around that mean. Yardage is gamma, with a coefficient of variation scaled by volume (mean^-0.25); receptions and TDs are Poisson.
+2. The outcome is drawn around that mean. Rushing and receiving yards are gamma, with a coefficient of variation scaled by volume (mean^-0.25) and a zero-game mass (zero catches / no positive rushing); receptions and TDs are Poisson (receptions with the same zero mass). Passing yards are a symmetric normal, SD 0.306 × the mean, with no separate projection draw (`PASS_YDS_NORMAL_CV`, adopted 2026-10-08).
 
 **Slate centering.** Each market's projections are rescaled each week so the median prop's simulated P(over) matches the market (`fit_projection_scale`). Week 5: rec yds ×1.13, rush ×1.15, pass ×1.07, receptions ×1.05, TD ×0.93.
 
@@ -255,7 +255,7 @@ The prop correlations were measured against projection-centered lines, not real 
 
 | Idea | Evidence | What would settle it |
 |---|---|---|
-| Passing yards as a symmetric normal (CV ≈ 0.31) instead of gamma | The gamma overstates demon-line P(over) by +7.6 pp [5.1, 10.2] in all three held-out sets; pinball −2.0% [−1.0, −3.0]. It narrows the spread, which touches the "don't shrink CVs" rule. | A separate change, then graded passing props. `experiments/props_dist_eval.py --markets player_pass_yds --methods normal,current_refit --centered` |
+| ~~Passing yards as a symmetric normal (CV ≈ 0.31) instead of gamma~~ **adopted 2026-10-08 (model 2026-10-08.5), CV 0.306** | The gamma overstates demon-line P(over) by +7.6 pp [5.1, 10.2] in all three held-out sets; pinball −2.0% [−1.0, −3.0]. It narrows the spread, which touches the "don't shrink CVs" rule. | A separate change, then graded passing props. `experiments/props_dist_eval.py --markets player_pass_yds --methods normal,current_refit --centered` |
 | Raise `MIN_EV` to ~5–8% | One season can't tell how much of the estimated edge is real (fraction 0.10, CI [−1.2, 1.5]). At 3% the threshold assumes ~60% is real; 8% with quarter-Kelly halves the drawdown risk if none is. Half-Kelly is dominated. | Graded bets. `experiments/corr_kelly.py` |
 | Anytime TD: Vegas team total + ESPN blend | Brier −1.3% [−2.2, −0.3] and −1.5% [−2.4, −0.7] on two held-out sets; books already price team totals. | Low priority. `experiments/props_mean_analyze.py td` |
 | Wind unders (≥ 12 mph) | +15.5% [+6.4, +24.2] in 2015–24 (n=426), +4.4% in 2006–14, −4.4% in 2025–26 (n=40); game-time wind isn't knowable pregame. | Log forecast wind before kickoff. `experiments/exp4_quick_checks.py` |

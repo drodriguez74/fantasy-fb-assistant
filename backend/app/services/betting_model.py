@@ -47,7 +47,7 @@ import numpy as np
 # Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
 # with key-number spreads, measured correlations, zero-catch and zero-rush
 # games. Rows from before versioning have NULL ("pre-versioning").
-ENGINE_VERSION = "2026-10-08.4"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only
+ENGINE_VERSION = "2026-10-08.5"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
@@ -246,6 +246,10 @@ def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS,
     with the other outcomes scaled so the mean is unchanged."""
     rng = _rng(seed_text)
     true_mean = np.clip(rng.normal(mean, projection_error(market) * mean, n), 0.01, None)
+    if market == "player_pass_yds":
+        # Symmetric normal, floored at 0 (PASS_YDS_NORMAL_CV): the gamma + projection
+        # error was too right-skewed and too wide for passing.
+        return np.maximum(rng.normal(mean, PASS_YDS_NORMAL_CV * mean, n), 0.0)
     if p_zero and market in ZERO_MASS_MARKETS:
         if market == "player_receptions":
             pi = _zero_inflation(true_mean, p_zero)
@@ -306,6 +310,17 @@ def zero_catch_prob(projected_receptions: Optional[float]) -> Optional[float]:
     if a is None or not projected_receptions or projected_receptions <= 0:
         return None
     return float(1 / (1 + np.exp(-(a + b * np.log(projected_receptions)))))
+
+
+# Passing yards as a symmetric normal around the projection, SD = 0.306 x mean
+# (MLE on 2025 wk 4-10, 202 QB-weeks; scripts/experiments/props_dist_eval.py
+# --markets player_pass_yds --methods normal). The shipped gamma overstated
+# demon-line P(over) by +7.6 pp [5.1, 10.2] on all three held-out sets
+# (2025 wk 11-17, 2026 wk 1-4, 2024); the normal cut pinball loss 2.0%
+# [1.0, 3.0] with goblin and standard lines no worse. It's narrower overall --
+# a measured tail-shape fix, not the lean-hiding CV shrink CLAUDE.md warns
+# against (slate centering still sets the level). Adopted 2026-10-08.
+PASS_YDS_NORMAL_CV = 0.306
 
 
 def yards_cv(market: str, mean: float) -> float:
