@@ -352,4 +352,11 @@ def test_zero_catch_games_for_low_volume_receivers():
     assert (y_new > 4.5).mean() < (y_old > 4.5).mean() - 0.10      # a 4.5-yard goblin is no longer ~90%
     r = bm.simulate_stat("player_receptions", 1.8, "zc", p_zero=p_low)
     assert abs((r == 0).mean() - p_low) < 0.03 and abs(r.mean() - 1.8) < 0.15
-    assert (bm.simulate_stat("player_rush_yds", 40.0, "zc", p_zero=0.5) > 0).all()  # rushing untouched
+    assert (bm.simulate_stat("player_pass_yds", 240.0, "zc", p_zero=0.5) > 0).all()  # passing untouched
+
+
+def test_zero_rush_games():
+    assert 0.40 < bm.zero_rush_prob(5.4) < 0.60 and bm.zero_rush_prob(60.0) < 0.05
+    goff_old = (bm.simulate_stat("player_rush_yds", 5.4, "zr") > 0.5).mean()
+    goff_new = (bm.simulate_stat("player_rush_yds", 5.4, "zr", p_zero=bm.zero_rush_prob(5.4)) > 0.5).mean()
+    assert goff_old > 0.85 and goff_new < 0.65  # QBs projected 5-10 clear Over 0.5 ~61% of the time

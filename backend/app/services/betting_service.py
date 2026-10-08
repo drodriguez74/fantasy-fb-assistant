@@ -80,13 +80,19 @@ def _projection_index(rows: List[Dict[str, Any]]) -> Dict[Tuple[str, str], Dict[
     return out
 
 
-# Each receiver's zero-catch chance from his projected receptions
-# (betting_model.zero_catch_prob), by normalized name; refreshed per board build.
+# Each player's zero-game chances, by normalized name, refreshed per board
+# build: no catches (receiver markets; betting_model.zero_catch_prob) and no
+# positive rushing yards (betting_model.zero_rush_prob).
 _zero_catch: Dict[str, float] = {}
+_zero_rush: Dict[str, float] = {}
 
 
 def _p_zero(player: str, market: str) -> Optional[float]:
-    return _zero_catch.get(normalize_name(player)) if market in bm.ZERO_CATCH_MARKETS else None
+    if market in bm.ZERO_CATCH_MARKETS:
+        return _zero_catch.get(normalize_name(player))
+    if market == "player_rush_yds":
+        return _zero_rush.get(normalize_name(player))
+    return None
 
 
 def _sim(market: str, mean: float, seed: str, player: str) -> np.ndarray:
@@ -794,6 +800,7 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
     unmatched = 0
     matched = []  # (game, label, team, home, away, player, market, offers, mean)
     _zero_catch.clear()
+    _zero_rush.clear()
     for g, event in fetched:
         home, away = _team(g.get("home_team")), _team(g.get("away_team"))
         teams = (home, away)
@@ -813,6 +820,10 @@ async def build_board(force: bool = False) -> Dict[str, Any]:
                 p0 = bm.zero_catch_prob(_projected_mean(stats, "player_receptions"))
                 if p0 is not None:
                     _zero_catch[normalize_name(player)] = p0
+            elif market == "player_rush_yds":
+                p0 = bm.zero_rush_prob(mean)
+                if p0 is not None:
+                    _zero_rush[normalize_name(player)] = p0
     espn_means = {(player, market): _projected_mean(espn[normalize_name(player)], market)
                   for *_, player, market, offers, mean in matched if normalize_name(player) in espn}
 

@@ -238,7 +238,7 @@ def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS,
     with the other outcomes scaled so the mean is unchanged."""
     rng = _rng(seed_text)
     true_mean = np.clip(rng.normal(mean, projection_error(market) * mean, n), 0.01, None)
-    if p_zero and market in ZERO_CATCH_MARKETS:
+    if p_zero and market in ZERO_MASS_MARKETS:
         if market == "player_receptions":
             pi = _zero_inflation(true_mean, p_zero)
             counts = rng.poisson(true_mean / (1 - pi)).astype(float)
@@ -260,6 +260,29 @@ def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS,
 # the projection, 1-2 catches). P(0 catches) = logistic(a + b ln(projected
 # receptions)), fitted on 2025 wk 4-10 (scripts/experiments/zero_catch.py).
 ZERO_CATCH_MARKETS = frozenset({"player_reception_yds", "player_receptions"})
+# Markets simulate_stat can give a zero-game mass (p_zero): the receiver
+# markets above, and rushing yards (zero_rush_prob).
+ZERO_MASS_MARKETS = ZERO_CATCH_MARKETS | {"player_rush_yds"}
+
+# Zero-rushing games: QBs finish a start at zero or negative rushing yards
+# ~19% of the time (kneel-downs, no scrambles) and backups/receivers often
+# get no carries; the gamma model had no such mass, so low rushing lines were
+# overconfident (QBs projected 5-10 yds cleared Over 0.5 61% of the time vs
+# 94% modeled -- a fake 3u "bet" on Goff Over 0.5). P(rushing yds <= 0) =
+# logistic(a + b ln(projected rushing yds)), one pooled fit for all
+# positions on 2025 wk 4-10 (scripts/experiments/zero_rush.py; QB and RB/WR
+# fits were nearly identical). Out of sample, rushing-yards Brier improved
+# on all six position x season sets (five with CIs excluding 0); low lines
+# moved from 70-86% modeled to within a few points of real.
+ZERO_RUSH_COEF = (2.5899, -1.4836)  # (a, b)
+
+
+def zero_rush_prob(projected_rush_yds: Optional[float]) -> Optional[float]:
+    """P(a game with zero or negative rushing yards) for this projection."""
+    a, b = ZERO_RUSH_COEF
+    if a is None or not projected_rush_yds or projected_rush_yds <= 0:
+        return None
+    return float(1 / (1 + np.exp(-(a + b * np.log(projected_rush_yds)))))
 # Out of sample (2025 wk 11-17, 2026 wk 1-4, 2024 wk 4-17) the fitted zero
 # rate matched reality (e.g. 36.6% vs 37.5% for 0.5-2 projected catches),
 # receivers under 3 projected catches scored better on every held-out set
