@@ -393,3 +393,39 @@ def test_prizepicks_value_needs_both_sources():
     pair = out["pairs"][0]
     assert pair["joint_prob"] == pytest.approx(0.62 * 0.58, abs=1e-4)
     assert {l["p_blend"] for l in pair["legs"]} == {0.62, 0.60}
+
+
+def test_correlated_stacks_use_books_and_measured_correlation():
+    from app.services.betting_service import correlated_stacks
+
+    def row(player, team, game, market, side, q):
+        return {"player": player, "team": team, "game": game, "market": market, "market_label": market,
+                "odds_type": "standard", "prizepicks": {"side": side, "line": 10.5, "market_prob": q, "p_push": 0.0}}
+    rows = [row("QB", "KC", "BUF @ KC", "player_pass_yds", "More", 0.52),
+            row("WR", "KC", "BUF @ KC", "player_reception_yds", "More", 0.52),
+            row("RB", "SF", "SF @ SEA", "player_rush_yds", "More", 0.56)]
+    st = correlated_stacks(rows, payout=6.0)
+    assert st, "QB + own WR in the same direction is a stack"
+    s0 = st[0]
+    assert {l["player"] for l in s0["legs"]} == {"QB", "WR", "RB"}
+    assert s0["correlation"] == 0.38 and s0["p_all"] > s0["p_independent"] * 1.15
+    assert abs(s0["ev"] - (s0["p_all"] * 6.0 - 1)) < 1e-3
+    # Opposite directions on QB and his receiver pull apart: never a stack.
+    assert all(not ({l["player"] for l in s["legs"]} >= {"QB", "WR"} and len({l["side"] for l in s["legs"][:2]}) == 2)
+               for s in st)
+
+
+def test_four_pick_stack_qb_and_two_receivers():
+    from app.services.betting_service import correlated_stacks
+
+    def row(player, team, game, market, side, q):
+        return {"player": player, "team": team, "game": game, "market": market, "market_label": market,
+                "odds_type": "standard", "prizepicks": {"side": side, "line": 10.5, "market_prob": q, "p_push": 0.0}}
+    rows = [row("QB", "KC", "BUF @ KC", "player_pass_yds", "More", 0.52),
+            row("WR1", "KC", "BUF @ KC", "player_reception_yds", "More", 0.52),
+            row("WR2", "KC", "BUF @ KC", "player_receptions", "More", 0.52),
+            row("RB", "SF", "SF @ SEA", "player_rush_yds", "More", 0.56)]
+    four = [s for s in correlated_stacks(rows, payout=6.0, payout_4=10.0) if s["size"] == 4]
+    assert four and {l["player"] for l in four[0]["legs"]} == {"QB", "WR1", "WR2", "RB"}
+    assert four[0]["p_all"] > four[0]["p_independent"] * 1.2   # two positively correlated pairs
+    assert len({l["team"] for l in four[0]["legs"]}) == 2        # PrizePicks: 2+ teams

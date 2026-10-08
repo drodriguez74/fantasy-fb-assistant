@@ -6,6 +6,7 @@ import { betting, getErrorMessage } from '../../services/api'
 import { PrizePicksEntries } from './PrizePicksEntries'
 import type { EntriesState } from './prizePicksEntriesData'
 import { SafestPicks } from './SafestPicks'
+import { CorrelatedStacks, type Stack } from './CorrelatedStacks'
 import type { MostLikely } from './betTypes'
 export interface PrizePicksLeg {
   player: string
@@ -51,6 +52,7 @@ export interface PrizePicksBoard {
   lines_unmatched?: number
   goblins?: PrizePicksAltLine[]
   demons?: PrizePicksAltLine[]
+  stacks?: Stack[]
 }
 
 const BOARD_URL = 'https://api.prizepicks.com/projections?league_id=9&per_page=1000'
@@ -225,6 +227,7 @@ export function PrizePicksPairs({
   return (
     <div className="space-y-5">
       <UploadPanel data={data} onUploaded={onUploaded} />
+      <CorrelatedStacks stacks={data?.stacks} power={entries.power} />
       <SafestPicks data={mostLikely} />
       <PrizePicksEntries state={entries} />
       {data && data.pairs.length > 0 && (

@@ -56,10 +56,12 @@ def ticket(source: str, entry_type: str, legs: List[Dict[str, Any]], p_all: Opti
 
 
 def tickets_from_board(prizepicks: Dict[str, Any], most_likely: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """The board's suggested tickets: the top 2-pick pairs by EV (3x) and the
-    Most likely safest pair."""
+    """The board's suggested tickets: the top 2-pick pairs by EV (3x), the top
+    correlated stacks (3-pick Power) and the Most likely safest pair."""
     out = [ticket("pair", "power", p["legs"], p.get("joint_prob"), p.get("ev"), {2: bm.POWER_PLAY_2_PRICE / 100 + 1})
            for p in (prizepicks.get("pairs") or [])[:TOP_PAIRS]]
+    out += [ticket("stack", "power", st["legs"], st.get("p_all"), st.get("ev"), {st["size"]: st["payout"]})
+            for st in (prizepicks.get("stacks") or [])[:TOP_PAIRS]]
     pair = (most_likely or {}).get("safest_pair")
     if pair:
         by_name = {p["player"]: p for p in most_likely.get("picks") or []}

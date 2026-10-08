@@ -516,7 +516,7 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
         if outlier:
             continue  # stale projection: don't rank it
         priced.append({"player": player, "team": team, "game": label, "kickoff": g.get("commence_time"),
-                       "home": home, "away": away,
+                       "home": home, "away": away, "allowed": sorted(allowed),
                        "market": market, "market_label": MARKET_LABELS[market], "projection": round(mean, 2),
                        "espn_projection": round(espn_mean, 2) if espn_mean else None,
                        "odds_type": line.get("odds_type", "standard"), "prizepicks": leg})
@@ -531,7 +531,124 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
     return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
             "lines_priced": len(priced), "lines_unmatched": unmatched,
             "goblins": ranked("goblin"), "demons": ranked("demon"),
+            "stacks": correlated_stacks([p for p in priced if p["odds_type"] == "standard"]),
             "most_likely": most_likely([p for p in priced if p["odds_type"] != "demon"])}
+
+
+# Correlated stacks (2026-10-08): PrizePicks pays fixed multipliers that
+# assume independent picks, but some picks in one game move together -- a QB
+# and his own receiver (+0.38 passing yds vs receiving yds, n=4,508), and
+# opposing backs apart (-0.19). A same-game pair whose chosen sides correlate
+# positively hits together more often than the payout assumes. Stacks are
+# priced from the BOOKS' chances only (no projections) plus the measured
+# correlations (betting_model.LEG_CORRELATION), with a third pick from
+# another game. Founder confirmed (2026-10-08) PrizePicks only requires two
+# teams per entry -- 5 from one team and 1 from another is fine -- so stacks
+# can be 3 picks (a correlated pair + 1) or 4 (a QB, two of his receivers in
+# the same direction, + 1 from another game).
+STACK_MIN_RHO = 0.15
+STACK_SIZE = 3
+_RECEIVING = ("player_reception_yds", "player_receptions")
+
+
+def _p_all(legs: List[Dict[str, Any]]) -> float:
+    """P(every pick hits) with same-game legs correlated (teammates and
+    opponents, LEG_CORRELATION, More/Less signs applied)."""
+    n = len(legs)
+    corr = np.eye(n)
+    for i in range(n):
+        for j in range(i + 1, n):
+            a, b = legs[i], legs[j]
+            if a["game"] == b["game"]:
+                sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
+                same_team = bool(a.get("team")) and a.get("team") == b.get("team")
+                corr[i, j] = corr[j, i] = sign * bm.leg_correlation(a["market"], b["market"], True, same_team)
+    return float(bm.hit_count_distribution([l["p_win"] for l in legs], corr, "stack|" + "|".join(l["player"] for l in legs))[n])
+
+
+def correlated_stacks(rows: List[Dict[str, Any]], payout: float = bm.POWER_PAYOUTS[STACK_SIZE],
+                      top: int = 8, payout_4: float = bm.POWER_PAYOUTS[4]) -> List[Dict[str, Any]]:
+    """Best Power stacks: 3-pick (a positively correlated same-game pair plus
+    the likeliest pick from another game) and 4-pick (a QB and two of his
+    receivers in the same direction, plus one from another game), all at the
+    books' fair chance at PrizePicks' line. rows: {player, team, game,
+    kickoff, market, market_label, odds_type, prizepicks: leg}; standard
+    lines only."""
+    legs = []
+    for r in rows:
+        leg = r.get("prizepicks") or {}
+        if ((r.get("odds_type") or "standard") != "standard" or leg.get("market_prob") is None or not r.get("game")
+                or r["market"] == "player_anytime_td"):
+            continue  # TDs: books quote Yes only, so a "No" chance would lean on our de-vig, not the books
+        q, push = float(leg["market_prob"]), float(leg.get("p_push") or 0.0)
+        other = "Less" if leg["side"] == "More" else "More"
+        allowed = {a.lower() for a in (r.get("allowed") or ["over", "under"])}
+        for side, p in ((leg["side"], q), (other, max(0.0, 1 - q - push))):
+            if ("over" if side == "More" else "under") not in allowed:
+                continue  # PrizePicks doesn't offer this side on this line
+            legs.append({"player": r["player"], "team": r.get("team"), "game": r["game"], "kickoff": r.get("kickoff"),
+                         "market": r["market"], "market_label": r.get("market_label") or MARKET_LABELS.get(r["market"]),
+                         "side": side, "line": leg["line"], "p_win": round(p, 4), "odds_type": "standard"})
+    by_game: Dict[str, List[Dict[str, Any]]] = {}
+    for l in legs:
+        by_game.setdefault(l["game"], []).append(l)
+    anchors = []
+    for game, gl in by_game.items():
+        for i, a in enumerate(gl):
+            for b in gl[i + 1:]:
+                if a["player"] == b["player"]:
+                    continue
+                sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
+                rho = sign * bm.leg_correlation(a["market"], b["market"], True, bool(a["team"]) and a["team"] == b["team"])
+                if rho >= STACK_MIN_RHO:
+                    anchors.append((bm.joint_prob(a["p_win"], b["p_win"], rho), rho, a, b))
+    anchors.sort(key=lambda x: -x[0])
+    out, used = [], set()
+    for joint, rho, a, b in anchors:
+        if a["player"] in used or b["player"] in used:
+            continue
+        thirds = [l for l in legs if l["game"] != a["game"] and l["player"] not in used]
+        if not thirds:
+            break
+        c = max(thirds, key=lambda l: l["p_win"])
+        p_all = joint * c["p_win"]
+        independent = a["p_win"] * b["p_win"] * c["p_win"]
+        out.append({"size": STACK_SIZE, "type": "power", "legs": [a, b, c], "p_all": round(p_all, 4),
+                    "p_independent": round(independent, 4), "lift": round(p_all / independent, 3) if independent else None,
+                    "correlation": round(rho, 2), "payout": payout, "ev": round(p_all * payout - 1, 4)})
+        used.update({a["player"], b["player"], c["player"]})
+        if len(out) >= top:
+            break
+
+    # 4-pick: QB + his two likeliest receivers on the same side + one from another game.
+    four, used4 = [], set()
+    qbs = sorted((l for l in legs if l["market"] == "player_pass_yds"), key=lambda l: -l["p_win"])
+    for qb in qbs:
+        if qb["player"] in used4:
+            continue
+        mates = sorted((l for l in legs if l["team"] == qb["team"] and l["side"] == qb["side"] and l["market"] in _RECEIVING
+                        and l["player"] not in used4 and l["player"] != qb["player"]), key=lambda l: -l["p_win"])
+        pair, names = [], set()
+        for m in mates:
+            if m["player"] not in names:
+                pair.append(m)
+                names.add(m["player"])
+            if len(pair) == 2:
+                break
+        thirds = [l for l in legs if l["game"] != qb["game"] and l["player"] not in used4]
+        if len(pair) < 2 or not thirds:
+            continue
+        c = max(thirds, key=lambda l: l["p_win"])
+        stack = [qb, *pair, c]
+        p_all = _p_all(stack)
+        independent = float(np.prod([l["p_win"] for l in stack]))
+        four.append({"size": 4, "type": "power", "legs": stack, "p_all": round(p_all, 4),
+                     "p_independent": round(independent, 4), "lift": round(p_all / independent, 3) if independent else None,
+                     "correlation": None, "payout": payout_4, "ev": round(p_all * payout_4 - 1, 4)})
+        used4.update(l["player"] for l in stack)
+        if len(four) >= top // 2:
+            break
+    return sorted(out + four, key=lambda s: -s["ev"])
 
 
 def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -1021,6 +1138,8 @@ async def _build_board_now() -> Dict[str, Any]:
 
     prizepicks = (price_uploaded_board(uploaded, matched, int(week), scales, td_scales, espn_means, espn_scales)
                   if uploaded else {**prizepicks_pairs(player_props), "source": "odds_api",
+                                    "stacks": correlated_stacks([{**p, "odds_type": "standard"} for p in player_props
+                                                                 if p.get("prizepicks") and not p.get("projection_outlier")]),
                                     "most_likely": most_likely([{**p, "odds_type": "standard"} for p in player_props
                                                                 if p.get("prizepicks") and not p.get("projection_outlier")])})
     try:
