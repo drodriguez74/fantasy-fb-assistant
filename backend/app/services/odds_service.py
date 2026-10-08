@@ -272,14 +272,14 @@ async def get_event_props(event_id: str, sport: str = NFL) -> Optional[Dict[str,
     remaining = await credits_remaining_async()
     if remaining is not None and remaining - len(PROP_MARKETS) < CREDIT_RESERVE:
         logger.warning("Odds API: skipping props for %s, %s credits left (reserve %s)", event_id, remaining, CREDIT_RESERVE)
-        return None
+        return await _cache_get(key, float("inf"))  # the last fetch beats no props
     data = await _get(f"/events/{event_id}/odds", {
         "bookmakers": ",".join(PROP_BOOKMAKERS),
         "markets": ",".join(PROP_MARKETS),
         "oddsFormat": "american",
     }, sport)
     if not isinstance(data, dict):
-        return None
+        return await _cache_get(key, float("inf"))
     await _cache_put(key, data)
     return data
 

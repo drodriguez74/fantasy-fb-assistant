@@ -27,3 +27,20 @@ def test_off_day_serves_stale_props_without_fetching(monkeypatch):
     monkeypatch.setattr(osvc, "_get", fake_get)
     monkeypatch.setattr(osvc, "prop_refresh_day", lambda now=None: False)
     assert asyncio.run(osvc.get_event_props("e1")) == {"stale": True} and not calls
+
+
+def test_reserve_falls_back_to_last_fetch(monkeypatch):
+    async def fake_cache_get(key, ttl):
+        return None if ttl != float("inf") else {"stale": True}
+
+    async def credits():
+        return osvc.CREDIT_RESERVE  # at the reserve: no spending
+
+    async def fake_get(*a, **k):
+        raise AssertionError("must not fetch below the reserve")
+    monkeypatch.setattr(osvc.settings, "ODDS_API_KEY", "k", raising=False)
+    monkeypatch.setattr(osvc, "_cache_get", fake_cache_get)
+    monkeypatch.setattr(osvc, "credits_remaining_async", credits)
+    monkeypatch.setattr(osvc, "_get", fake_get)
+    monkeypatch.setattr(osvc, "prop_refresh_day", lambda now=None: True)
+    assert asyncio.run(osvc.get_event_props("e1")) == {"stale": True}
