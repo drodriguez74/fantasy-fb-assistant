@@ -11,6 +11,12 @@ services:
     plan: free
     healthCheckPath: /
     autoDeploy: true
+    # Only redeploy (and restart) the API when backend files change; a
+    # frontend-only push (Vercel) used to restart it and make the next page
+    # load wait. Takes effect once Render syncs this Blueprint.
+    buildFilter:
+      paths:
+        - backend/**
     envVars:
       - key: DATABASE_URL
         sync: false
