@@ -44,6 +44,9 @@ interface Audit {
 
 const pct = (p: number | null | undefined) => (p == null ? '—' : `${Math.round(p * 100)}%`)
 
+// Display names for the audit sections (backend names stay stable for the CSV).
+const SECTION_NAME: Record<string, string> = { 'Most likely to win': 'Safest picks' }
+
 const ROW_TONE: Record<string, string> = {
   won: 'border-l-success-600',
   lost: 'border-l-danger-600',
@@ -125,7 +128,7 @@ export function BettingAudit() {
         </div>
       </div>
       <p className="text-xs text-muted mt-1">
-        What we said when each pick was shown (frozen, never edited), the engine version that made it, and the graded
+        What we said when each pick was shown (frozen, never edited), the model version that made it, and the graded
         result. Picks grade a few hours after their game ends.
       </p>
 
@@ -138,8 +141,8 @@ export function BettingAudit() {
           {Object.entries(data.summary).map(([section, s]) => (
             <div key={section}>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-body">{section}</h4>
-                <span className="stat-nums text-[11px] text-muted">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-body">{SECTION_NAME[section] ?? section}</h4>
+                <span className="stat-nums text-xs text-muted">
                   {s.picks} picks
                   {s.decided > 0 && ` · hit ${s.hits}/${s.decided} (${pct(s.hit_rate)}) vs ${pct(s.predicted)} predicted`}
                   {s.pending > 0 && ` · ${s.pending} pending`}
@@ -161,23 +164,23 @@ export function BettingAudit() {
                           )}
                         </p>
                         <span
-                          className={`stat-nums shrink-0 text-[10px] uppercase px-1.5 py-0.5 rounded ${
+                          className={`stat-nums shrink-0 text-xs px-1.5 py-0.5 rounded ${
                             BADGE[r.status] ?? 'bg-surface-2 text-muted'
                           }`}
                         >
                           {r.status}
                         </span>
                       </div>
-                      <p className="stat-nums text-[11px] text-faint">
-                        said {pct(r.p_win)}
+                      <p className="stat-nums text-xs text-faint">
+                        We said {pct(r.p_win)}
                         {r.books_prob != null && r.section !== 'My entries' && ` · books ${pct(r.books_prob)}`}
-                        {r.engine_prob != null && ` · engine ${pct(r.engine_prob)}`}
+                        {r.engine_prob != null && ` · model ${pct(r.engine_prob)}`}
                         {r.units ? ` · ${r.units}u` : ''}
                         {r.book && ` · ${r.book}`}
                         {r.actual != null && ` · actual ${r.actual}`}
                         {r.profit != null && r.status !== 'pending' &&
                           ` · ${r.profit > 0 ? '+' : ''}${r.profit_unit === '$' ? `$${r.profit}` : `${r.profit}${r.profit_unit === 'u' ? 'u' : 'x'}`}`}
-                        {` · engine ${r.engine_version}`}
+                        {` · ${r.engine_version === 'pre-versioning' ? 'v0 (before tracking)' : `model ${r.engine_version}`}`}
                       </p>
                     </li>
                   ))}

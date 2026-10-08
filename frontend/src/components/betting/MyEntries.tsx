@@ -73,6 +73,13 @@ const blankLeg = (): DraftLeg => ({ player: '', market: 'player_reception_yds', 
 const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(0)}%`)
 const money = (x: number) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
 
+// One dot per pick: won / lost / pending (push and void are grey).
+const LEG_DOT: Record<string, string> = {
+  won: 'bg-success-700',
+  lost: 'bg-danger-700',
+  pending: 'bg-faint',
+}
+
 const STATUS_STYLE: Record<string, string> = {
   won: 'bg-success-100 text-success-800',
   partial: 'bg-highlight text-accent-ink',
@@ -157,7 +164,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="text-sm font-medium text-body">Log an entry you placed</h3>
-        <label className={`text-xs text-accent-ink underline cursor-pointer ${reading ? 'opacity-50 pointer-events-none' : ''}`}>
+        <label className={`text-xs text-body underline cursor-pointer ${reading ? 'opacity-50 pointer-events-none' : ''}`}>
           {reading ? 'Reading screenshot...' : 'Import from screenshot'}
           <input
             type="file"
@@ -170,7 +177,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
             }}
           />
         </label>
-        <span className="text-[11px] text-faint">or paste one here</span>
+        <span className="text-xs text-faint">or paste one here</span>
       </div>
       {warnings.length > 0 && (
         <ul className="text-xs text-warning-700 space-y-0.5">
@@ -231,7 +238,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
                 <button
                   key={s}
                   onClick={() => update(i, { side: s })}
-                  className={`px-2 py-1 text-xs ${l.side === s ? (s === 'More' ? 'bg-success-100 text-success-800' : 'bg-highlight text-accent-ink') : 'text-muted'}`}
+                  className={`px-2 py-1 text-xs ${l.side === s ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
                 >
                   {s}
                 </button>
@@ -256,7 +263,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
       </div>
       <div className="flex flex-wrap items-center gap-3">
         {legs.length < 6 && (
-          <button onClick={() => setLegs((ls) => [...ls, blankLeg()])} className="text-xs text-accent-ink underline">
+          <button onClick={() => setLegs((ls) => [...ls, blankLeg()])} className="text-xs text-body underline">
             Add a pick
           </button>
         )}
@@ -286,6 +293,7 @@ export function MyEntries({ players }: { players: string[] }) {
   const [data, setData] = useState<EntriesData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [formOpen, setFormOpen] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -321,15 +329,37 @@ export function MyEntries({ players }: { players: string[] }) {
 
   return (
     <div className="space-y-5">
-      <p className="text-xs text-muted leading-relaxed">
-        Entries you placed on PrizePicks, graded automatically from real stats once each game is final. A player who
-        doesn't play, or a pick exactly on the line, drops out and the entry pays as a smaller one (standard payouts).
-        Each pick saves what the books and our model said when you logged it.
-      </p>
+      {data.entries.length > 0 && !formOpen ? (
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted">
+            Your PrizePicks entries, graded from real stats as each game ends. Each pick keeps what the books and our model
+            said when you logged it.
+          </p>
+          <button
+            onClick={() => setFormOpen(true)}
+            className="bg-volt text-volt-ink px-3 py-1.5 rounded-lg text-sm hover:bg-volt-dark"
+          >
+            Log an entry
+          </button>
+        </div>
+      ) : (
+        <>
+          <p className="text-xs text-muted leading-relaxed">
+            Entries you placed on PrizePicks, graded automatically from real stats once each game is final. A player who
+            doesn't play, or a pick exactly on the line, drops out and the entry pays as a smaller one.
+          </p>
+          <EntryForm
+            markets={data.markets}
+            players={players}
+            onSaved={() => {
+              setFormOpen(false)
+              load()
+            }}
+          />
+        </>
+      )}
 
-      <EntryForm markets={data.markets} players={players} onSaved={load} />
-
-      {r.entries > 0 && (
+      {r.settled > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
             ['Record', r.settled ? `${r.won}-${r.lost}` : '—'],
@@ -338,7 +368,7 @@ export function MyEntries({ players }: { players: string[] }) {
             ['Pending', String(r.pending)],
           ].map(([label, value]) => (
             <div key={label} className="rounded-lg border border-hairline bg-surface p-3">
-              <div className="stat-nums text-[10px] uppercase tracking-wider text-faint">{label}</div>
+              <div className="stat-nums text-xs uppercase tracking-wider text-faint">{label}</div>
               <div className="stat-nums text-lg font-semibold text-body mt-1">{value}</div>
             </div>
           ))}
@@ -381,7 +411,7 @@ export function MyEntries({ players }: { players: string[] }) {
                 {money(e.stake)} to pay {money(e.to_win)} · week {e.week}
               </span>
               {e.est_hit_prob != null && <span className="text-faint">books: {pct(e.est_hit_prob)} to hit all</span>}
-              <span className={`ml-auto uppercase text-[10px] px-1.5 py-0.5 rounded ${STATUS_STYLE[e.status]}`}>{e.status}</span>
+              <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[e.status]}`}>{e.status}</span>
               {e.profit != null && (
                 <span className={e.profit > 0 ? 'text-success-700' : e.profit < 0 ? 'text-danger-700' : 'text-muted'}>{money(e.profit)}</span>
               )}
@@ -389,15 +419,19 @@ export function MyEntries({ players }: { players: string[] }) {
             <ul className="mt-2 space-y-1">
               {e.legs.map((l, i) => (
                 <li key={i} className="flex flex-wrap items-baseline gap-x-2 text-sm">
-                  <span className={`stat-nums uppercase text-[9px] px-1 py-0.5 rounded ${STATUS_STYLE[l.status]}`}>{l.status}</span>
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full shrink-0 ${LEG_DOT[l.status] ?? 'bg-line'}`}
+                    title={l.status}
+                    aria-label={l.status}
+                  />
                   <span className="text-body">{l.player}</span>
                   {l.team && <span className="text-faint text-xs">{l.team}</span>}
-                  <span className={l.side === 'More' ? 'text-success-700' : 'text-accent-ink'}>{l.side}</span>
+                  <span className="text-body font-medium">{l.side}</span>
                   <span className="stat-nums">{l.line}</span>
                   <span className="text-muted">{data.markets[l.market] ?? l.market}</span>
                   {l.actual != null && <span className="stat-nums text-xs text-faint">actual {l.actual}</span>}
                   {l.snapshot && (
-                    <span className="stat-nums text-[11px] text-faint">
+                    <span className="stat-nums text-xs text-faint">
                       · books {pct(l.snapshot.books_prob)} · model {pct(l.snapshot.model_prob)}
                       {l.snapshot.projections_disagree ? ' · projections disagreed' : ''}
                     </span>
@@ -406,7 +440,7 @@ export function MyEntries({ players }: { players: string[] }) {
               ))}
             </ul>
             {e.status === 'pending' && (
-              <button onClick={() => remove(e.id)} className="mt-2 text-[11px] text-faint underline">
+              <button onClick={() => remove(e.id)} className="mt-2 text-xs text-faint underline">
                 Delete
               </button>
             )}

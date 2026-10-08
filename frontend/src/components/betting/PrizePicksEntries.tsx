@@ -80,7 +80,7 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
     <div className="space-y-3">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h3 className="text-sm font-medium text-body">Best entries</h3>
-        <button onClick={() => setEditing((v) => !v)} className="text-xs text-accent-ink underline">
+        <button onClick={() => setEditing((v) => !v)} className="text-xs text-body underline">
           {editing ? 'Hide payouts' : 'Edit payouts'}
         </button>
       </div>
@@ -110,7 +110,7 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
         <div className="rounded-lg border border-hairline bg-surface p-4 text-sm text-muted">
           No entry has positive expected value at these payouts this week.
           {ranked.length > 0 && (
-            <button onClick={() => setShowAll(true)} className="block mt-1 text-xs text-accent-ink underline">
+            <button onClick={() => setShowAll(true)} className="block mt-1 text-xs text-body underline">
               Show all {ranked.length} entries anyway
             </button>
           )}
@@ -146,14 +146,14 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
                 {e.legs.map((l) => (
                   <li key={`${l.player}-${l.market}`} className="text-body">
                     {l.player} <span className="text-faint text-xs">{l.team}</span>{' '}
-                    <span className={l.side === 'More' ? 'text-success-700' : 'text-accent-ink'}>{l.side}</span>{' '}
+                    <span className="text-body font-medium">{l.side}</span>{' '}
                     <span className="stat-nums">{l.line}</span> <span className="text-muted">{l.market_label}</span>{' '}
-                    <span className="stat-nums text-[11px] text-faint">{pct(l.p_win)}</span>
+                    <span className="stat-nums text-xs text-faint">{pct(l.p_win)}</span>
                   </li>
                 ))}
               </ul>
               {e.overlap > 0 && (
-                <p className="text-[11px] text-warning-700 mt-2">
+                <p className="text-xs text-warning-700 mt-2">
                   Shares {e.overlap} pick{e.overlap === 1 ? '' : 's'} with a better entry above. Playing both doubles up on
                   the same outcomes, so pick one.
                 </p>
@@ -161,12 +161,12 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
             </div>
           ))}
           {!showAll && ranked.length > shown.length && (
-            <button onClick={() => setShowAll(true)} className="text-xs text-accent-ink underline">
+            <button onClick={() => setShowAll(true)} className="text-xs text-body underline">
               Show all {ranked.length} entries, including near-duplicates and ones that lose money
             </button>
           )}
           {showAll && (
-            <button onClick={() => setShowAll(false)} className="text-xs text-accent-ink underline">
+            <button onClick={() => setShowAll(false)} className="text-xs text-body underline">
               Show distinct profitable entries only
             </button>
           )}

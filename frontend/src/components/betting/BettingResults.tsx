@@ -72,13 +72,7 @@ const MARKET_LABELS: Record<string, string> = {
   spread: 'Spread',
   total: 'Total',
 }
-const STATUS_STYLE: Record<TrackedPick['status'], string> = {
-  won: 'bg-success-100 text-success-800',
-  lost: 'bg-danger-100 text-danger-800',
-  push: 'bg-surface-2 text-muted',
-  void: 'bg-surface-2 text-muted',
-  pending: 'bg-highlight text-accent-ink',
-}
+const SIZE_NAME = { high: 'Max', strong: 'Medium', lean: 'Small' } as const
 
 const signed = (n: number, digits = 2) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`
 const pct = (n: number | null) => (n == null ? '—' : `${(n * 100).toFixed(1)}%`)
@@ -86,7 +80,7 @@ const pct = (n: number | null) => (n == null ? '—' : `${(n * 100).toFixed(1)}%
 function Tile({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
   return (
     <div className="bg-surface rounded-lg border border-hairline p-3">
-      <div className="stat-nums text-[10px] tracking-wider text-muted uppercase">{label}</div>
+      <div className="stat-nums text-xs tracking-wider text-muted uppercase">{label}</div>
       <div className={`stat-nums text-xl font-semibold mt-1 ${tone === 'good' ? 'text-success-700' : tone === 'bad' ? 'text-danger-700' : 'text-body'}`}>
         {value}
       </div>
@@ -163,10 +157,19 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
         </button>
       ))}
     </div>
-    <label className="flex items-center gap-1.5 text-xs text-muted">
-      <input type="checkbox" checked={currentOnly} onChange={(e) => setCurrentOnly(e.target.checked)} />
-      Current engine only
-    </label>
+    <div className="flex rounded-lg border border-hairline p-0.5 w-fit" role="tablist" aria-label="Model version">
+      {([false, true] as const).map((v) => (
+        <button
+          key={String(v)}
+          role="tab"
+          aria-selected={currentOnly === v}
+          onClick={() => setCurrentOnly(v)}
+          className={`px-3 py-1 rounded-md text-xs ${currentOnly === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
+        >
+          {v ? 'Current model' : 'All picks'}
+        </button>
+      ))}
+    </div>
     </div>
   )
 
@@ -193,137 +196,101 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
   const o = data.overall
   const settled = o.won + o.lost + o.push
   const brier = data.calibration.brier
+  const graded = settled > 0 || data.calibration.lines > 0
+  const versionName = (k: string) =>
+    k === 'pre-versioning' ? 'v0 (before tracking)' : k === data.engine_version ? `${k} (current)` : k
   return (
     <div className="space-y-4">
       {scopeToggle}
-      <p className="text-xs text-muted">
-        {scope === 'all' ? 'NFL and college combined. ' : `${SPORT_NAME[sport]} only: each sport's model is judged on its own record and calibration. `}
-        Every recommendation is saved at the price shown and graded automatically once its game is final (Sleeper stats
-        for props, ESPN scores for games). Voids are players who didn't play. {data.lines_tracked} lines tracked
-        {scope === 'all' ? ' in total' : ''}, including no-bet lines used to check calibration.
-      </p>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Tile label="Record" value={settled ? recordText(o) : '—'} />
-        <Tile label="Units" value={settled ? `${signed(o.units_profit)}u` : '—'} tone={o.units_profit > 0 ? 'good' : o.units_profit < 0 ? 'bad' : undefined} />
-        <Tile label="ROI" value={pct(o.roi)} tone={(o.roi ?? 0) > 0 ? 'good' : (o.roi ?? 0) < 0 ? 'bad' : undefined} />
-        <Tile label="Pending" value={String(o.pending)} />
-      </div>
-
-      {settled === 0 && (
+      {settled === 0 ? (
         <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
-          No graded picks yet -- results appear here after this week's games finish. One week is noise; judge the model
-          on a few hundred bets, and on calibration below, not on any single week.
+          {o.pending ? `${o.pending} picks pending. ` : ''}Results appear a few hours after each game ends. One week is
+          noise: judge the model on a few hundred bets and on calibration, not on any single week.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Tile label="Record" value={recordText(o)} />
+          <Tile label="Units" value={`${signed(o.units_profit)}u`} tone={o.units_profit > 0 ? 'good' : o.units_profit < 0 ? 'bad' : undefined} />
+          <Tile label="ROI" value={pct(o.roi)} tone={(o.roi ?? 0) > 0 ? 'good' : (o.roi ?? 0) < 0 ? 'bad' : undefined} />
+          <Tile label="Pending" value={String(o.pending)} />
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {scope === 'all' && data.by_sport && Object.keys(data.by_sport).length > 1 && (
-          <SplitTable title="By sport" rows={Object.entries(data.by_sport).map(([k, v]) => [k, v])} />
-        )}
-        <SplitTable
-          title="By confidence"
-          rows={(['high', 'strong', 'lean', 'fill'] as const)
-            .filter((k) => data.by_confidence[k])
-            .map((k) => [k === 'fill' ? 'Best available' : k[0].toUpperCase() + k.slice(1), data.by_confidence[k]])}
-        />
-        <SplitTable
-          title="By market"
-          rows={Object.entries(data.by_market).map(([k, v]) => [MARKET_LABELS[k] ?? k, v])}
-        />
-        <SplitTable title="By week" rows={data.by_week.map((w) => [`Week ${w.week}`, w])} />
-        {data.by_engine_version && Object.keys(data.by_engine_version).length > 0 && (
-          <SplitTable
-            title="By engine version"
-            rows={Object.entries(data.by_engine_version).map(([k, v]) => [
-              k === data.engine_version ? `${k} (current)` : k,
-              v,
-            ])}
-          />
-        )}
-
-        {data.most_likely && data.most_likely.picks > 0 && (
-          <div className="bg-surface rounded-lg border border-hairline p-4">
-            <h3 className="text-sm font-medium text-body mb-1">Most likely to win</h3>
-            <p className="text-xs text-muted">
-              {data.most_likely.decided === 0
-                ? `${data.most_likely.picks} picks tracked, none graded yet.`
-                : `${data.most_likely.decided} graded: we said ${Math.round((data.most_likely.predicted ?? 0) * 100)}% on average, they hit ${Math.round((data.most_likely.actual ?? 0) * 100)}%.`}
-              {data.most_likely.pending ? ` ${data.most_likely.pending} pending.` : ''}
-            </p>
-          </div>
-        )}
-
-        <div className="bg-surface rounded-lg border border-hairline p-4">
-          <h3 className="text-sm font-medium text-body mb-1">Calibration</h3>
-          <p className="text-xs text-muted mb-2">
-            When we said a side wins X% of the time, how often did it? Every graded line counts, including no-bet lines.
-          </p>
-          {data.calibration.lines === 0 ? (
-            <p className="text-xs text-faint">Nothing graded yet.</p>
-          ) : (
-            <>
-              <table className="w-full stat-nums text-xs">
-                <thead>
-                  <tr className="text-faint text-left">
-                    <th className="font-normal py-1">Predicted</th>
-                    <th className="font-normal text-right">Avg</th>
-                    <th className="font-normal text-right">Actual</th>
-                    <th className="font-normal text-right">Lines</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.calibration.buckets.map((b) => (
-                    <tr key={b.range} className="border-t border-hairline">
-                      <td className="py-1.5 text-body">{b.range}</td>
-                      <td className="text-right text-muted">{pct(b.predicted)}</td>
-                      <td className="text-right text-body">{pct(b.actual)}</td>
-                      <td className="text-right text-faint">{b.n}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <p className="stat-nums text-[11px] text-faint mt-2">
-                Brier score (lower is better): blend {brier.blend ?? '—'} · model {brier.model ?? '—'} · market {brier.market ?? '—'}
-              </p>
-            </>
-          )}
-        </div>
-      </div>
-
-      {data.picks.length > 0 && (
-        <div className="bg-surface rounded-lg border border-hairline p-4">
-          <h3 className="text-sm font-medium text-body mb-2">Recommendations</h3>
-          <div className="divide-y divide-hairline">
-            {data.picks.map((p) => (
-              <div key={p.id} className="flex items-center justify-between gap-3 py-2">
-                <div className="min-w-0">
-                  <div className="text-sm text-body truncate">
-                    <span className="stat-nums text-xs text-faint mr-2">
-                      {p.kind === 'cfb_game' ? 'CFB · ' : ''}W{p.week} · {p.units}u
-                    </span>
-                    {p.subject}
-                  </div>
-                  <div className="text-xs text-muted">
-                    {MARKET_LABELS[p.market] ?? p.market}: {p.market === 'player_anytime_td' ? 'Anytime TD' : `${p.side} ${p.line ?? ''}`}{' '}
-                    <span className="stat-nums">{p.price > 0 ? `+${p.price}` : p.price}</span> at {p.book}
-                    {p.actual != null && <span className="text-faint"> · actual {p.actual}</span>}
-                  </div>
-                </div>
-                <div className="text-right shrink-0">
-                  <span className={`stat-nums text-[10px] uppercase px-1.5 py-0.5 rounded ${STATUS_STYLE[p.status]}`}>{p.status}</span>
-                  {p.profit_units != null && p.status !== 'pending' && (
-                    <div className={`stat-nums text-xs mt-0.5 ${p.profit_units > 0 ? 'text-success-700' : p.profit_units < 0 ? 'text-danger-700' : 'text-muted'}`}>
-                      {signed(p.profit_units)}u
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
       <BettingAudit />
+
+      {graded && (
+        <details className="bg-surface rounded-lg border border-hairline p-4 group">
+          <summary className="cursor-pointer text-sm font-medium text-body list-none flex items-center justify-between">
+            Model performance
+            <span className="text-xs text-muted group-open:hidden">Show</span>
+            <span className="text-xs text-muted hidden group-open:inline">Hide</span>
+          </summary>
+          <p className="text-xs text-muted mt-2">
+            {scope === 'all' ? 'NFL and college combined. ' : `${SPORT_NAME[sport]} only. `}
+            Every pick is saved at the price shown and graded from real stats; {data.lines_tracked} lines tracked, including
+            lines we passed on, which is what the calibration check uses.
+          </p>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
+            {scope === 'all' && data.by_sport && Object.keys(data.by_sport).length > 1 && (
+              <SplitTable title="By sport" rows={Object.entries(data.by_sport).map(([k, v]) => [k, v])} />
+            )}
+            <SplitTable
+              title="By bet size"
+              rows={(['high', 'strong', 'lean', 'fill'] as const)
+                .filter((k) => data.by_confidence[k])
+                .map((k) => [k === 'fill' ? 'Best available' : SIZE_NAME[k], data.by_confidence[k]])}
+            />
+            <SplitTable title="By market" rows={Object.entries(data.by_market).map(([k, v]) => [MARKET_LABELS[k] ?? k, v])} />
+            <SplitTable title="By week" rows={data.by_week.map((w) => [`Week ${w.week}`, w])} />
+            {data.by_engine_version && Object.keys(data.by_engine_version).length > 0 && (
+              <SplitTable
+                title="By model version"
+                rows={Object.entries(data.by_engine_version).map(([k, v]) => [versionName(k), v])}
+              />
+            )}
+            {data.most_likely && data.most_likely.decided > 0 && (
+              <div className="bg-surface rounded-lg border border-hairline p-4">
+                <h3 className="text-sm font-medium text-body mb-1">Safest picks</h3>
+                <p className="text-xs text-muted">
+                  {data.most_likely.decided} graded: we said {Math.round((data.most_likely.predicted ?? 0) * 100)}% on
+                  average, they hit {Math.round((data.most_likely.actual ?? 0) * 100)}%.
+                </p>
+              </div>
+            )}
+            {data.calibration.lines > 0 && (
+              <div className="bg-surface rounded-lg border border-hairline p-4">
+                <h3 className="text-sm font-medium text-body mb-1">Calibration</h3>
+                <p className="text-xs text-muted mb-2">When we said a side wins X% of the time, how often did it?</p>
+                <table className="w-full stat-nums text-xs">
+                  <thead>
+                    <tr className="text-faint text-left">
+                      <th className="font-normal py-1">Predicted</th>
+                      <th className="font-normal text-right">Avg</th>
+                      <th className="font-normal text-right">Actual</th>
+                      <th className="font-normal text-right">Lines</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.calibration.buckets.map((b) => (
+                      <tr key={b.range} className="border-t border-hairline">
+                        <td className="py-1.5 text-body">{b.range}</td>
+                        <td className="text-right text-muted">{pct(b.predicted)}</td>
+                        <td className="text-right text-body">{pct(b.actual)}</td>
+                        <td className="text-right text-faint">{b.n}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="stat-nums text-xs text-faint mt-2">
+                  Brier score (lower is better): ours {brier.blend ?? '—'} · model alone {brier.model ?? '—'} · books{' '}
+                  {brier.market ?? '—'}
+                </p>
+              </div>
+            )}
+          </div>
+        </details>
+      )}
     </div>
   )
 }

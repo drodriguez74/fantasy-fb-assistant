@@ -33,7 +33,7 @@ const SLOW_LOAD_MS = 8000
 function Disclaimer({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="flex gap-2 items-start rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-[11px] text-warning-800">
+    <div className="flex gap-2 items-start rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-800">
       <ExclamationTriangleIcon className="h-4 w-4 text-warning-700 shrink-0 mt-px" />
       <p className="leading-relaxed">
         21+ only · model estimates, not guarantees · gambling problem? Call 1-800-GAMBLER.{' '}
@@ -226,10 +226,14 @@ export function BettingPage() {
             entries={sport === 'nfl' ? entries : undefined}
             bankroll={bankroll}
             setBankroll={setBankroll}
-            onOpen={setTab}
+            onOpen={(t) => {
+              setTab(t)
+              // The tabs sit below the card: bring them into view.
+              requestAnimationFrame(() => document.getElementById('bets-tabs')?.scrollIntoView({ behavior: 'smooth' }))
+            }}
           />
 
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline">
+          <div id="bets-tabs" className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline scroll-mt-4">
             <nav className="-mb-px flex gap-5 overflow-x-auto">
               {tabs.map((t) => (
                 <button
@@ -244,15 +248,19 @@ export function BettingPage() {
               ))}
             </nav>
             {(tab === 'props' || tab === 'games' || tab === 'college') && (
-              <label className="flex items-center gap-2 text-xs text-muted pb-2">
-                <input
-                  type="checkbox"
-                  checked={recommendedOnly}
-                  onChange={(e) => setRecommendedOnly(e.target.checked)}
-                  className="rounded border-line text-accent-ink focus:ring-volt"
-                />
-                Bets + watch list only
-              </label>
+              <div className="flex rounded-lg border border-hairline p-0.5 mb-2 text-xs" role="tablist" aria-label="Which lines">
+                {([true, false] as const).map((v) => (
+                  <button
+                    key={String(v)}
+                    role="tab"
+                    aria-selected={recommendedOnly === v}
+                    onClick={() => setRecommendedOnly(v)}
+                    className={`px-2.5 py-1 rounded-md ${recommendedOnly === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
+                  >
+                    {v ? 'Recommended' : 'All lines'}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -304,7 +312,7 @@ export function BettingPage() {
           )}
           {(tab === 'games' || tab === 'college') && <GameCombos games={view.game_combos} />}
 
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 stat-nums text-[11px] text-faint pt-2">
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 stat-nums text-xs text-faint pt-2">
             <span>{sport === 'cfb' ? 'College' : `Week ${view.week}`}</span>
             {view.refreshing && <span>Updated {view.saved_age_minutes} min ago · refreshing</span>}
             <span>

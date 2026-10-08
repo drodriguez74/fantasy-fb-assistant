@@ -63,10 +63,10 @@ function Leg({ leg }: { leg: PrizePicksLeg }) {
         <span className="stat-nums text-xs text-faint">{leg.team} · {leg.game}</span>
       </div>
       <p className="text-sm text-body">
-        <span className={`font-semibold ${leg.side === 'More' ? 'text-success-700' : 'text-accent-ink'}`}>{leg.side}</span>{' '}
+        <span className="font-semibold text-body">{leg.side}</span>{' '}
         <span className="stat-nums">{leg.line}</span> <span className="text-muted">{leg.market_label}</span>
       </p>
-      <p className="stat-nums text-[11px] text-faint">
+      <p className="stat-nums text-xs text-faint">
         {pct(leg.p_win)} to hit · books {pct(leg.market_prob)}
         {leg.projection != null && ` · Sleeper ${leg.projection.toFixed(1)}`}
         {leg.espn_projection != null && ` · ESPN ${leg.espn_projection.toFixed(1)}`}
@@ -127,14 +127,18 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
           onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
         />
       </div>
-      <p>
-        Once a day: open{' '}
-        <a href={BOARD_URL} target="_blank" rel="noreferrer" className="text-accent-ink underline break-all">
-          PrizePicks' NFL board data
-        </a>{' '}
-        in your browser, press Cmd+S (Ctrl+S on Windows) to save it, then upload the file here. PrizePicks blocks automatic
-        downloads, so this step has to come from your browser. Uploads older than 36 hours are ignored.
-      </p>
+      {/* The how-to only matters when there's no board from today; otherwise one tap away. */}
+      <details open={data?.source !== 'upload'}>
+        <summary className="cursor-pointer text-body underline w-fit">How to upload</summary>
+        <p className="mt-1">
+          Once a day: open{' '}
+          <a href={BOARD_URL} target="_blank" rel="noreferrer" className="text-body underline break-all">
+            PrizePicks' NFL board data
+          </a>{' '}
+          in your browser, press Cmd+S (Ctrl+S on Windows) to save it, then upload the file here. PrizePicks blocks
+          automatic downloads, so this step has to come from your browser. Uploads older than 36 hours are ignored.
+        </p>
+      </details>
       {message && <p className="text-success-700">{message}</p>}
       {error && <p className="text-warning-700">{error}</p>}
     </div>
@@ -148,7 +152,7 @@ function Fold({ title, summary, defaultOpen = false, children }: { title: string
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-baseline gap-3 px-4 py-3 text-left" aria-expanded={open}>
         <span className="text-sm font-medium text-body">{title}</span>
         <span className="text-xs text-faint">{summary}</span>
-        <span className="ml-auto text-xs text-accent-ink">{open ? 'Hide' : 'Show'}</span>
+        <span className="ml-auto text-xs text-muted">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && <div className="px-4 pb-4 space-y-3">{children}</div>}
     </div>
@@ -159,17 +163,17 @@ function AltLines({ rows, note }: { rows?: PrizePicksAltLine[]; note: string }) 
   if (!rows || rows.length === 0) return null
   return (
     <>
-      <p className="text-[11px] text-faint">{note}</p>
+      <p className="text-xs text-faint">{note}</p>
       <ul className="divide-y divide-hairline">
         {rows.slice(0, 12).map((r) => (
           <li key={`${r.player}-${r.market}-${r.line}`} className="py-2 flex items-baseline gap-3">
             <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
             <span className="min-w-0 text-sm text-body">
               {r.player} <span className="text-faint text-xs">{r.team}</span>{' '}
-              <span className={r.side === 'More' ? 'text-success-700' : 'text-accent-ink'}>{r.side}</span>{' '}
+              <span className="text-body font-medium">{r.side}</span>{' '}
               <span className="stat-nums">{r.line}</span> <span className="text-muted">{r.market_label}</span>
             </span>
-            <span className="ml-auto stat-nums text-[11px] text-faint shrink-0 hidden sm:inline">
+            <span className="ml-auto stat-nums text-xs text-faint shrink-0 hidden sm:inline">
               {r.projection != null ? `Sleeper ${r.projection.toFixed(1)}` : `books at ${r.book_line ?? '—'}`}
               {r.espn_projection != null && ` · ESPN ${r.espn_projection.toFixed(1)}`}
             </span>

@@ -26,7 +26,7 @@ export function GameCombos({ games }: { games?: GameComboSet[] }) {
       <button onClick={() => setOpen((v) => !v)} className="w-full flex items-baseline gap-3 px-4 py-3 text-left" aria-expanded={open}>
         <span className="text-sm font-medium text-body">Cover + over/under combos</span>
         <span className="text-xs text-faint">{games.length} games · fair odds for same-game parlays</span>
-        <span className="ml-auto text-xs text-accent-ink">{open ? 'Hide' : 'Show'}</span>
+        <span className="ml-auto text-xs text-muted">{open ? 'Hide' : 'Show'}</span>
       </button>
       {open && (
         <div className="px-4 pb-4 space-y-3">
@@ -40,7 +40,7 @@ export function GameCombos({ games }: { games?: GameComboSet[] }) {
               <div key={g.game} className="rounded-lg border border-hairline p-3">
                 <div className="flex items-baseline justify-between">
                   <span className="font-medium text-body">{g.game}</span>
-                  <span className="stat-nums text-[11px] text-faint">{g.favorite} favored</span>
+                  <span className="stat-nums text-xs text-faint">{g.favorite} favored</span>
                 </div>
                 <table className="w-full mt-2 stat-nums text-xs">
                   <thead>
