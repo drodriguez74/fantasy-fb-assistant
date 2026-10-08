@@ -230,8 +230,9 @@ def _zero_inflation(true_mean: np.ndarray, p_zero: float) -> float:
     zeros the projection uncertainty in true_mean already makes; 0 if a
     plain Poisson already has that many zeros."""
     pi = 0.0
-    for _ in range(8):
-        base = float(np.mean(np.exp(-true_mean / (1 - pi))))
+    sample = true_mean[:2000]  # plenty for a mean; the full array made this a hot spot
+    for _ in range(6):
+        base = float(np.mean(np.exp(-sample / (1 - pi))))
         pi = max(0.0, min(0.9, (p_zero - base) / (1 - base)))
     return pi
 

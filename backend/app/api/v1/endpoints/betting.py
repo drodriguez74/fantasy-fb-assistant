@@ -29,10 +29,11 @@ async def get_betting_board(
     `available: false` with a `detail` when odds aren't configured or no
     lines exist; odds fetches themselves are cached (6h lines, 24h props)
     regardless of `refresh`, so it never burns API credits. `sport=cfb`
-    is the college board (betting_service.build_cfb_board)."""
-    if sport == "cfb":
-        return await betting_service.build_cfb_board(force=refresh)
-    return await build_board(force=refresh)
+    is the college board (betting_service.build_cfb_board). Served from the
+    saved board when there's one (betting_service.serve_board): instant, and
+    a board older than 15 minutes comes back with `refreshing: true` while
+    it's rebuilt in the background."""
+    return await betting_service.serve_board(sport, force=refresh)
 
 
 @router.get("/results")

@@ -88,6 +88,9 @@ export interface Board {
   recommended_count?: number
   fill_count?: number
   most_likely?: MostLikely
+  // Served from the saved board while a fresh one is built in the background.
+  refreshing?: boolean
+  saved_age_minutes?: number
   evaluated?: { player_props: number; games: number; props_without_projection: number }
   games_without_props?: string[]
   credits_remaining?: number | null

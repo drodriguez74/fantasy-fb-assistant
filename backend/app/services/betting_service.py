@@ -62,6 +62,74 @@ METHOD = (
 _BOARD_TTL_SECONDS = 15 * 60
 _pricing_context: Dict[str, Dict[str, Any]] = {}
 _board_cache: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_build_locks: Dict[str, asyncio.Lock] = {}
+
+
+def _build_lock(name: str) -> asyncio.Lock:
+    if name not in _build_locks:
+        _build_locks[name] = asyncio.Lock()
+    return _build_locks[name]
+
+
+# ---------------------------------------------------------------------------
+# Saved boards (stale-while-revalidate). A build takes ~20s locally and
+# longer on Render's free CPU, and Render restarts wipe the memory cache, so
+# every visit after a quiet spell waited for a full build (and sometimes
+# timed out). The last built board per sport is saved in odds_cache (key
+# "board:nfl" / "board:cfb"); the page gets it at once, and a stale one
+# (older than _BOARD_TTL_SECONDS) triggers one background rebuild. The saved
+# copy is only served, never fed back into _board_cache: logging an entry
+# needs a real build's _pricing_context.
+# ---------------------------------------------------------------------------
+_saved: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_refreshing: set = set()
+
+
+async def _store_board(sport: str, board: Dict[str, Any]) -> None:
+    if not board.get("available"):
+        return
+    _saved[sport] = (time.monotonic(), board)
+    try:
+        await asyncio.to_thread(odds_service._db_write, f"board:{sport}", board)
+    except Exception as e:  # noqa: BLE001 - saving is an optimization
+        logger.warning("Saving the %s board failed: %s", sport, type(e).__name__)
+
+
+async def _refresh_in_background(sport: str) -> None:
+    if sport in _refreshing:
+        return
+    _refreshing.add(sport)
+    try:
+        await (build_cfb_board(force=True) if sport == "cfb" else build_board(force=True))
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Background %s board rebuild failed: %s", sport, e)
+    finally:
+        _refreshing.discard(sport)
+
+
+async def serve_board(sport: str = "nfl", force: bool = False) -> Dict[str, Any]:
+    """What GET /betting/board returns: a fresh board from memory, else the
+    saved board right away (rebuilding in the background when it's older
+    than _BOARD_TTL_SECONDS, flagged `refreshing`), else a build now."""
+    builder = build_cfb_board if sport == "cfb" else build_board
+    name = "cfb" if sport == "cfb" else "board"
+    cached = _board_cache.get(name)
+    if force or (cached and time.monotonic() - cached[0] < _BOARD_TTL_SECONDS):
+        return await builder(force=force)
+    saved = _saved.get(sport)
+    age = time.monotonic() - saved[0] if saved else None
+    if saved is None:
+        stored = await asyncio.to_thread(odds_service._db_read, f"board:{sport}")
+        if stored:
+            age = (datetime.now(timezone.utc) - stored[0]).total_seconds()
+            saved = (time.monotonic() - age, stored[1])
+            _saved[sport] = saved
+    if saved is None:
+        return await builder()
+    if age >= _BOARD_TTL_SECONDS:
+        asyncio.create_task(_refresh_in_background(sport))
+        return {**saved[1], "refreshing": True, "saved_age_minutes": round(age / 60)}
+    return saved[1]
 _PROP_CONCURRENCY = 4
 
 
@@ -363,7 +431,13 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
     by_key = {(normalize_name(m[5]), m[6]): m for m in matched}
     priced: List[Dict[str, Any]] = []
     unmatched = 0
-    for line in uploaded.get("lines") or []:
+    # A player can have a dozen lines in one stat (standard, goblins, demons);
+    # the simulation is the same for all of them (same seed), so lines are
+    # walked grouped by (player, stat) and simulated once per group. Only the
+    # current group's samples are kept, so memory stays flat.
+    lines = sorted(uploaded.get("lines") or [], key=lambda l: (normalize_name(l["player"]), l["market"]))
+    sim_key, samples, esamp = None, None, None
+    for line in lines:
         m = by_key.get((normalize_name(line["player"]), line["market"]))
         if not m:
             unmatched += 1
@@ -371,10 +445,12 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
         g, label, team, home, away, player, market, offers, mean = m
         seed = f"{week}|{player}|{market}"
         model_mean = mean * scales.get(market, 1.0)
-        samples = _sim(market, model_mean, seed, player)
         espn_mean = espn_means.get((player, market))
-        esamp = (_sim(market, espn_mean * espn_scales.get(market, 1.0), f"{seed}|espn", player)
-                 if espn_mean and espn_mean > 0 else None)
+        if sim_key != (player, market):
+            sim_key = (player, market)
+            samples = _sim(market, model_mean, seed, player)
+            esamp = (_sim(market, espn_mean * espn_scales.get(market, 1.0), f"{seed}|espn", player)
+                     if espn_mean and espn_mean > 0 else None)
         allowed = set(line.get("allowed") or ["over", "under"])
         if market == "player_anytime_td":
             if line["line"] != 0.5 or "over" not in allowed:
@@ -767,9 +843,22 @@ def _consensus_total(game: Dict[str, Any]) -> Optional[float]:
 
 
 async def build_board(force: bool = False) -> Dict[str, Any]:
+    """This week's NFL board, from the 15-minute memory cache or built now.
+    Concurrent callers share one build (the page asks for the board and the
+    PrizePicks entries at once; on a cold start both used to build it)."""
     cached = _board_cache.get("board")
     if cached and not force and time.monotonic() - cached[0] < _BOARD_TTL_SECONDS:
         return cached[1]
+    async with _build_lock("board"):
+        cached = _board_cache.get("board")
+        if cached and time.monotonic() - cached[0] < (5 if force else _BOARD_TTL_SECONDS):
+            return cached[1]  # finished while we waited
+        board = await _build_board_now()
+    await _store_board("nfl", board)
+    return board
+
+
+async def _build_board_now() -> Dict[str, Any]:
 
     from app.core.config import settings
     if not settings.ODDS_API_KEY:
@@ -1055,6 +1144,17 @@ async def build_cfb_board(force: bool = False) -> Dict[str, Any]:
     cached = _board_cache.get("cfb")
     if cached and not force and time.monotonic() - cached[0] < _BOARD_TTL_SECONDS:
         return cached[1]
+    async with _build_lock("cfb"):
+        cached = _board_cache.get("cfb")
+        if cached and time.monotonic() - cached[0] < (5 if force else _BOARD_TTL_SECONDS):
+            return cached[1]
+        board = await _build_cfb_board_now()
+    await _store_board("cfb", board)
+    return board
+
+
+async def _build_cfb_board_now() -> Dict[str, Any]:
+    from app.services.espn_game_predictor import cfb_team_key, fetch_cfb_home_win_probs
     from app.core.config import settings
     if not settings.ODDS_API_KEY:
         return {"available": False, "sport": "cfb", "detail": "Betting odds aren't configured (ODDS_API_KEY is not set).",

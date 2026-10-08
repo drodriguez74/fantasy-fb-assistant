@@ -70,6 +70,8 @@ export function BettingPage() {
     try {
       const response = await betting.getBoard(refresh)
       setBoard(response.data)
+      // A saved board came back while the server rebuilds: swap in the fresh one shortly.
+      if (response.data.refreshing) setTimeout(() => load(), 40000)
     } catch (err) {
       setError(getErrorMessage(err, "Couldn't load this week's betting board."))
     } finally {
@@ -83,6 +85,7 @@ export function BettingPage() {
     try {
       const response = await betting.getBoard(refresh, 'cfb')
       setCollege(response.data)
+      if (response.data.refreshing) setTimeout(() => loadCollege(), 40000)
     } catch (err) {
       setCollegeError(getErrorMessage(err, "Couldn't load college game lines."))
     } finally {
@@ -303,6 +306,7 @@ export function BettingPage() {
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-1 stat-nums text-[11px] text-faint pt-2">
             <span>{sport === 'cfb' ? 'College' : `Week ${view.week}`}</span>
+            {view.refreshing && <span>Updated {view.saved_age_minutes} min ago · refreshing</span>}
             <span>
               {sport === 'cfb'
                 ? `${view.evaluated?.games} games · ${view.games_modeled ?? 0} with ESPN's predictor`
