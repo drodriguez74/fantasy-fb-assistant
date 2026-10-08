@@ -60,8 +60,11 @@ const entryName = (e: Entry) => `${e.size}-pick ${e.type === 'power' ? 'Power' :
 export function PrizePicksEntries({ state }: { state: EntriesState }) {
   const [editing, setEditing] = useState(false)
   const [showAll, setShowAll] = useState(false)
+  const [size, setSize] = useState<number | 'all'>('all')
   const { entries, power, flex, loading, error } = state
-  const ranked = rankEntries(entries)
+  const allRanked = rankEntries(entries)
+  const sizes = [...new Set(allRanked.map((e) => e.size))].sort((a, b) => a - b)
+  const ranked = size === 'all' ? allRanked : allRanked.filter((e) => e.size === size)
   // By default, skip entries that mostly repeat a better shown one (half or
   // more of their picks already used above): the same bet with one swap.
   const distinct: typeof ranked = []
@@ -84,10 +87,26 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
           {editing ? 'Hide payouts' : 'Edit payouts'}
         </button>
       </div>
+      {sizes.length > 1 && (
+        <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Entry size">
+          {(['all', ...sizes] as const).map((s) => (
+            <button
+              key={String(s)}
+              role="tab"
+              aria-selected={size === s}
+              onClick={() => setSize(s)}
+              className={`px-2.5 py-1 rounded-md border text-xs ${
+                size === s ? 'border-line bg-surface-2 text-body font-medium' : 'border-hairline text-muted'
+              }`}
+            >
+              {s === 'all' ? 'All sizes' : `${s}-pick`}
+            </button>
+          ))}
+        </div>
+      )}
       <p className="text-xs text-muted leading-relaxed">
-        Ranked by expected value; near-duplicates of a better entry are hidden. One pick per player, players from at
-        least two teams. Payouts are PrizePicks' standard
-        multipliers; check yours on a built (unsubmitted) lineup's "$1 to pay $X" line and edit them here if they differ.
+        Ranked by expected value at PrizePicks' standard payouts (edit them if yours differ: a built lineup shows "$1 to
+        pay $X"). Near-duplicates of a better entry are hidden.
       </p>
       {editing && power && flex && (
         <div className="rounded-lg border border-hairline bg-surface p-4 space-y-3">
@@ -120,14 +139,14 @@ export function PrizePicksEntries({ state }: { state: EntriesState }) {
           {shown.map((e, i) => (
             <div
               key={`${e.type}-${e.legs.map((l) => `${l.player}${l.market}`).join('|')}`}
-              className={`rounded-lg bg-surface p-4 border ${i === 0 && e.ev > 0 ? 'border-volt' : 'border-hairline'} ${
+              className={`rounded-lg bg-surface p-4 border ${i === 0 && e.ev > 0 ? 'border-line' : 'border-hairline'} ${
                 e.ev <= 0 ? 'opacity-70' : ''
               }`}
             >
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 stat-nums text-xs">
                 <span className="text-sm font-semibold text-body">{entryName(e)}</span>
-                <span className={e.ev > 0 ? 'text-success-700' : 'text-muted'}>
-                  EV {e.ev > 0 ? '+' : ''}
+                <span className={e.ev > 0 ? 'text-success-700' : 'text-muted'} title="Expected profit per $1">
+                  Edge {e.ev > 0 ? '+' : ''}
                   {(e.ev * 100).toFixed(1)}%
                 </span>
                 <span><span className="text-body">{pct(e.p_all)}</span> <span className="text-faint">all hit</span></span>

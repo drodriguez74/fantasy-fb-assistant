@@ -5,6 +5,8 @@ import { useRef, useState, type ReactNode } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
 import { PrizePicksEntries } from './PrizePicksEntries'
 import type { EntriesState } from './prizePicksEntriesData'
+import { SafestPicks } from './SafestPicks'
+import type { MostLikely } from './betTypes'
 export interface PrizePicksLeg {
   player: string
   team?: string | null
@@ -186,7 +188,7 @@ function AltLines({ rows, note }: { rows?: PrizePicksAltLine[]; note: string }) 
 
 function PairCard({ pair }: { pair: PrizePicksPair }) {
   return (
-    <div className={`border rounded-lg p-4 bg-surface ${pair.ev > 0 ? 'border-volt' : 'border-hairline opacity-80'}`}>
+    <div className={`border rounded-lg p-4 bg-surface ${pair.ev > 0 ? 'border-line' : 'border-hairline opacity-80'}`}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Leg leg={pair.legs[0]} />
         <Leg leg={pair.legs[1]} />
@@ -194,7 +196,7 @@ function PairCard({ pair }: { pair: PrizePicksPair }) {
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 stat-nums text-xs">
         <span><span className="text-body">{pct(pair.joint_prob)}</span> <span className="text-faint">both hit</span></span>
         <span className={pair.ev > 0 ? 'text-success-700' : 'text-muted'}>
-          EV {pair.ev > 0 ? '+' : ''}{(pair.ev * 100).toFixed(1)}%
+          Edge {pair.ev > 0 ? '+' : ''}{(pair.ev * 100).toFixed(1)}%
         </span>
         {pair.units > 0 && <span className="text-body">{pair.units}u</span>}
         {pair.correlation !== 0 && (
@@ -207,12 +209,23 @@ function PairCard({ pair }: { pair: PrizePicksPair }) {
   )
 }
 
-/** The PrizePicks tab: board upload, best entries, 2-pick pairs, then goblins/demons. */
-export function PrizePicksPairs({ data, onUploaded, entries }: { data?: PrizePicksBoard; onUploaded: () => void; entries: EntriesState }) {
+/** The PrizePicks tab: board status, safest picks, best entries by size, 2-pick pairs, then goblins/demons. */
+export function PrizePicksPairs({
+  data,
+  onUploaded,
+  entries,
+  mostLikely,
+}: {
+  data?: PrizePicksBoard
+  onUploaded: () => void
+  entries: EntriesState
+  mostLikely?: MostLikely
+}) {
   const positive = data?.pairs.filter((p) => p.ev > 0) ?? []
   return (
     <div className="space-y-5">
       <UploadPanel data={data} onUploaded={onUploaded} />
+      <SafestPicks data={mostLikely} />
       <PrizePicksEntries state={entries} />
       {data && data.pairs.length > 0 && (
         <Fold

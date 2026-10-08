@@ -16,15 +16,15 @@ import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@hero
 // quarter-Kelly units). Layout: this week's card (the bets) first, then the
 // evidence per tab.
 
-type Tab = 'props' | 'games' | 'college' | 'prizepicks' | 'entries' | 'results'
+// Tabs follow the weekly loop: what to play (sportsbook), PrizePicks, the
+// entries you placed, and how the picks did.
+type Tab = 'play' | 'prizepicks' | 'entries' | 'track'
 
 const TAB_LABELS: Record<Tab, string> = {
-  props: 'Player props',
-  games: 'Game lines',
-  college: 'CFB Game Lines',
+  play: 'Play',
   prizepicks: 'PrizePicks',
   entries: 'My entries',
-  results: 'Results',
+  track: 'Track record',
 }
 
 // Render's free tier sleeps when idle; the first request can take ~30s.
@@ -46,18 +46,49 @@ function Disclaimer({ text }: { text: string }) {
   )
 }
 
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string
+  value: T
+  options: [T, string][]
+  onChange: (v: T) => void
+}) {
+  return (
+    <div className="flex rounded-lg border border-hairline p-0.5 text-xs" role="tablist" aria-label={label}>
+      {options.map(([v, text]) => (
+        <button
+          key={v}
+          role="tab"
+          aria-selected={value === v}
+          onClick={() => onChange(v)}
+          className={`px-2.5 py-1 rounded-md ${value === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
+        >
+          {text}
+        </button>
+      ))}
+    </div>
+  )
+}
+
 export function BettingPage() {
   const [board, setBoard] = useState<Board | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sport, setSport] = useState<'nfl' | 'cfb'>('nfl')
-  const [tab, setTab] = useState<Tab>('props')
+  const [tab, setTab] = useState<Tab>('play')
+  // Play tab: sportsbook player props or game lines (college has game lines only).
+  const [lines, setLines] = useState<'props' | 'games'>('props')
+  const [showWatch, setShowWatch] = useState(false)
+  const [showInfo, setShowInfo] = useState(false)
   // College board (GET /betting/board?sport=cfb), loaded the first time College is picked.
   const [college, setCollege] = useState<Board | null>(null)
   const [collegeLoading, setCollegeLoading] = useState(false)
   const [collegeError, setCollegeError] = useState('')
   const [recommendedOnly, setRecommendedOnly] = useState(true)
-  const [showMethod, setShowMethod] = useState(false)
   const [slow, setSlow] = useState(false)
   const [bankroll, setBankroll] = useBankroll()
   const [alerts, setAlerts] = useState<WatchAlert[]>([])
@@ -140,10 +171,10 @@ export function BettingPage() {
   }, [sport, college, collegeLoading, collegeError, loadCollege])
 
   // College: game lines + the shared Results (college player props are shelved).
-  const tabs: readonly Tab[] = sport === 'cfb' ? ['college', 'results'] : ['props', 'games', 'prizepicks', 'entries', 'results']
+  const tabs: readonly Tab[] = sport === 'cfb' ? ['play', 'track'] : ['play', 'prizepicks', 'entries', 'track']
   const switchSport = (next: 'nfl' | 'cfb') => {
     setSport(next)
-    setTab(next === 'cfb' ? 'college' : 'props')
+    setTab('play')
   }
   const view = sport === 'cfb' ? college : board
   const viewLoading = sport === 'cfb' ? collegeLoading || (!college && !collegeError) : loading
@@ -159,8 +190,20 @@ export function BettingPage() {
     return () => clearTimeout(timer)
   }, [viewLoading])
 
-  const rows = (tab === 'props' ? board?.player_props : tab === 'college' ? college?.game_props : board?.game_props) ?? []
-  const shown = recommendedOnly ? rows.filter((r) => r.units > 0 || r.watch) : rows.slice(0, 60)
+  const showingGames = sport === 'cfb' || lines === 'games'
+  const rows = (sport === 'cfb' ? college?.game_props : lines === 'props' ? board?.player_props : board?.game_props) ?? []
+  const betRows = rows.filter((r) => r.units > 0)
+  const watchRows = rows.filter((r) => r.units === 0 && r.watch)
+  const shown = recommendedOnly ? betRows : rows.slice(0, 60)
+  const card = (row: BoardRow, i: number) => (
+    <BetCard
+      key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`}
+      row={row}
+      bankroll={bankroll}
+      alert={alertFor(row)}
+      onToggleAlert={toggleAlert}
+    />
+  )
 
   return (
     <div className="max-w-5xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
@@ -183,6 +226,14 @@ export function BettingPage() {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setShowInfo((v) => !v)}
+            aria-expanded={showInfo}
+            aria-label="About this board"
+            className={`p-2 rounded-lg border ${showInfo ? 'border-line text-body' : 'border-hairline text-muted hover:text-body'}`}
+          >
+            <InformationCircleIcon className="h-5 w-5" />
+          </button>
           <button
             onClick={() => (sport === 'cfb' ? loadCollege(true) : load(true))}
             disabled={viewLoading}
@@ -221,6 +272,37 @@ export function BettingPage() {
         </div>
       ) : (
         <div className="space-y-5">
+          {showInfo && (
+            <div className="rounded-lg border border-hairline bg-surface p-4 text-xs text-muted leading-relaxed space-y-2">
+              <p className="stat-nums flex flex-wrap gap-x-4 gap-y-1">
+                <span>{sport === 'cfb' ? 'College' : `Week ${view.week}`}</span>
+                {view.refreshing && <span>Updated {view.saved_age_minutes} min ago · refreshing</span>}
+                <span>
+                  {sport === 'cfb'
+                    ? `${view.evaluated?.games} games · ${view.games_modeled ?? 0} with ESPN's predictor`
+                    : `${view.evaluated?.player_props} props · ${view.evaluated?.games} games priced`}
+                </span>
+                {view.credits_remaining != null && <span>{view.credits_remaining} odds credits left</span>}
+                {/* Free-tier credits: odds_service.PROP_REFRESH_WEEKDAYS */}
+                {view.evaluated?.player_props ? <span>Props refresh Wed &amp; Sun</span> : null}
+                <DataConfidenceBadge level="computed" label="Simulated" />
+              </p>
+              <p>{view.method}</p>
+              <p>
+                "To win" is our blended chance; "Books" is the sportsbooks' chance with their cut removed. Edge is expected
+                profit per $1 at the listed price. 1u = 1% of your bankroll. Watch = a small edge every source leans toward,
+                not enough for units. "Good down to" is the worst price that still clears the bar if the line moves.
+              </p>
+              <p>Sources: {view.sources?.odds}; {view.sources?.projections}.</p>
+              {view.evaluated && view.evaluated.props_without_projection > 0 && (
+                <p>{view.evaluated.props_without_projection} props skipped: no matching projection (never guessed).</p>
+              )}
+              {view.games_without_props && view.games_without_props.length > 0 && (
+                <p>Props not loaded for: {view.games_without_props.join(', ')} (odds credit reserve).</p>
+              )}
+            </div>
+          )}
+
           <ThisWeekCard
             board={view}
             entries={sport === 'nfl' ? entries : undefined}
@@ -233,38 +315,25 @@ export function BettingPage() {
             }}
           />
 
-          <div id="bets-tabs" className="flex flex-wrap items-center justify-between gap-3 border-b border-hairline scroll-mt-4">
-            <nav className="-mb-px flex gap-5 overflow-x-auto">
-              {tabs.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTab(t)}
-                  className={`py-2 px-1 border-b-2 text-sm font-medium whitespace-nowrap ${
-                    tab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
-                  }`}
-                >
-                  {TAB_LABELS[t]}
-                </button>
-              ))}
-            </nav>
-            {(tab === 'props' || tab === 'games' || tab === 'college') && (
-              <div className="flex rounded-lg border border-hairline p-0.5 mb-2 text-xs" role="tablist" aria-label="Which lines">
-                {([true, false] as const).map((v) => (
-                  <button
-                    key={String(v)}
-                    role="tab"
-                    aria-selected={recommendedOnly === v}
-                    onClick={() => setRecommendedOnly(v)}
-                    className={`px-2.5 py-1 rounded-md ${recommendedOnly === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-                  >
-                    {v ? 'Recommended' : 'All lines'}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <nav
+            id="bets-tabs"
+            className="-mb-px flex gap-5 overflow-x-auto border-b border-hairline scroll-mt-4"
+            aria-label="Bets sections"
+          >
+            {tabs.map((t) => (
+              <button
+                key={t}
+                onClick={() => setTab(t)}
+                className={`py-2 px-1 border-b-2 text-sm font-medium whitespace-nowrap ${
+                  tab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
+                }`}
+              >
+                {TAB_LABELS[t]}
+              </button>
+            ))}
+          </nav>
 
-          {tab === 'results' ? (
+          {tab === 'track' ? (
             <BettingResults sport={sport} />
           ) : tab === 'entries' ? (
             <MyEntries
@@ -280,81 +349,72 @@ export function BettingPage() {
                 .sort()}
             />
           ) : tab === 'prizepicks' ? (
-            <PrizePicksPairs data={view.prizepicks} onUploaded={() => load(true)} entries={entries} />
-          ) : shown.length === 0 ? (
-            <div className="bg-surface rounded-lg border border-hairline p-6 text-center text-sm text-muted">
-              {tab === 'props' ? 'No player prop clears the bar or makes the watch list right now.' : 'No game line clears the bar or makes the watch list right now.'}
-              {recommendedOnly && rows.length > 0 && (
-                <button onClick={() => setRecommendedOnly(false)} className="block mx-auto mt-2 text-accent-ink underline">
-                  Show everything we priced
-                </button>
-              )}
-            </div>
+            <PrizePicksPairs
+              data={view.prizepicks}
+              onUploaded={() => load(true)}
+              entries={entries}
+              mostLikely={view.most_likely}
+            />
           ) : (
             <div className="space-y-3">
-              {tab === 'college' && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                {sport === 'nfl' ? (
+                  <Segmented
+                    label="Bet type"
+                    value={lines}
+                    options={[
+                      ['props', 'Player props'],
+                      ['games', 'Game lines'],
+                    ]}
+                    onChange={setLines}
+                  />
+                ) : (
+                  <p className="text-sm text-body font-medium">College game lines</p>
+                )}
+                <Segmented
+                  label="Which lines"
+                  value={recommendedOnly ? 'rec' : 'all'}
+                  options={[
+                    ['rec', 'Bets'],
+                    ['all', 'All lines'],
+                  ]}
+                  onChange={(v) => setRecommendedOnly(v === 'rec')}
+                />
+              </div>
+              {sport === 'cfb' && (
                 <p className="text-xs text-muted leading-relaxed">
                   Spreads use ESPN's predictor at half the NFL weight with a 1u cap until results are graded; totals only
                   flag a sportsbook that's off the others, since nothing projects college totals.
                 </p>
               )}
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
-              {shown.map((row, i) => (
-                <BetCard
-                  key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`}
-                  row={row}
-                  bankroll={bankroll}
-                  alert={alertFor(row)}
-                  onToggleAlert={toggleAlert}
-                />
-              ))}
+              {shown.length === 0 ? (
+                <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
+                  {showingGames ? 'No game line clears the bar right now.' : 'No player prop clears the bar right now.'}
+                  {recommendedOnly && watchRows.length > 0 && ' The watch list below has the closest ones.'}
+                </div>
+              ) : (
+                shown.map(card)
+              )}
+              {recommendedOnly && watchRows.length > 0 && (
+                <div className="rounded-lg border border-hairline">
+                  <button
+                    onClick={() => setShowWatch((v) => !v)}
+                    aria-expanded={showWatch}
+                    className="w-full flex items-baseline gap-3 px-4 py-3 text-left"
+                  >
+                    <span className="text-sm font-medium text-body">Watch list</span>
+                    <span className="text-xs text-muted">
+                      {watchRows.length} close to a bet · tap one to get an alert if it gets there
+                    </span>
+                    <span className="ml-auto text-xs text-muted">{showWatch ? 'Hide' : 'Show'}</span>
+                  </button>
+                  {showWatch && <div className="px-3 pb-3 space-y-3">{watchRows.map(card)}</div>}
+                </div>
+              )}
+              {showingGames && <GameCombos games={view.game_combos} />}
             </div>
           )}
-          {(tab === 'games' || tab === 'college') && <GameCombos games={view.game_combos} />}
-
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 stat-nums text-xs text-faint pt-2">
-            <span>{sport === 'cfb' ? 'College' : `Week ${view.week}`}</span>
-            {view.refreshing && <span>Updated {view.saved_age_minutes} min ago · refreshing</span>}
-            <span>
-              {sport === 'cfb'
-                ? `${view.evaluated?.games} games · ${view.games_modeled ?? 0} with ESPN's predictor`
-                : `${view.evaluated?.player_props} props · ${view.evaluated?.games} games priced`}
-            </span>
-            {view.credits_remaining != null && <span>{view.credits_remaining} odds credits left</span>}
-            {/* Free-tier credits: odds_service.PROP_REFRESH_WEEKDAYS */}
-            {view.evaluated?.player_props ? <span>Props refresh Wed &amp; Sun</span> : null}
-            <DataConfidenceBadge level="computed" label="Simulated" />
-          </div>
-
-          <div className="bg-surface rounded-lg border border-hairline">
-            <button
-              onClick={() => setShowMethod((v) => !v)}
-              className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm text-body"
-              aria-expanded={showMethod}
-            >
-              <InformationCircleIcon className="h-4 w-4 text-accent-ink" />
-              How the picks and units work
-              <span className="ml-auto text-xs text-faint">{showMethod ? 'Hide' : 'Show'}</span>
-            </button>
-            {showMethod && (
-              <div className="px-4 pb-4 text-xs text-muted leading-relaxed space-y-2">
-                <p>{view.method}</p>
-                <p>
-                  "To win" is our blended chance; "Books" is the sportsbooks' chance with their cut removed. EV is expected
-                  profit per dollar at the listed price. Sizes: Small = 0.5–1u, Medium = 1.5–2u, Max = 2.5–3u (1u = 1% of
-                  your bankroll). Watch = a small edge every source agrees on, but under the 3% bar, so no units. "Still a
-                  bet at" is the worst price that keeps the bet above the bar if the line moves.
-                </p>
-                <p>Sources: {view.sources?.odds}; {view.sources?.projections}.</p>
-                {view.evaluated && view.evaluated.props_without_projection > 0 && (
-                  <p>{view.evaluated.props_without_projection} props skipped -- no matching projection (never guessed).</p>
-                )}
-                {view.games_without_props && view.games_without_props.length > 0 && (
-                  <p>Props not loaded for: {view.games_without_props.join(', ')} (odds credit reserve).</p>
-                )}
-              </div>
-            )}
-          </div>
         </div>
       )}
     </div>
