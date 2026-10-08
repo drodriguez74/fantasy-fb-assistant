@@ -362,6 +362,17 @@ def _espn_check(c: Dict[str, Any], espn_samples, market: Optional[str] = None) -
     return c
 
 
+def pp_value(p_win: float, espn_p: Optional[float], market_side: float, market: Optional[str]) -> float:
+    """A PrizePicks pick's chance for value math (pairs, entries): the smaller
+    of our blended chance and ESPN's own blend with the books -- both sources
+    must find the value, as sportsbook bets need ESPN to confirm the edge
+    (2026-10-08). The blended chance alone when ESPN has no projection or the
+    market is ESPN_CHECK_EXEMPT. The shown "to win" stays p_win."""
+    if espn_p is None or market in ESPN_CHECK_EXEMPT:
+        return p_win
+    return min(p_win, bm.blend(espn_p, market_side))
+
+
 def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn_samples=None,
                     sides=frozenset({"over", "under"}), market: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """Better side of PrizePicks' line, priced like any other offer. The
@@ -380,14 +391,19 @@ def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn
     over = (p_over >= p_under and "over" in sides) or "under" not in sides
     market_side = market_over if over else max(0.0, 1 - market_over - push)
     espn_p = _side_prob(espn_samples, "More" if over else "Less", pp_line) if espn_samples is not None else None
+    p_win = p_over if over else p_under
     return {
         "espn_prob": round(espn_p, 4) if espn_p is not None else None,
+        # What pairs and entries are priced with: the smaller of Sleeper's and
+        # ESPN's blend with the books (pp_value), so a ticket needs both to
+        # find the value -- the PrizePicks form of the sportsbook rule.
+        "p_value": round(pp_value(p_win, espn_p, market_side, market), 4),
         # None when ESPN has no projection; pairs skip legs where it's False.
         "espn_agrees": ((espn_p > market_side) if espn_p is not None and market not in ESPN_CHECK_EXEMPT
                         else None),
         "line": pp_line,
         "side": "More" if over else "Less",
-        "p_win": round(p_over if over else p_under, 4),
+        "p_win": round(p_win, 4),
         "p_push": round(push, 4),
         "model_prob": round(model_over if over else max(0.0, 1 - model_over - push), 4),
         "market_prob": round(market_side, 4),
@@ -401,16 +417,23 @@ def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, 
     leg_correlation). PrizePicks requires players from at least two
     different teams, so same-team pairs (e.g. a QB and his receiver) and the
     same player twice are never built. Legs ESPN's projection disagrees with
-    are left out."""
-    legs = [p for p in props if p.get("prizepicks") and p["prizepicks"]["p_win"] >= 0.5
+    are left out, and every leg is priced at its value chance (pp_value: the
+    smaller of our blend and ESPN's), so pairs and the entries built from
+    these legs need both sources to find the value."""
+    def value(p):
+        leg = p["prizepicks"]
+        return leg.get("p_value", leg["p_win"])
+
+    legs = [p for p in props if p.get("prizepicks") and value(p) >= 0.5
             and p["prizepicks"].get("espn_agrees") is not False]
-    legs.sort(key=lambda p: -p["prizepicks"]["p_win"])
+    legs.sort(key=lambda p: -value(p))
 
     def leg_view(p):
+        # p_win here is the value chance (both sources); p_blend is our blend alone.
         return {"player": p["player"], "team": p.get("team"), "game": p.get("game"), "kickoff": p.get("kickoff"),
                 "market": p["market"], "market_label": p["market_label"], "projection": p["projection"],
                 "espn_projection": p.get("espn_projection"),
-                **p["prizepicks"]}
+                **p["prizepicks"], "p_win": value(p), "p_blend": p["prizepicks"]["p_win"]}
 
     pairs = []
     for i, a in enumerate(legs):
@@ -420,7 +443,7 @@ def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, 
             same_game = a.get("game") == b.get("game")
             rho = bm.leg_correlation(a["market"], b["market"], same_game, a.get("team") == b.get("team"))
             sign = (1 if a["prizepicks"]["side"] == "More" else -1) * (1 if b["prizepicks"]["side"] == "More" else -1)
-            pa, pb = a["prizepicks"]["p_win"], b["prizepicks"]["p_win"]
+            pa, pb = value(a), value(b)
             joint = bm.joint_prob(pa, pb, rho * sign)
             priced = bm.price_offer(joint, bm.POWER_PLAY_2_PRICE)
             pairs.append({"legs": [leg_view(a), leg_view(b)], "same_game": same_game,
@@ -475,7 +498,9 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
                 continue
             p_mod = float((samples >= 1).mean())
             ep = float((esamp >= 1).mean()) if esamp is not None else None
-            leg = {"line": 0.5, "side": "More", "p_win": round(bm.blend(p_mod, p_mkt), 4), "p_push": 0.0,
+            p_td = bm.blend(p_mod, p_mkt)
+            leg = {"line": 0.5, "side": "More", "p_win": round(p_td, 4), "p_push": 0.0,
+                   "p_value": round(pp_value(p_td, ep, p_mkt, market), 4),
                    "model_prob": round(p_mod, 4), "market_prob": round(p_mkt, 4), "book_line": None,
                    "espn_prob": round(ep, 4) if ep is not None else None,
                    "espn_agrees": (ep > p_mkt) if ep is not None else None}

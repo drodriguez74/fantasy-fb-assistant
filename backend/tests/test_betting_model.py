@@ -1,5 +1,6 @@
 """betting_model math and betting_service pricing (no network)."""
 import math
+import pytest
 
 import numpy as np
 
@@ -372,3 +373,23 @@ def test_espn_must_confirm_the_edge_for_units():
     strong = np.concatenate([np.full(700, 30.0), np.full(300, 40.0)])  # ESPN 70% Under: its own edge
     out = _espn_check(bet, strong, "player_rush_yds")
     assert out["espn_confirms"] and 0 < out["units"] <= 2.5
+
+
+def test_prizepicks_value_needs_both_sources():
+    from app.services.betting_service import pp_value, prizepicks_pairs
+    assert pp_value(0.62, 0.50, 0.55, "player_receptions") == pytest.approx(bm.blend(0.50, 0.55))   # ESPN sets the value
+    assert pp_value(0.62, 0.80, 0.55, "player_receptions") == 0.62                                 # ours is the smaller
+    assert pp_value(0.62, 0.40, 0.55, "player_pass_yds") == 0.62                                   # passing: exempt
+    assert pp_value(0.62, None, 0.55, "player_receptions") == 0.62
+
+    def prop(player, team, p_win, p_value):
+        return {"player": player, "team": team, "game": f"{team} game", "market": "player_receptions",
+                "market_label": "Receptions", "projection": 3.0,
+                "prizepicks": {"line": 2.5, "side": "Less", "p_win": p_win, "p_value": p_value, "p_push": 0.0,
+                               "model_prob": p_win, "market_prob": 0.5, "book_line": 2.5, "espn_agrees": True}}
+    out = prizepicks_pairs([prop("A", "KC", 0.62, 0.62), prop("B", "SF", 0.64, 0.49), prop("C", "DAL", 0.60, 0.58)])
+    used = {l["player"] for pair in out["pairs"] for l in pair["legs"]}
+    assert "B" not in used                       # its value chance (ESPN's) is under 50%
+    pair = out["pairs"][0]
+    assert pair["joint_prob"] == pytest.approx(0.62 * 0.58, abs=1e-4)
+    assert {l["p_blend"] for l in pair["legs"]} == {0.62, 0.60}
