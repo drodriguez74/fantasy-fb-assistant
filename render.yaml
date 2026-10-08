@@ -24,6 +24,10 @@ services:
         sync: false
       - key: ODDS_API_KEY
         sync: false
+      # Sportsbooks the founder can bet at (Florida: Hard Rock Bet only); the
+      # app defaults to this too (config.BETTING_MY_BOOKS).
+      - key: BETTING_MY_BOOKS
+        value: hardrockbet
       - key: CORS_ORIGINS
         value: https://fantasy-fb-assistant.vercel.app,http://localhost:3001,http://127.0.0.1:3001
       - key: SUPABASE_URL

@@ -44,7 +44,7 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 **Market.** Each book's two-way prices are de-vigged (multiplicative) and the median taken across DraftKings, FanDuel, Hard Rock Bet, BetMGM, ESPN BET, BetRivers and Bally Bet (seven books since 2026-10-08; up to 10 cost the same credits as one -- verified: 9 requested, 2 credits). This is the anchor: 70% of every estimate.
 
-**Your books.** `BETTING_MY_BOOKS` (comma-separated Odds API keys, e.g. `hardrockbet` in Florida, where it's the only legal online sportsbook) limits units to books the user can bet at; every book still feeds the consensus, and a pick shows the best price at the user's books (`_best`, `_playable`). Unset = all books.
+**Your books.** `BETTING_MY_BOOKS` (comma-separated Odds API keys, e.g. `hardrockbet` in Florida, where it's the only legal online sportsbook) limits units to books the user can bet at; every book still feeds the consensus, and a pick shows the best price at the user's books (`_best`, `_playable`). Defaults to `hardrockbet` (founder-confirmed 2026-10-08: Hard Rock Bet and PrizePicks only); "" = all books. With one book, a sportsbook bet means Hard Rock's price beats the seven-book consensus by the EV bar -- fewer bets, but ones that can actually be placed (week 5: 2 bets + 1 fill).
 
 **Player model (30%).** A two-level Monte Carlo of Sleeper's weekly projected stat line, 20,000 draws:
 1. The true mean is drawn around the projection (SD 30% of it).

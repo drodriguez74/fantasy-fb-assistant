@@ -40,3 +40,10 @@ def override_db_dependency(test_db_session):
     app.dependency_overrides[get_db] = override_get_db
     yield
     app.dependency_overrides.clear()
+
+@pytest.fixture(autouse=True)
+def all_books_playable(monkeypatch):
+    """Tests price every book as playable unless they set BETTING_MY_BOOKS
+    themselves (the app's default is the founder's Florida book)."""
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "BETTING_MY_BOOKS", None, raising=False)
