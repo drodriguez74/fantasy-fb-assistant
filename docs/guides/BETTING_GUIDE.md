@@ -65,6 +65,16 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 | `88b0598` | Far PrizePicks lines priced along the books' distribution (Irving promo bug) |
 | `219dd84` | My entries: team-winner, spread and game-total picks |
 
+### Timeline, session 21 (2026-10-08/09)
+
+| Commit | Change |
+|---|---|
+| `ad21bd0` | Player search (every sportsbook line; the whole uploaded PrizePicks board via `board_lines`) |
+| `954ec06` | Shows: radio/podcast picks tracked by show (`analyst_picks`), "On air" notes |
+| `54c5e1d`, `50600cb` | Bets listed once (the card); price line wraps on phones |
+| `e2b3d57`, `56e8591` | Creative director + UX review pass: tab order, Watch list, Shows verdicts, phone tabs, Audit sport filter, grading 3h after kickoff, PrizePicks staleness + order, My entries headline |
+| `a8414d0` | Weekly tracking: This week next to Season; hit/miss lists one week at a time |
+
 ---
 
 ## 2. The method (current)
@@ -338,6 +348,10 @@ The prop correlations were measured against projection-centered lines, not real 
 
 **Shows (radio/podcast picks)**
 - Keep importing episodes (founder drops transcripts in `backend/transcripts/`). Judge a show only on graded picks; 300+ before any held-out test. Note: The College Draft's "North Dakota State +3.5" (2026-10-08) had NDSU a 3.5-point favorite on our board -- either a 7-point flip or the host had the side wrong.
+
+**Bets page (review leftovers, 2026-10-09; not built)**
+- Sticky tab bar (would need to coexist with the app header); Edit on pending entries; a "last week 4-2 · +3.1u · beat the close" ledger line in the card; one big edge number per correlated stack; the disclaimer as one muted line; Delete into a menu; a "dropped to watch" status in the Audit when a bet later fell to the watch list.
+- Every push redeploys the API until the Render Blueprint is synced (founder action 5), so the live page shows "Network Error" for about a minute after any push. Retry buttons cover Shows and the Audit; the board itself needs Refresh.
 
 **Engineering candidates (not decided)**
 10. Passing-yards guard: a passing bet can be single-source (ESPN is exempt there) -- week 5 had Kyler Murray Under 213.5 at 3u with Sleeper 166 vs ESPN 231. Proposed: cap passing units at 1u when ESPN projects the other side of the line.

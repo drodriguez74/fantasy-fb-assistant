@@ -1,31 +1,45 @@
-# START HERE — Session 21 (2026-10-08 → 10-09): player search + Shows (radio/podcast picks)
+# START HERE — Session 21 wrap (2026-10-08 → 10-09): player search, Shows, Bets review pass, weekly tracking
 
-> Session 20's wrap below is still the main summary; this adds two features.
+> Read this, then `docs/guides/BETTING_GUIDE.md` (section 6 the page, section 8 open items). Session 20's wrap below still holds for the model.
 
 ## State right now
-- Pushed to `main`. Backend **272 tests pass**; frontend build + lint clean on the touched files.
+- Everything pushed to `main` (last code commit `a8414d0`). Backend **272 tests pass**; frontend build + lint clean on the touched files.
 - **Migration `8a1d317921b0` (analyst_picks) applied to Supabase.** Alembic head = `8a1d317921b0`.
-- Model version unchanged (`2026-10-08.6`): nothing here changes a price.
+- Model version unchanged (`2026-10-08.6`): nothing this session changes a price.
+- **Week 5 so far (after TB @ DAL):** Track record bets 3-1, +1.06u. Shows: Fantasy Football Morning 2-1 on bets, The Fantasy Alarm Show 1-2. My entries 1-2, +$32.19 (the Pickens/Irving promo won). Everything else grades Sunday/Monday.
+- **The founder's live session expired** during the last check (redirected to `/auth`); Claude can't sign in, so the final phone pass of the week-tracking build is unverified. Ask the founder to sign in and look at Track record, My entries and Shows on a phone.
 
-## What was built
-- **Player search** (`ad21bd0`): Play tab searches every priced line (All lines stopped at 60); PrizePicks tab searches the whole uploaded board via `betting_service.board_lines` (needs Render's deploy), results add to the tray.
-- **Shows tab** (`analyst_picks.py`, `scripts/import_analyst_picks.py`, `ShowPicks.tsx`, `showTypes.ts`): one section per show with its record, by-host records, model-agreed vs not, and its numbers vs our board's; an "On air" note on board cards. Tracked only, never priced.
-- **Loaded so far (30 picks):** The Fantasy Alarm Show (10/7, NFL, 7), Fantasy Football Morning (10/8, NFL, 9 incl. 2 leans), The College Draft (10/8, college week 6, 14 incl. 1 lean). JSON files + transcripts in `backend/transcripts/` (gitignored, local only).
+## What was built (commits, oldest → newest)
+| Commit | What |
+|---|---|
+| `ad21bd0` | **Player search** on the sportsbook list and the PrizePicks tab; `betting_service.board_lines` sends every priced line of an uploaded board |
+| `954ec06` | **Shows tab** (`analyst_picks` table + migration, `analyst_picks.py`, `scripts/import_analyst_picks.py`, `ShowPicks.tsx`, `showTypes.ts`); "On air" note on board cards |
+| `54c5e1d`, `50600cb` | Bets listed once (the card; Play used to repeat them -- "looks like a bug"); price line wraps on phones |
+| `e2b3d57`, `56e8591` | **Review pass** (creative director + UX): tab order, "Play" → Watch list, Shows verdicts, phone tab grid, Audit sport filter, grading 3h after kickoff, PrizePicks staleness warning + order, My entries headline, retry buttons |
+| `b30ee96` | Untracked two PrizePicks board saves swept into `e2b3d57` by a blanket `git add` (still in that commit's history) |
+| `a8414d0` | **Weekly tracking**: This week next to Season (Track record, My entries, each show); hit/miss lists one week at a time (week chips) |
 
-## Bets review pass (creative director + UX, 2026-10-09; `e2b3d57`, `56e8591`)
-- Tabs: PrizePicks (default) · Shows · Watch list (was Play) · My entries · Track record; college Shows · Watch list · Track record. Phone grid labels.
-- Shows: per-pick verdict vs the live board (`showTypes.verdictFor`): Tail / Fade / Lean / Pass / Can't check / Started; graded folded; hit rate hidden under 20 graded.
-- Fixed: NFL Audit listed college lines (audit `sport` param); bets graded 5h after kickoff (now 3h + ESPN final); duplicate bets list (`54c5e1d`); watch-count mismatch; phone tab scrollbar; stack text cut off on phones.
-- Not built (reviewers' suggestions, open): sticky tab bar; Edit on pending entries; a "last week 4-2 · +3.1u · beat the close" line in the card; one big number (edge) per stack; smaller disclaimer line; Delete into a menu; "dropped to watch" status in the Audit for a bet that later fell to watch.
-- Gotcha: every push redeploys Render (Blueprint `buildFilter` not synced), so the live page briefly shows "Network Error" after a push. Retry buttons now cover Shows and the Audit.
+## Decisions (full table: BETTING_GUIDE section 3)
+- **Shows are tracked, never priced.** A show earns weight only via a held-out test on 300+ graded picks. Transcripts come from the founder (SiriusXM can't be downloaded); picks are extracted by hand in a Claude Code session (no AI credits).
+- **Show verdicts** (`showTypes.verdictFor`, live board, first rule wins): Tail (our card bets the same side) / Fade (our card bets the *other* side -- never just because the model leans away) / Lean / Pass (market-priced coin flip, or model against) / Can't check / Started.
+- **Tab order** = act → monitor → review: PrizePicks (default) · Shows · Watch list · My entries · Track record; college Shows · Watch list · Track record.
+- **Weeks** = the NFL betting week (Thu–Mon) for everything, college included. Season-wide views stay season-wide.
 
 ## How to add an episode
-Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names; `week` is the NFL betting week, college included), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped.
+Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names; `week` is the NFL betting week, college included), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped. Loaded so far (30): The Fantasy Alarm Show (10/7), Fantasy Football Morning (10/8), The College Draft (10/8, college, filed under NFL week 5).
 
 ## Findings worth remembering
-- Of 22 picks with a model view, only Brawley's Tyler Warren Under 51.5 matched a real model lean (+3.1%, watch). Everything else was a coin flip at the market.
-- The useful part so far is context: the show explained the board's +15% Jalon Daniels rushing Under as a stale projection (rookie QB, ran 55 in his first start), which the engine had already refused to bet.
+- Of the show picks with a model view, only Brawley's Tyler Warren Under 51.5 matches a real model lean (56% vs books 50.5%; a bet at -119 or better, Hard Rock was -120). Everything else is a coin flip at the market or the model is against it. The shows' value so far is context, e.g. explaining the board's +15% Jalon Daniels rushing Under as a stale projection; that Over (Hansen's lean) lost with 23 yards.
 - College Draft: Emory Hunt self-reports 30-26-1. His NDSU "+3.5" had NDSU a 3.5-pt favorite on our board -- flagged, recorded as said.
+
+## Open items
+**Founder:** sign in again and check the week-tracking build on a phone; upload a fresh PrizePicks board (two saves from 10/8 23:28 sit in `backend/` -- `nfl-oct8.json`, `projections.json`); decide whether to rewrite history to drop those two boards from `e2b3d57` (no secrets, ~7 MB each); sync the Render Blueprint (every push currently redeploys the API, so the live page shows "Network Error" for a minute after any push). Earlier items (FL stack payouts, $30 tier, AI credits) are in BETTING_GUIDE section 8.
+**Reviewers' suggestions not built:** sticky tab bar; Edit on pending entries; a "last week 4-2 · +3.1u · beat the close" line in the card; one big edge number per stack; smaller disclaimer line; Delete into a menu; "dropped to watch" status in the Audit.
+
+## Gotchas (new)
+- **Never `git add -A` in this repo without reading `git status`**: the founder saves PrizePicks boards into `backend/`. `.gitignore` now covers `backend/projections*.json` and `backend/nfl-*.json`, but other names won't be.
+- Live checks: Claude can't sign in for the founder (credentials). If the session expires, stop and ask.
+- Chrome's JS tool times out at 45s: poll in short loops when Render is cold.
 
 ---
 
