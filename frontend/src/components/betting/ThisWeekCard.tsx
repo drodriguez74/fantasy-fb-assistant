@@ -3,6 +3,7 @@
 // for. Everything else on the page is the evidence behind it.
 import { type ReactNode, useState } from 'react'
 import { type Board, type BoardRow, dollars } from './betTypes'
+import { MY_BOOK } from './BetCard'
 import { rankEntries, type EntriesState } from './prizePicksEntriesData'
 
 const whole = (p: number) => `${Math.round(p * 100)}%`
@@ -47,7 +48,7 @@ export function ThisWeekCard({
   entries?: EntriesState
   bankroll: number | null
   setBankroll: (v: number | null) => void
-  onOpen: (tab: 'play' | 'prizepicks') => void
+  onOpen: (tab: 'prizepicks') => void
 }) {
   const [showAll, setShowAll] = useState(false)
   // Biggest stakes first. This is the only list of the bets.
@@ -81,7 +82,9 @@ export function ThisWeekCard({
               ? 'No lines available right now.'
               : `${real ? `${real} bet${real === 1 ? '' : 's'}` : 'No bets clear the bar'}${
                   fills ? ` + ${fills} best available` : ''
-                } · ${totalUnits}u${dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''} total`}
+                } · ${totalUnits}u${dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''} total${
+                  bets.length && bets.every((r) => r.book === MY_BOOK) ? ' · all at Hard Rock Bet' : ''
+                }`}
             {watchText ? ` · ${watchText} on the watch list` : ''}
           </p>
         </div>

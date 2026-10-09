@@ -22,12 +22,24 @@ function SizeChip({ row, bankroll }: { row: BoardRow; bankroll: number | null })
       </div>
     )
   }
+  // Watch: show what we're watching for -- the price that would make it a bet.
+  if (row.watch && row.bet_at != null) {
+    return (
+      <div className="w-14 shrink-0 rounded-md border border-hairline px-1 py-1.5 text-center text-muted">
+        <div className="text-xs leading-none">Bet at</div>
+        <div className="stat-nums text-sm font-semibold text-body mt-1 leading-none">{odds(row.bet_at)}</div>
+      </div>
+    )
+  }
   return (
     <div className="w-14 shrink-0 rounded-md border border-hairline px-1 py-2 text-center text-muted">
-      <div className="stat-nums text-xs uppercase tracking-wide">{row.watch ? 'Watch' : 'Pass'}</div>
+      <div className="text-xs">{row.watch ? 'Watch' : 'Pass'}</div>
     </div>
   )
 }
+
+// The founder's book: named once on the page, so rows name a book only when it's another one.
+export const MY_BOOK = 'Hard Rock Bet'
 
 function pickText(row: BoardRow): string {
   if (row.market === 'player_anytime_td') return 'Anytime TD'
@@ -107,7 +119,8 @@ export function BetCard({
             <span className="font-semibold">{pickText(row)}</span> <span className="text-muted">{what}</span>
           </p>
           <p className="stat-nums text-xs text-muted break-words mt-0.5">
-            {odds(row.price)} at {row.book}
+            {odds(row.price)}
+            {row.book !== MY_BOOK && ` at ${row.book}`}
             {row.type === 'player_prop' ? ` · ${row.game}` : ''}
             {when && ` · ${when}`}
           </p>
@@ -133,6 +146,9 @@ export function BetCard({
               Edge {signedPct(row.ev)}
             </span>
             <span className="text-muted">Win chance {pct(row.p_win)}</span>
+            <span className="text-muted">
+              {odds(row.price)} at {row.book}
+            </span>
             {isBet && !row.card_fill && row.min_price != null && (
               <span className="text-muted">Good down to {odds(row.min_price)}</span>
             )}

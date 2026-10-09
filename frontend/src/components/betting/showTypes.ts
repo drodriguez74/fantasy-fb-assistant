@@ -110,25 +110,6 @@ export function showPickText(p: ShowPick): string {
   return p.price != null ? `${text} (${odds(p.price)})` : text
 }
 
-/** What our board said about the pick, in one sentence. */
-export function boardView(p: ShowPick): string {
-  const s = p.snapshot
-  if (!s) return 'Not on our board.'
-  if (p.market === 'team_win') return `No moneyline on our board (spread ${s.board_line}).`
-  if (s.far_line) return `Our board priced ${s.board_line}; too far from this line to compare.`
-  const lean = s.agrees === null ? 'market-only line, no lean' : s.agrees ? 'our model leans this way' : 'our model leans the other way'
-  const price = s.board_price != null ? ` (${odds(s.board_price)})` : ''
-  return `Our board: ${s.board_line}${price} · ${pct(s.our_prob)} for this side, books ${pct(s.books_prob)} · ${lean}`
-}
-
-/** How the show's number compares with our board's when imported (stated lines only). */
-export function lineNote(p: ShowPick): string | null {
-  const v = p.snapshot?.line_value
-  if (!p.line_stated || v == null || v === 0 || p.snapshot?.far_line) return null
-  const pts = `${Math.abs(v)} pt${Math.abs(v) === 1 ? '' : 's'}`
-  return v > 0 ? `The show's number is ${pts} better than our board's` : `The show's number is ${pts} worse than our board's`
-}
-
 const sameTime = (a?: string | null, b?: string | null) => Boolean(a && b) && new Date(a!).getTime() === new Date(b!).getTime()
 const nameKey = (s?: string | null) => (s ?? '').toLowerCase().replace(/[^a-z]/g, '')
 
@@ -144,4 +125,132 @@ export function onAirFor(row: BoardRow, shows: Show[] | null): ShowPick[] {
       return row.market === 'total' && p.market === 'game_total' && teams.includes(p.team ?? '')
     }),
   )
+}
+
+
+// ---- "Should I tail it?" -------------------------------------------------
+// Each pending pick is checked against the live board (falling back to the
+// snapshot taken at import) and phrased from the show's side of the bet.
+// Order of the rules matters: the first that applies is the verdict.
+
+export type VerdictKey = 'tail' | 'fade' | 'lean' | 'pass' | 'unknown' | 'started' | 'won' | 'lost' | 'push'
+
+export interface Verdict {
+  key: VerdictKey
+  label: string
+  reason: string
+  // Our chance for the show's side (big number), when we can price it.
+  ours: number | null
+  // How today's line compares with the show's (stated lines only).
+  lineNote: string | null
+}
+
+// Upcoming picks sort by what to do about them.
+export const VERDICT_ORDER: VerdictKey[] = ['tail', 'fade', 'lean', 'pass', 'unknown', 'started', 'won', 'lost', 'push']
+
+const NO_LEAN = 0.002 // our chance within this of the books' = the market's own price
+const FAR_LINE = 0.15 // a prop line this far (share of the line) from ours isn't the same bet
+
+function signed(n: number) {
+  return n === 0 ? 'PK' : n > 0 ? `+${n}` : `${n}`
+}
+
+/** The board row for a show pick: same game (kickoff) and the same market. */
+export function liveRowFor(p: ShowPick, rows: BoardRow[]): BoardRow | undefined {
+  return rows.find((r) => {
+    if (!sameTime(p.kickoff, r.kickoff)) return false
+    if (p.market === 'team_spread') return r.market === 'spread' && [r.home, r.away].includes(p.player)
+    if (p.market === 'game_total') return r.market === 'total' && [r.home, r.away].includes(p.team ?? '')
+    return r.type === 'player_prop' && r.market === p.market && nameKey(r.player) === nameKey(p.player)
+  })
+}
+
+/** The live row restated on the show's side: same side?, today's line in the show's terms, chances. */
+function onShowSide(p: ShowPick, r: BoardRow) {
+  const more = p.side === 'More'
+  let same: boolean
+  let line: number | null
+  if (p.market === 'team_spread') {
+    const mine = r.side === p.player
+    same = mine === more
+    // The board's "T +h" is More -h on T's margin.
+    line = r.line == null ? null : mine ? -r.line : r.line
+  } else {
+    same = (r.side === 'Over' || r.side === 'Yes') === more
+    line = r.line
+  }
+  const push = r.p_push ?? 0
+  const ours = same ? r.p_win : Math.max(0, 1 - r.p_win - push)
+  const books = r.market_prob == null ? null : same ? r.market_prob : Math.max(0, 1 - r.market_prob - push)
+  let text: string
+  if (p.market === 'team_spread') text = line == null ? p.player : `${p.player} ${signed(more ? -line : line)}`
+  else if (p.market === 'player_anytime_td') text = `${p.player} anytime TD`
+  else text = `${more ? 'Over' : 'Under'} ${line}`
+  return { same, line, ours, books, text: same ? `${text} (${odds(r.price)})` : text }
+}
+
+export function verdictFor(p: ShowPick, rows: BoardRow[], now = Date.now()): Verdict {
+  const base = { ours: null, lineNote: null }
+  if (p.status === 'won') return { ...base, key: 'won', label: 'Won', reason: p.actual != null ? `Final: ${p.actual}` : 'Final' }
+  if (p.status === 'lost') return { ...base, key: 'lost', label: 'Lost', reason: p.actual != null ? `Final: ${p.actual}` : 'Final' }
+  if (p.status === 'push' || p.status === 'void')
+    return { ...base, key: 'push', label: p.status === 'push' ? 'Push' : 'Void', reason: p.status === 'void' ? "Didn't play: no action." : 'Landed on the line.' }
+  if (p.kickoff && new Date(p.kickoff).getTime() <= now)
+    return { ...base, key: 'started', label: 'Started', reason: 'Game under way; it grades after the final.' }
+  if (p.market === 'team_win')
+    return { ...base, key: 'unknown', label: "Can't check", reason: 'No moneyline on our board, so this is their read only.' }
+
+  const r = liveRowFor(p, rows)
+  if (r) {
+    const v = onShowSide(p, r)
+    let lineNote: string | null = null
+    if (p.line_stated && v.line != null && v.line !== p.line && p.market !== 'player_anytime_td') {
+      const todayBetter = p.side === 'More' ? v.line < p.line : v.line > p.line
+      const n = Math.abs(v.line - p.line)
+      lineNote = todayBetter
+        ? `Today's line is ${n} pt${n === 1 ? '' : 's'} better than theirs.`
+        : `They had a better number; today's line is ${n} pt${n === 1 ? '' : 's'} worse.`
+    }
+    if (p.market.startsWith('player_') && v.line != null && Math.abs(v.line - p.line) > FAR_LINE * Math.max(Math.abs(p.line), 1))
+      return { ...base, key: 'unknown', label: "Can't check", reason: `Our board only has ${v.text}, too far from their line to compare.` }
+    if (v.same && r.units > 0)
+      return {
+        key: 'tail', label: `Tail · ${r.units}u`, ours: v.ours, lineNote,
+        reason: `On our card: ${v.text} at ${r.book}.${r.min_price != null ? ` Good down to ${odds(r.min_price)}.` : ''}`,
+      }
+    if (!v.same && r.units > 0)
+      return {
+        key: 'fade', label: `Fade · ${r.units}u`, ours: v.ours, lineNote,
+        reason: `We bet the other side: ${r.side} ${r.market === 'spread' && r.line != null ? signed(r.line) : r.line ?? ''} (${odds(r.price)}), ${r.units}u on our card.`,
+      }
+    if (v.books != null && v.ours - v.books >= NO_LEAN)
+      return {
+        key: 'lean', label: 'Lean', ours: v.ours, lineNote,
+        reason: `Our model agrees (${pct(v.ours)} vs books ${pct(v.books)}) but the edge is under the bar.${
+          v.same && r.bet_at != null ? ` It's a bet at ${odds(r.bet_at)} or better.` : ''
+        }`,
+      }
+    if (v.books == null || Math.abs(v.ours - v.books) < NO_LEAN)
+      return { key: 'pass', label: 'Pass', ours: v.ours, lineNote, reason: `Priced at the market (${v.text}): a coin flip minus the vig.` }
+    return { key: 'pass', label: 'Pass', ours: v.ours, lineNote, reason: `Our model leans the other way: ${pct(v.ours)} for this side, books ${pct(v.books)}.` }
+  }
+
+  // No live line (board rebuilt without it): what we said when it was imported.
+  const s = p.snapshot
+  if (!s || s.far_line || s.our_prob == null)
+    return { ...base, key: 'unknown', label: "Can't check", reason: 'Not on our board, so this is their read only.' }
+  const reason = ' (as of import; the line is off our board now)'
+  if (s.agrees === true) return { ...base, key: 'lean', label: 'Lean', ours: s.our_prob, reason: `Our model agreed${reason}.` }
+  if (s.agrees === false)
+    return { ...base, key: 'pass', label: 'Pass', ours: s.our_prob, reason: `Our model leaned the other way${reason}.` }
+  return { ...base, key: 'pass', label: 'Pass', ours: s.our_prob, reason: `Priced at the market${reason}.` }
+}
+
+/** For graded picks: what our board said before kickoff, from the import snapshot. */
+export function ourReadThen(p: ShowPick): string | null {
+  const s = p.snapshot
+  if (!s || s.far_line || s.agrees === undefined) return null
+  if (s.agrees === true) return 'Our model agreed'
+  if (s.agrees === false) return 'Our model disagreed'
+  return p.market === 'team_win' ? null : 'Market-priced: no lean'
 }

@@ -118,8 +118,17 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
     }
   }
 
+  // Uploads expire at 36h (prizepicks_board); past 12h lines have likely moved.
+  const hours = data?.uploaded_at ? (Date.now() - new Date(data.uploaded_at).getTime()) / 3_600_000 : 0
+  const stale = data?.source === 'upload' && hours >= 12
   return (
     <div className="rounded-lg border border-hairline bg-surface p-4 text-xs text-muted space-y-2">
+      {stale && (
+        <p className="rounded-md border border-warning-700 px-3 py-2 text-sm text-warning-700">
+          This board is {Math.round(hours)} hours old, so PrizePicks' lines have likely moved. Upload a fresh one before you
+          build an entry{hours >= 30 ? `; it stops being used in ${Math.max(0, Math.round(36 - hours))} hours` : ''}.
+        </p>
+      )}
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-body">
           {data?.source === 'upload'
@@ -310,8 +319,8 @@ export function PrizePicksPairs({
       ) : (
         <>
           <CorrelatedStacks stacks={data?.stacks} power={entries.power} ticket={ticket} />
-          <SafestPicks data={mostLikely} ticket={ticket} />
           <PrizePicksEntries state={entries} ticket={ticket} />
+          <SafestPicks data={mostLikely} ticket={ticket} />
           {data && data.pairs.length > 0 && (
             <Fold
               title="2-pick pairs"

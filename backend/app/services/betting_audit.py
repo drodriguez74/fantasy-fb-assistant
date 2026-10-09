@@ -135,7 +135,9 @@ def weeks(user_id: Optional[int]) -> List[Dict[str, int]]:
     return [{"season": s, "week": w} for s, w in sorted(found, reverse=True)]
 
 
-def audit(season: Optional[int], week: Optional[int], user_id: Optional[int]) -> Dict[str, Any]:
+def audit(season: Optional[int], week: Optional[int], user_id: Optional[int], sport: str = "all") -> Dict[str, Any]:
+    """`sport` nfl / cfb / all: college game lines (kind cfb_game) are their own
+    sport; the PrizePicks tickets and the user's entries are NFL."""
     available = weeks(user_id)
     if (season is None or week is None) and available:
         season, week = available[0]["season"], available[0]["week"]
@@ -144,14 +146,19 @@ def audit(season: Optional[int], week: Optional[int], user_id: Optional[int]) ->
         with SessionLocal() as db:
             picks = db.query(BetPick).filter(BetPick.season == season, BetPick.week == week).filter(
                 (BetPick.recommended.is_(True)) | (BetPick.kind == "pp_leg") | (BetPick.confidence == "watch")).all()
+            if sport == "nfl":
+                picks = [p for p in picks if p.kind != "cfb_game"]
+            elif sport == "cfb":
+                picks = [p for p in picks if p.kind == "cfb_game"]
             tickets = db.query(TrackedEntry).filter(TrackedEntry.season == season, TrackedEntry.week == week).all()
             entries = (db.query(UserEntry).filter(UserEntry.user_id == user_id, UserEntry.season == season,
                                                   UserEntry.week == week).all() if user_id is not None else [])
             order = {s: i for i, s in enumerate(SECTIONS)}
             rows = sorted([pick_row(p) for p in picks], key=lambda r: (order[r["section"]], -(r["units"] or 0),
                                                                         -(r["p_win"] or 0)))
-            rows += sorted([ticket_row(t) for t in tickets], key=lambda r: -(r["p_win"] or 0))
-            rows += [entry_row(e) for e in entries]
+            if sport != "cfb":
+                rows += sorted([ticket_row(t) for t in tickets], key=lambda r: -(r["p_win"] or 0))
+                rows += [entry_row(e) for e in entries]
     return {"season": season, "week": week, "weeks": available, "engine_version": bm.ENGINE_VERSION,
             "summary": section_summary(rows), "rows": rows}
 

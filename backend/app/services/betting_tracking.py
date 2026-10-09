@@ -35,8 +35,10 @@ _ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/n
 _ESPN_CFB_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard"
 GAME_KINDS = ("game", "cfb_game")  # NFL / college game lines (same win/loss math)
 PROP_KINDS = ("player_prop", "pp_leg")  # graded from Sleeper stats; pp_leg = a tracked "most likely" PrizePicks pick
-# A game is gradeable once it has surely ended and stats have landed.
-_GRADE_AFTER = timedelta(hours=5)
+# Earliest a game can be over; grading also needs ESPN's final score, so an
+# unfinished game just waits. (Was 5h: picks lagged My entries and Shows,
+# which grade as soon as the game is final.)
+_GRADE_AFTER = timedelta(hours=3)
 
 _STAT_KEYS = {
     "player_pass_yds": ("pass_yd",),

@@ -78,7 +78,7 @@ export function CorrelatedStacks({ stacks, power, ticket }: { stacks?: Stack[]; 
               <ul className="mt-2 space-y-0.5 text-sm">
                 {s.legs.map((l, i) => (
                   <li key={`${l.player}-${l.market}`} className="flex items-baseline gap-2">
-                    <span className="min-w-0 flex-1 truncate text-body">
+                    <span className="min-w-0 flex-1 break-words text-body">
                       {l.player} <span className="text-faint text-xs">{l.team}</span>{' '}
                       <span className="font-medium">{l.side}</span> <span className="stat-nums">{l.line}</span>{' '}
                       <span className="text-muted">{(l.market_label ?? l.market).toString().toLowerCase()}</span>

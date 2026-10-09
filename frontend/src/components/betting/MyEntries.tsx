@@ -367,43 +367,16 @@ export function MyEntries({ players }: { players: string[] }) {
       )}
 
       {r.settled > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            ['Record', r.settled ? `${r.won}-${r.lost}` : '—'],
-            ['Profit', r.settled ? money(r.profit) : '—'],
-            ['ROI', r.roi == null ? '—' : `${r.roi > 0 ? '+' : ''}${(r.roi * 100).toFixed(1)}%`],
-            ['Pending', String(r.pending)],
-          ].map(([label, value]) => (
-            <div key={label} className="rounded-lg border border-hairline bg-surface p-3">
-              <div className="stat-nums text-xs uppercase tracking-wider text-faint">{label}</div>
-              <div className="stat-nums text-lg font-semibold text-body mt-1">{value}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {check.all && (
         <div className="rounded-lg border border-hairline bg-surface p-4">
-          <h3 className="text-sm font-medium text-body mb-1">Whose read was right?</h3>
-          <p className="text-xs text-muted mb-2">
-            For your graded picks: what the books said, what our model said, and how often they actually hit. The second
-            row is picks where the projections disagreed with the books, like a player projected far over his line.
+          <p className="stat-nums text-lg font-semibold text-body">
+            {money(r.profit)} on {money(r.staked)} staked
           </p>
-          <table className="w-full stat-nums text-xs">
-            <thead>
-              <tr className="text-faint text-left">
-                <th className="font-normal py-1">Picks</th>
-                <th className="font-normal text-right">Count</th>
-                <th className="font-normal text-right">Books said</th>
-                <th className="font-normal text-right">Model said</th>
-                <th className="font-normal text-right">Hit</th>
-              </tr>
-            </thead>
-            <tbody>
-              <CheckRow label="All graded picks" c={check.all} />
-              <CheckRow label="Projections disagreed" c={check.projections_disagreed_with_books} />
-            </tbody>
-          </table>
+          <p className="stat-nums text-xs text-muted mt-1">
+            {r.won}-{r.lost} in {r.settled} settled entr{r.settled === 1 ? 'y' : 'ies'}
+            {r.pending ? ` · ${r.pending} pending` : ''}
+            {r.roi != null && ` · ROI ${r.roi > 0 ? '+' : ''}${(r.roi * 100).toFixed(0)}%`}
+            {r.settled < 20 && ' · too few to judge yet'}
+          </p>
         </div>
       )}
 
@@ -460,6 +433,39 @@ export function MyEntries({ players }: { players: string[] }) {
           </div>
         ))}
       </div>
+      {check.all && (
+        <details className="rounded-lg border border-hairline bg-surface p-4">
+          <summary className="cursor-pointer text-sm font-medium text-body">
+            Whose read was right?{' '}
+            <span className="text-xs font-normal text-muted">
+              {check.all.picks} graded pick{check.all.picks === 1 ? '' : 's'}
+              {check.all.picks < 100 ? ', too few to judge' : ''}
+            </span>
+          </summary>
+          <div className="mt-2">
+          <p className="text-xs text-muted mb-2">
+            For your graded picks: what the books said, what our model said, and how often they actually hit. The second
+            row is picks where the projections disagreed with the books, like a player projected far over his line.
+          </p>
+          <table className="w-full stat-nums text-xs">
+            <thead>
+              <tr className="text-faint text-left">
+                <th className="font-normal py-1">Picks</th>
+                <th className="font-normal text-right">Count</th>
+                <th className="font-normal text-right">Books said</th>
+                <th className="font-normal text-right">Model said</th>
+                <th className="font-normal text-right">Hit</th>
+              </tr>
+            </thead>
+            <tbody>
+              <CheckRow label="All graded picks" c={check.all} />
+              <CheckRow label="Projections disagreed" c={check.projections_disagreed_with_books} />
+            </tbody>
+          </table>
+          </div>
+        </details>
+      )}
+
       {error && <p className="text-xs text-warning-700">{error}</p>}
     </div>
   )

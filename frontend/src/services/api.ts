@@ -274,10 +274,11 @@ export const betting = {
   getResults: (sport: 'nfl' | 'cfb' | 'all' = 'all', version: 'all' | 'current' = 'all') =>
     api.get('/betting/results', { params: { sport, version } }),
   // Weekly audit: every recommendation that week and how it did.
-  getAudit: (season?: number, week?: number) => api.get('/betting/audit', { params: { season, week } }),
+  getAudit: (season?: number, week?: number, sport: 'nfl' | 'cfb' | 'all' = 'all') =>
+    api.get('/betting/audit', { params: { season, week, sport } }),
   // Same rows as a CSV download (blob, so the auth header is sent).
-  downloadAudit: (season: number, week: number) =>
-    api.get('/betting/audit', { params: { season, week, format: 'csv' }, responseType: 'blob' }),
+  downloadAudit: (season: number, week: number, sport: 'nfl' | 'cfb' | 'all' = 'all') =>
+    api.get('/betting/audit', { params: { season, week, sport, format: 'csv' }, responseType: 'blob' }),
   // Today's saved PrizePicks board (api.prizepicks.com/projections?league_id=9,
   // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
   // The user's own PrizePicks entries ("My entries"): graded from real stats.

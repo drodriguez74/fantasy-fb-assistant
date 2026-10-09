@@ -18,6 +18,7 @@ interface AuditRow {
   engine_prob: number | null
   units: number | null
   engine_version: string
+  kickoff?: string | null
   close_line?: number | null
   close_books_prob?: number | null
   beat_close?: boolean | null
@@ -47,6 +48,14 @@ interface Audit {
 
 const pct = (p: number | null | undefined) => (p == null ? '—' : `${Math.round(p * 100)}%`)
 
+// Before kickoff the "close" is just the latest line so far, so say so.
+function closeText(r: AuditRow): string {
+  const moved = r.close_line != null && r.close_line !== r.line ? ` (${r.close_line})` : ''
+  const future = r.kickoff != null && new Date(r.kickoff).getTime() > Date.now()
+  if (future) return ` · line ${r.beat_close ? 'moving our way' : 'moving against us'} so far${moved}`
+  return ` · ${r.beat_close ? 'beat' : 'lost to'} the close${moved}`
+}
+
 // Display names for the audit sections (backend names stay stable for the CSV).
 const SECTION_NAME: Record<string, string> = { 'Most likely to win': 'Safest picks' }
 
@@ -61,7 +70,8 @@ const BADGE: Record<string, string> = {
   partial: 'bg-highlight text-accent-ink',
 }
 
-export function BettingAudit() {
+/** One week's recommendations, for one sport ('all' = both, plus the PrizePicks tickets and your entries). */
+export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' }) {
   const [data, setData] = useState<Audit | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -71,11 +81,11 @@ export function BettingAudit() {
     setLoading(true)
     setError('')
     betting
-      .getAudit(season, week)
+      .getAudit(season, week, sport)
       .then((r) => setData(r.data))
       .catch((err) => setError(getErrorMessage(err, "Couldn't load the audit.")))
       .finally(() => setLoading(false))
-  }, [])
+  }, [sport])
 
   useEffect(() => {
     load()
@@ -85,7 +95,7 @@ export function BettingAudit() {
     if (!data?.season || !data.week) return
     setDownloading(true)
     try {
-      const r = await betting.downloadAudit(data.season, data.week)
+      const r = await betting.downloadAudit(data.season, data.week, sport)
       const url = URL.createObjectURL(r.data as Blob)
       const a = document.createElement('a')
       a.href = url
@@ -151,11 +161,12 @@ export function BettingAudit() {
                   {s.pending > 0 && ` · ${s.pending} pending`}
                 </span>
               </div>
-              <ul className="mt-1 divide-y divide-hairline">
-                {data.rows
-                  .filter((r) => r.section === section)
-                  .map((r, i) => (
-                    <li key={i} className={`py-1.5 pl-2 border-l-2 ${ROW_TONE[r.status] ?? 'border-l-hairline'}`}>
+              {(() => {
+                const rows = data.rows.filter((r) => r.section === section)
+                const tracked = rows.filter((r) => r.engine_version !== 'pre-versioning')
+                const old = rows.filter((r) => r.engine_version === 'pre-versioning')
+                const item = (r: AuditRow, key: string) => (
+                    <li key={key} className={`py-1.5 pl-2 border-l-2 ${ROW_TONE[r.status] ?? 'border-l-hairline'}`}>
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs text-body min-w-0 break-words">
                           {r.pick}
@@ -181,15 +192,27 @@ export function BettingAudit() {
                         {r.units ? ` · ${r.units}u` : ''}
                         {r.book && ` · ${r.book}`}
                         {r.actual != null && ` · actual ${r.actual}`}
-                        {r.beat_close != null &&
-                          ` · ${r.beat_close ? 'beat' : 'lost to'} the close${r.close_line != null && r.close_line !== r.line ? ` (${r.close_line})` : ''}`}
+                        {r.beat_close != null && closeText(r)}
                         {r.profit != null && r.status !== 'pending' &&
                           ` · ${r.profit > 0 ? '+' : ''}${r.profit_unit === '$' ? `$${r.profit}` : `${r.profit}${r.profit_unit === 'u' ? 'u' : 'x'}`}`}
                         {` · ${r.engine_version === 'pre-versioning' ? 'v0 (before tracking)' : `model ${r.engine_version}`}`}
                       </p>
                     </li>
-                  ))}
-              </ul>
+                )
+                return (
+                  <>
+                    <ul className="mt-1 divide-y divide-hairline">{tracked.map((r, i) => item(r, `t${i}`))}</ul>
+                    {old.length > 0 && (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs text-muted py-1">
+                          Before tracking began ({old.length}): recorded by the earlier model, kept for the record
+                        </summary>
+                        <ul className="divide-y divide-hairline">{old.map((r, i) => item(r, `o${i}`))}</ul>
+                      </details>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           ))}
         </div>

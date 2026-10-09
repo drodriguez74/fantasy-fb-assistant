@@ -60,6 +60,7 @@ async def get_betting_audit(
     season: Optional[int] = Query(None, description="Season (default: the latest week with tracked picks)"),
     week: Optional[int] = Query(None, description="NFL week (default: the latest week with tracked picks)"),
     format: str = Query("json", pattern="^(json|csv)$"),
+    sport: str = Query("all", pattern="^(nfl|cfb|all)$", description="nfl, cfb (college) or all"),
     current_user: User = Depends(get_current_active_user),
 ):
     """Every recommendation made in one week -- bets, Best available fills,
@@ -78,7 +79,7 @@ async def get_betting_audit(
             await grade()
         except Exception as e:  # noqa: BLE001 - grading retries next time; the audit still shows
             logger.warning("Audit grading skipped: %s", type(e).__name__)
-    data = await asyncio.to_thread(betting_audit.audit, season, week, current_user.id)
+    data = await asyncio.to_thread(betting_audit.audit, season, week, current_user.id, sport)
     if format == "csv":
         name = f"bets-audit-{data['season']}-week{data['week']}.csv" if data["week"] else "bets-audit.csv"
         return StreamingResponse(iter([betting_audit.to_csv(data["rows"])]), media_type="text/csv",

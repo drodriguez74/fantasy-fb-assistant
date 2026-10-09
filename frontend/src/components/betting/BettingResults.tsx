@@ -222,7 +222,8 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
       {data.clv && data.clv.moved > 0 && (
         <div className="bg-surface rounded-lg border border-hairline p-4 text-sm">
           <p className="text-body">
-            <span className="font-medium">Beat the closing line:</span>{' '}
+            <span className="font-medium">Beat the closing line</span>{' '}
+            <span className="text-muted">(games already started):</span>{' '}
             <span className="stat-nums">
               {data.clv.beat} of {data.clv.moved} ({Math.round((data.clv.beat_rate ?? 0) * 100)}%)
             </span>
@@ -241,7 +242,7 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
         </div>
       )}
 
-      <BettingAudit />
+      <BettingAudit sport={scope === 'all' ? 'all' : sport} />
 
       {graded && (
         <details className="bg-surface rounded-lg border border-hairline p-4 group">

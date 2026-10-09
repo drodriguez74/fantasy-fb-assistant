@@ -19,16 +19,18 @@ import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@hero
 // quarter-Kelly units). Layout: this week's card (the bets) first, then the
 // evidence per tab.
 
-// Tabs follow the weekly loop: what to play (sportsbook), PrizePicks, the
-// entries you placed, what the shows picked, and how the picks did.
-type Tab = 'play' | 'prizepicks' | 'entries' | 'shows' | 'track'
+// Tabs follow the weekly loop (2026-10-09 review): act first (PrizePicks, the
+// shows' picks), then monitor (the watch list), then review (your entries,
+// the model's record). The bets themselves live in This week's best bets.
+type Tab = 'prizepicks' | 'shows' | 'watch' | 'entries' | 'track'
 
-const TAB_LABELS: Record<Tab, string> = {
-  play: 'Play',
-  prizepicks: 'PrizePicks',
-  entries: 'My entries',
-  shows: 'Shows',
-  track: 'Track record',
+const TAB_LABELS: Record<Tab, [string, string]> = {
+  // [full label, phone label]: all five fit at 390px without scrolling.
+  prizepicks: ['PrizePicks', 'PrizePicks'],
+  shows: ['Shows', 'Shows'],
+  watch: ['Watch list', 'Watch'],
+  entries: ['My entries', 'Entries'],
+  track: ['Track record', 'Record'],
 }
 
 // Render's free tier sleeps when idle; the first request can take ~30s.
@@ -83,7 +85,7 @@ export function BettingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sport, setSport] = useState<'nfl' | 'cfb'>('nfl')
-  const [tab, setTab] = useState<Tab>('play')
+  const [tab, setTab] = useState<Tab>('prizepicks')
   // Play tab: sportsbook player props or game lines (college has game lines only).
   const [lines, setLines] = useState<'props' | 'games'>('props')
   const [showInfo, setShowInfo] = useState(false)
@@ -178,10 +180,10 @@ export function BettingPage() {
   }, [sport, college, collegeLoading, collegeError, loadCollege])
 
   // College: game lines + the shared Results (college player props are shelved).
-  const tabs: readonly Tab[] = sport === 'cfb' ? ['play', 'shows', 'track'] : ['play', 'prizepicks', 'entries', 'shows', 'track']
+  const tabs: readonly Tab[] = sport === 'cfb' ? ['shows', 'watch', 'track'] : ['prizepicks', 'shows', 'watch', 'entries', 'track']
   const switchSport = (next: 'nfl' | 'cfb') => {
     setSport(next)
-    setTab('play')
+    setTab(next === 'cfb' ? 'shows' : 'prizepicks')
   }
   const view = sport === 'cfb' ? college : board
   const viewLoading = sport === 'cfb' ? collegeLoading || (!college && !collegeError) : loading
@@ -333,18 +335,20 @@ export function BettingPage() {
 
           <nav
             id="bets-tabs"
-            className="-mb-px flex gap-5 overflow-x-auto border-b border-hairline scroll-mt-4"
+            className={`-mb-px grid sm:flex sm:gap-5 border-b border-hairline scroll-mt-4 ${tabs.length === 5 ? 'grid-cols-5' : 'grid-cols-3'}`}
             aria-label="Bets sections"
           >
             {tabs.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                className={`py-2 px-1 border-b-2 text-sm font-medium whitespace-nowrap ${
+                aria-current={tab === t ? 'page' : undefined}
+                className={`py-2 px-1 border-b-2 text-xs sm:text-sm font-medium whitespace-nowrap text-center ${
                   tab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
                 }`}
               >
-                {TAB_LABELS[t]}
+                <span className="sm:hidden">{TAB_LABELS[t][1]}</span>
+                <span className="hidden sm:inline">{TAB_LABELS[t][0]}</span>
               </button>
             ))}
           </nav>
@@ -352,7 +356,13 @@ export function BettingPage() {
           {tab === 'track' ? (
             <BettingResults sport={sport} />
           ) : tab === 'shows' ? (
-            <ShowPicks shows={showPicks.shows} error={showPicks.error} sport={sport} />
+            <ShowPicks
+              shows={showPicks.shows}
+              error={showPicks.error}
+              onRetry={showPicks.reload}
+              sport={sport}
+              rows={sport === 'cfb' ? college?.game_props ?? [] : [...(board?.player_props ?? []), ...(board?.game_props ?? [])]}
+            />
           ) : tab === 'entries' ? (
             <MyEntries
               players={[
@@ -393,8 +403,8 @@ export function BettingPage() {
                   label="Which lines"
                   value={playView}
                   options={[
-                    ['watch', `Watch list (${watchRows.length})`],
-                    ['all', 'All other lines'],
+                    ['watch', `Close to a bet (${watchRows.length})`],
+                    ['all', 'All lines'],
                   ]}
                   onChange={setPlayView}
                 />
@@ -414,12 +424,10 @@ export function BettingPage() {
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
               {!searching && (
                 <p className="text-xs text-muted">
-                  {betRows.length > 0
-                    ? `The ${betRows.length} ${kind} bet${betRows.length === 1 ? ' is' : 's are'} in This week's best bets above. `
-                    : `No ${kind} clears the bar right now. `}
                   {playView === 'watch'
-                    ? 'These are close to a bet: tap one to get an alert if it gets there.'
+                    ? 'Not bets yet. Tap one to get an alert if its price gets good enough.'
                     : 'Every other line we priced, best first.'}
+                  {betRows.length === 0 && ` No ${kind} clears the bar right now.`}
                 </p>
               )}
               {shown.length === 0 ? (
