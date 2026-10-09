@@ -12,6 +12,13 @@
 - **Shows tab** (`analyst_picks.py`, `scripts/import_analyst_picks.py`, `ShowPicks.tsx`, `showTypes.ts`): one section per show with its record, by-host records, model-agreed vs not, and its numbers vs our board's; an "On air" note on board cards. Tracked only, never priced.
 - **Loaded so far (30 picks):** The Fantasy Alarm Show (10/7, NFL, 7), Fantasy Football Morning (10/8, NFL, 9 incl. 2 leans), The College Draft (10/8, college week 6, 14 incl. 1 lean). JSON files + transcripts in `backend/transcripts/` (gitignored, local only).
 
+## Bets review pass (creative director + UX, 2026-10-09; `e2b3d57`, `56e8591`)
+- Tabs: PrizePicks (default) · Shows · Watch list (was Play) · My entries · Track record; college Shows · Watch list · Track record. Phone grid labels.
+- Shows: per-pick verdict vs the live board (`showTypes.verdictFor`): Tail / Fade / Lean / Pass / Can't check / Started; graded folded; hit rate hidden under 20 graded.
+- Fixed: NFL Audit listed college lines (audit `sport` param); bets graded 5h after kickoff (now 3h + ESPN final); duplicate bets list (`54c5e1d`); watch-count mismatch; phone tab scrollbar; stack text cut off on phones.
+- Not built (reviewers' suggestions, open): sticky tab bar; Edit on pending entries; a "last week 4-2 · +3.1u · beat the close" line in the card; one big number (edge) per stack; smaller disclaimer line; Delete into a menu; "dropped to watch" status in the Audit for a bet that later fell to watch.
+- Gotcha: every push redeploys Render (Blueprint `buildFilter` not synced), so the live page briefly shows "Network Error" after a push. Retry buttons now cover Shows and the Audit.
+
 ## How to add an episode
 Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped.
 
