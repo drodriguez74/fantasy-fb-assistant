@@ -11,7 +11,7 @@ import { MyEntries } from '../components/betting/MyEntries'
 import { PlayerSearch } from '../components/betting/PlayerSearch'
 import { ShowPicks } from '../components/betting/ShowPicks'
 import { onAirFor, useShowPicks } from '../components/betting/showTypes'
-import { type Board, type BoardRow, type WatchAlert, matchesQuery, useBankroll, watchKey } from '../components/betting/betTypes'
+import { type BetWeek, type Board, type BoardRow, type WatchAlert, matchesQuery, useBankroll, watchKey } from '../components/betting/betTypes'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
@@ -98,6 +98,8 @@ export function BettingPage() {
   const [query, setQuery] = useState('')
   // Radio/podcast picks: the Shows tab and the "On air" note on board cards.
   const showPicks = useShowPicks()
+  // The NFL betting week (Thu-Mon) everything is filed under, college included.
+  const currentWeek: BetWeek | null = board?.season && board?.week ? { season: board.season, week: board.week } : null
   const [slow, setSlow] = useState(false)
   const [bankroll, setBankroll] = useBankroll()
   const [alerts, setAlerts] = useState<WatchAlert[]>([])
@@ -354,17 +356,19 @@ export function BettingPage() {
           </nav>
 
           {tab === 'track' ? (
-            <BettingResults sport={sport} />
+            <BettingResults sport={sport} current={currentWeek} />
           ) : tab === 'shows' ? (
             <ShowPicks
               shows={showPicks.shows}
               error={showPicks.error}
               onRetry={showPicks.reload}
+              current={currentWeek}
               sport={sport}
               rows={sport === 'cfb' ? college?.game_props ?? [] : [...(board?.player_props ?? []), ...(board?.game_props ?? [])]}
             />
           ) : tab === 'entries' ? (
             <MyEntries
+              current={currentWeek}
               players={[
                 ...new Set([
                   ...(board?.player_props ?? []).map((r) => r.player ?? ''),

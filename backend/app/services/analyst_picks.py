@@ -20,6 +20,8 @@ Import file shape:
      "picks": [{"analyst", "segment", "player", "team", "game", "market",
                 "side": "More"|"Less", "line", "line_stated", "price",
                 "conviction": "bet"|"lean", "quote"}]}
+`week` is the NFL betting week (Thu-Mon) the picks' games fall in -- for
+college too, as everywhere on the Bets page (college week 6 = NFL week 5).
 Legs use the My entries shape (user_entries.MARKETS): DAL -8.5 is
 team_spread More 8.5 on "DAL"; an Over is game_total More on "TB @ DAL"
 with team = the home team. College picks use the college board's full

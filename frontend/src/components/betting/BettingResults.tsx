@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
 import { ClockIcon } from '@heroicons/react/24/outline'
 import { BettingAudit } from './BettingAudit'
+import type { BetWeek } from './betTypes'
 
 // GET /betting/results -- backend/app/services/betting_tracking.py.
 interface RecordSummary {
@@ -79,13 +80,40 @@ const SIZE_NAME = { high: 'Max', strong: 'Medium', lean: 'Small' } as const
 const signed = (n: number, digits = 2) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`
 const pct = (n: number | null) => (n == null ? '—' : `${(n * 100).toFixed(1)}%`)
 
-function Tile({ label, value, tone }: { label: string; value: string; tone?: 'good' | 'bad' }) {
+const tone = (n: number | null) => ((n ?? 0) > 0 ? 'text-success-700' : (n ?? 0) < 0 ? 'text-danger-700' : 'text-body')
+
+/** This week next to the season: record, units, ROI, pending. */
+function PeriodTable({ rows }: { rows: [string, RecordSummary | undefined][] }) {
   return (
-    <div className="bg-surface rounded-lg border border-hairline p-3">
-      <div className="stat-nums text-xs tracking-wider text-muted uppercase">{label}</div>
-      <div className={`stat-nums text-xl font-semibold mt-1 ${tone === 'good' ? 'text-success-700' : tone === 'bad' ? 'text-danger-700' : 'text-body'}`}>
-        {value}
-      </div>
+    <div className="bg-surface rounded-lg border border-hairline p-4 overflow-x-auto">
+      <table className="w-full stat-nums text-sm">
+        <thead>
+          <tr className="text-xs text-faint text-left">
+            <th className="font-normal pb-1"></th>
+            <th className="font-normal pb-1 text-right">Record</th>
+            <th className="font-normal pb-1 text-right">Units</th>
+            <th className="font-normal pb-1 text-right">ROI</th>
+            <th className="font-normal pb-1 text-right">Pending</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map(([label, r]) => (
+            <tr key={label} className="border-t border-hairline">
+              <td className="py-1.5 text-body font-medium whitespace-nowrap">{label}</td>
+              {r ? (
+                <>
+                  <td className="text-right text-body">{r.won + r.lost + r.push ? recordText(r) : '—'}</td>
+                  <td className={`text-right ${tone(r.units_profit)}`}>{r.won + r.lost ? `${signed(r.units_profit)}u` : '—'}</td>
+                  <td className={`text-right ${tone(r.roi)}`}>{pct(r.roi)}</td>
+                  <td className="text-right text-muted">{r.pending}</td>
+                </>
+              ) : (
+                <td colSpan={4} className="text-right text-faint">no bets</td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
@@ -128,7 +156,7 @@ function SplitTable({ title, rows }: { title: string; rows: [string, RecordSumma
 const SPORT_NAME = { nfl: 'NFL', cfb: 'College' } as const
 
 /** Track record for the current sport (each model is judged on its own), with an "All sports" view. */
-export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
+export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; current: BetWeek | null }) {
   const [scope, setScope] = useState<'sport' | 'all'>('sport')
   const [currentOnly, setCurrentOnly] = useState(false)
   const [data, setData] = useState<Results | null>(null)
@@ -211,12 +239,15 @@ export function BettingResults({ sport }: { sport: 'nfl' | 'cfb' }) {
           noise: judge the model on a few hundred bets and on calibration, not on any single week.
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Tile label="Record" value={recordText(o)} />
-          <Tile label="Units" value={`${signed(o.units_profit)}u`} tone={o.units_profit > 0 ? 'good' : o.units_profit < 0 ? 'bad' : undefined} />
-          <Tile label="ROI" value={pct(o.roi)} tone={(o.roi ?? 0) > 0 ? 'good' : (o.roi ?? 0) < 0 ? 'bad' : undefined} />
-          <Tile label="Pending" value={String(o.pending)} />
-        </div>
+        <PeriodTable
+          rows={[
+            [
+              current ? `This week (${current.week})` : 'This week',
+              current ? data.by_week.find((w) => w.season === current.season && w.week === current.week) : undefined,
+            ],
+            ['Season', o],
+          ]}
+        />
       )}
 
       {data.clv && data.clv.moved > 0 && (

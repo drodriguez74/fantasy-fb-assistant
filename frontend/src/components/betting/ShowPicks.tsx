@@ -3,7 +3,9 @@
 // against the live board and phrased from the show's side. Shows never move
 // a price (backend/app/services/analyst_picks.py); their records are tracked
 // so a show can earn trust over a real sample.
-import type { BoardRow } from './betTypes'
+import { type BetWeek, type BoardRow, sameWeek, weeksOf } from './betTypes'
+import { useState } from 'react'
+import { WeekPicker } from './WeekPicker'
 import {
   type Show,
   type ShowPick,
@@ -36,6 +38,25 @@ const dateLabel = (iso: string) =>
   new Date(`${iso}T12:00:00`).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })
 
 const settled = (r: ShowRecord) => r.won + r.lost
+
+// Bets record for some picks, at a flat 1u at the stated price (-110 when none was given).
+function tallyBets(picks: ShowPick[]): ShowRecord {
+  const bets = picks.filter((p) => p.conviction === 'bet')
+  const won = bets.filter((p) => p.status === 'won')
+  const lost = bets.filter((p) => p.status === 'lost')
+  const units =
+    won.reduce((t, p) => {
+      const price = p.price ?? -110
+      return t + (price > 0 ? price / 100 : 100 / -price)
+    }, 0) - lost.length
+  const n = won.length + lost.length
+  return {
+    picks: bets.length, won: won.length, lost: lost.length,
+    push: bets.filter((p) => p.status === 'push' || p.status === 'void').length,
+    pending: bets.filter((p) => p.status === 'pending').length,
+    hit_rate: n ? won.length / n : null, units, roi: n ? units / n : null,
+  }
+}
 
 function recordLine(r: ShowRecord, what: string) {
   const n = settled(r)
@@ -78,7 +99,16 @@ function PickRow({ p, v }: { p: ShowPick; v: Verdict }) {
   )
 }
 
-function ShowSection({ show, picks }: { show: Show; picks: { p: ShowPick; v: Verdict }[] }) {
+function ShowSection({
+  show,
+  picks,
+  weekLine,
+}: {
+  show: Show
+  picks: { p: ShowPick; v: Verdict }[]
+  // This week's bets record, shown next to the season's.
+  weekLine: string | null
+}) {
   const upcoming = picks.filter(({ v }) => !['won', 'lost', 'push'].includes(v.key))
   const graded = picks.filter(({ v }) => ['won', 'lost', 'push'].includes(v.key))
   const n = settled(show.record)
@@ -93,7 +123,8 @@ function ShowSection({ show, picks }: { show: Show; picks: { p: ShowPick; v: Ver
         <h3 className="text-base font-semibold text-body">{show.source}</h3>
         <p className="text-xs text-muted">
           {show.network ? `${show.network}. ` : ''}
-          {bets ?? 'No graded bets yet.'}
+          {weekLine && `This week: ${weekLine} `}
+          {bets ? `Season: ${bets}` : 'No graded bets yet.'}
           {n > 0 && n < JUDGE_AT && ` Too few to judge: ${n} of ${JUDGE_AT} graded.`}
         </p>
         {(leans || settled(agreed) + settled(disagreed) > 0 || moves.picks > 0) && (
@@ -146,6 +177,7 @@ export function ShowPicks({
   onRetry,
   sport,
   rows,
+  current,
 }: {
   shows: Show[] | null
   error: string
@@ -153,19 +185,26 @@ export function ShowPicks({
   sport: 'nfl' | 'cfb'
   // The live board's lines for this sport: verdicts use today's prices.
   rows: BoardRow[]
+  current: BetWeek | null
 }) {
+  const [picked, setPicked] = useState<BetWeek | null>(null)
+  const sportPicks = (shows ?? []).flatMap((s) => s.picks.filter((p) => p.sport === sport))
+  const weeks = weeksOf(sportPicks, current)
+  // The pick lists show one week: the one picked, else this week.
+  const shownWeek = picked ?? current ?? weeks[0] ?? null
   const sections = (shows ?? [])
     .filter((s) => s.sports.includes(sport))
     .map((show) => {
       const picks = show.picks
-        .filter((p) => p.sport === sport)
+        .filter((p) => p.sport === sport && sameWeek(p, shownWeek))
         .map((p) => ({ p, v: verdictFor(p, rows) }))
         .sort(
           (a, b) =>
             VERDICT_ORDER.indexOf(a.v.key) - VERDICT_ORDER.indexOf(b.v.key) ||
             new Date(a.p.kickoff ?? 0).getTime() - new Date(b.p.kickoff ?? 0).getTime(),
         )
-      return { show, picks }
+      const thisWeek = tallyBets(show.picks.filter((p) => p.sport === sport && sameWeek(p, current)))
+      return { show, picks, weekLine: recordLine(thisWeek, 'bets') }
     })
   const open = sections.flatMap((s) => s.picks).filter(({ v }) => !['won', 'lost', 'push', 'started'].includes(v.key))
   const count = (k: VerdictKey) => open.filter(({ v }) => v.key === k).length
@@ -214,9 +253,16 @@ export function ShowPicks({
           a real sample.
         </p>
       </div>
-      {sections.map(({ show, picks }) => (
-        <ShowSection key={show.source} show={show} picks={picks} />
-      ))}
+      {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={setPicked} />}
+      {sections.map(({ show, picks, weekLine }) =>
+        picks.length > 0 ? (
+          <ShowSection key={show.source} show={show} picks={picks} weekLine={weekLine} />
+        ) : (
+          <p key={show.source} className="text-xs text-muted">
+            {show.source}: no picks in week {shownWeek?.week}.
+          </p>
+        ),
+      )}
     </div>
   )
 }

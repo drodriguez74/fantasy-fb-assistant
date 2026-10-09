@@ -20,7 +20,7 @@
 - Gotcha: every push redeploys Render (Blueprint `buildFilter` not synced), so the live page briefly shows "Network Error" after a push. Retry buttons now cover Shows and the Audit.
 
 ## How to add an episode
-Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped.
+Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names; `week` is the NFL betting week, college included), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped.
 
 ## Findings worth remembering
 - Of 22 picks with a model view, only Brawley's Tyler Warren Under 51.5 matched a real model lean (+3.1%, watch). Everything else was a coin flip at the market.

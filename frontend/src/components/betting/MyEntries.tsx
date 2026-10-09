@@ -4,6 +4,8 @@
 // logged, so the record shows over time whose read was right.
 import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
+import { type BetWeek, sameWeek, weeksOf } from './betTypes'
+import { WeekPicker } from './WeekPicker'
 
 interface Snapshot {
   books_prob: number
@@ -30,6 +32,7 @@ interface MyEntry {
   entry_type: 'power' | 'flex'
   stake: number
   to_win: number
+  season: number
   week: number
   legs: EntryLeg[]
   est_hit_prob: number | null
@@ -72,6 +75,22 @@ interface ScreenshotRead {
 const blankLeg = (): DraftLeg => ({ player: '', market: 'player_reception_yds', side: 'More', line: '' })
 const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(0)}%`)
 const money = (x: number) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
+
+/** Profit, stake and record for a set of entries (settled ones; pending counted apart). */
+function tally(entries: MyEntry[]) {
+  const settled = entries.filter((e) => e.status !== 'pending')
+  const staked = settled.reduce((t, e) => t + e.stake, 0)
+  const profit = settled.reduce((t, e) => t + (e.payout ?? 0) - e.stake, 0)
+  return {
+    settled: settled.length,
+    won: settled.filter((e) => e.status === 'won').length,
+    lost: settled.filter((e) => e.status === 'lost').length,
+    pending: entries.length - settled.length,
+    staked,
+    profit,
+    roi: staked ? profit / staked : null,
+  }
+}
 
 // Game picks (team wins, spread, total) read the way PrizePicks shows them.
 const GAME_PICK: Record<string, (l: EntryLeg) => string> = {
@@ -296,11 +315,12 @@ function CheckRow({ label, c }: { label: string; c: Check | null }) {
   )
 }
 
-export function MyEntries({ players }: { players: string[] }) {
+export function MyEntries({ players, current }: { players: string[]; current: BetWeek | null }) {
   const [data, setData] = useState<EntriesData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
+  const [picked, setPicked] = useState<BetWeek | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -333,6 +353,11 @@ export function MyEntries({ players }: { players: string[] }) {
   if (!data) return null
   const r = data.record
   const check = data.pick_check
+  const weeks = weeksOf(data.entries, current)
+  // The list shows one week: the one picked, else this week.
+  const shownWeek = picked ?? current ?? weeks[0] ?? null
+  const weekEntries = data.entries.filter((e) => sameWeek(e, shownWeek))
+  const thisWeek = tally(data.entries.filter((e) => sameWeek(e, current)))
 
   return (
     <div className="space-y-5">
@@ -366,22 +391,48 @@ export function MyEntries({ players }: { players: string[] }) {
         </>
       )}
 
-      {r.settled > 0 && (
-        <div className="rounded-lg border border-hairline bg-surface p-4">
-          <p className="stat-nums text-lg font-semibold text-body">
-            {money(r.profit)} on {money(r.staked)} staked
-          </p>
-          <p className="stat-nums text-xs text-muted mt-1">
-            {r.won}-{r.lost} in {r.settled} settled entr{r.settled === 1 ? 'y' : 'ies'}
-            {r.pending ? ` · ${r.pending} pending` : ''}
-            {r.roi != null && ` · ROI ${r.roi > 0 ? '+' : ''}${(r.roi * 100).toFixed(0)}%`}
-            {r.settled < 20 && ' · too few to judge yet'}
-          </p>
+      {data.entries.length > 0 && (
+        <div className="rounded-lg border border-hairline bg-surface p-4 overflow-x-auto">
+          <table className="w-full stat-nums text-sm">
+            <thead>
+              <tr className="text-xs text-faint text-left">
+                <th className="font-normal pb-1"></th>
+                <th className="font-normal pb-1 text-right">Profit</th>
+                <th className="font-normal pb-1 text-right">Staked</th>
+                <th className="font-normal pb-1 text-right">Record</th>
+                <th className="font-normal pb-1 text-right">Pending</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(
+                [
+                  [current ? `This week (${current.week})` : 'This week', thisWeek],
+                  ['Season', { ...r, staked: r.staked, profit: r.profit }],
+                ] as const
+              ).map(([label, t]) => (
+                <tr key={label} className="border-t border-hairline">
+                  <td className="py-1.5 text-body font-medium whitespace-nowrap">{label}</td>
+                  <td className={`text-right ${t.profit > 0 ? 'text-success-700' : t.profit < 0 ? 'text-danger-700' : 'text-body'}`}>
+                    {t.settled ? money(t.profit) : '—'}
+                  </td>
+                  <td className="text-right text-muted">{t.settled ? money(t.staked) : '—'}</td>
+                  <td className="text-right text-body">{t.settled ? `${t.won}-${t.lost}` : '—'}</td>
+                  <td className="text-right text-muted">{t.pending}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {r.settled > 0 && r.settled < 20 && <p className="text-xs text-faint mt-2">Too few settled entries to judge yet.</p>}
         </div>
       )}
 
+      {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={setPicked} />}
+      {data.entries.length > 0 && weekEntries.length === 0 && (
+        <p className="text-sm text-muted">No entries logged for week {shownWeek?.week}.</p>
+      )}
+
       <div className="space-y-3">
-        {data.entries.map((e) => (
+        {weekEntries.map((e) => (
           <div key={e.id} className="rounded-lg border border-hairline bg-surface p-4">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 stat-nums text-xs">
               <span className="text-sm font-semibold text-body">

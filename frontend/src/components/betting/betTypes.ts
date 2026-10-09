@@ -80,6 +80,7 @@ export interface MostLikely {
 export interface Board {
   available: boolean
   detail?: string
+  season?: number
   week?: number
   games_modeled?: number
   generated_at?: string
@@ -186,4 +187,23 @@ export function matchesQuery(query: string, ...fields: (string | null | undefine
   if (words.length === 0) return true
   const hay = fold(fields.filter(Boolean).join(' '))
   return words.every((w) => hay.includes(w))
+}
+
+// ---- Betting weeks ---------------------------------------------------------
+// Everything is filed under the NFL betting week (Thu-Mon), college included.
+export interface BetWeek {
+  season: number
+  week: number
+}
+
+export const weekKey = (w: BetWeek) => `${w.season}-${w.week}`
+export const sameWeek = (a: BetWeek | null | undefined, b: BetWeek | null | undefined) =>
+  Boolean(a && b) && a!.season === b!.season && a!.week === b!.week
+
+/** The weeks present in some rows, newest first, always including the current one. */
+export function weeksOf(rows: BetWeek[], current: BetWeek | null): BetWeek[] {
+  const all = new Map<string, BetWeek>()
+  if (current) all.set(weekKey(current), current)
+  rows.forEach((r) => all.set(weekKey(r), { season: r.season, week: r.week }))
+  return [...all.values()].sort((a, b) => b.season - a.season || b.week - a.week)
 }
