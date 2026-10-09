@@ -170,3 +170,20 @@ export function dollars(units: number, bankroll: number | null): string | null {
   const amount = (units * bankroll) / 100
   return amount >= 100 ? `$${Math.round(amount)}` : `$${amount.toFixed(amount % 1 ? 2 : 0)}`
 }
+
+// Player search (PlayerSearch.tsx).
+// Lowercase and strip accents/punctuation, so "Ja'Marr" matches "jamarr".
+const fold = (s: string) =>
+  s
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, '')
+
+/** True when every word of the query appears in one of the fields (player, team, game). */
+export function matchesQuery(query: string, ...fields: (string | null | undefined)[]) {
+  const words = fold(query).split(/\s+/).filter(Boolean)
+  if (words.length === 0) return true
+  const hay = fold(fields.filter(Boolean).join(' '))
+  return words.every((w) => hay.includes(w))
+}

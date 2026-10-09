@@ -8,7 +8,8 @@ import { GameCombos } from '../components/betting/GameCombos'
 import { BetCard } from '../components/betting/BetCard'
 import { ThisWeekCard } from '../components/betting/ThisWeekCard'
 import { MyEntries } from '../components/betting/MyEntries'
-import { type Board, type BoardRow, type WatchAlert, useBankroll, watchKey } from '../components/betting/betTypes'
+import { PlayerSearch } from '../components/betting/PlayerSearch'
+import { type Board, type BoardRow, type WatchAlert, matchesQuery, useBankroll, watchKey } from '../components/betting/betTypes'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
@@ -89,6 +90,7 @@ export function BettingPage() {
   const [collegeLoading, setCollegeLoading] = useState(false)
   const [collegeError, setCollegeError] = useState('')
   const [recommendedOnly, setRecommendedOnly] = useState(true)
+  const [query, setQuery] = useState('')
   const [slow, setSlow] = useState(false)
   const [bankroll, setBankroll] = useBankroll()
   const [alerts, setAlerts] = useState<WatchAlert[]>([])
@@ -194,7 +196,13 @@ export function BettingPage() {
   const rows = (sport === 'cfb' ? college?.game_props : lines === 'props' ? board?.player_props : board?.game_props) ?? []
   const betRows = rows.filter((r) => r.units > 0)
   const watchRows = rows.filter((r) => r.units === 0 && r.watch)
-  const shown = recommendedOnly ? betRows : rows.slice(0, 60)
+  // A search looks through every priced line, not just the bets or the first 60.
+  const searching = query.trim() !== ''
+  const shown = searching
+    ? rows.filter((r) => matchesQuery(query, r.player, r.game, r.home, r.away))
+    : recommendedOnly
+      ? betRows
+      : rows.slice(0, 60)
   const card = (row: BoardRow, i: number) => (
     <BetCard
       key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`}
@@ -381,6 +389,12 @@ export function BettingPage() {
                   onChange={(v) => setRecommendedOnly(v === 'rec')}
                 />
               </div>
+              <PlayerSearch
+                value={query}
+                onChange={setQuery}
+                placeholder={showingGames ? 'Search a team' : 'Search a player or team'}
+                count={searching ? shown.length : undefined}
+              />
               {sport === 'cfb' && (
                 <p className="text-xs text-muted leading-relaxed">
                   College lines are market-only: a bet shows only when Hard Rock's price beats the other books' consensus.
@@ -390,13 +404,15 @@ export function BettingPage() {
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
               {shown.length === 0 ? (
                 <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
-                  {showingGames ? 'No game line clears the bar right now.' : 'No player prop clears the bar right now.'}
-                  {recommendedOnly && watchRows.length > 0 && ' The watch list below has the closest ones.'}
+                  {searching
+                    ? `No ${showingGames ? 'game line' : 'player prop'} matches "${query.trim()}" on this board.`
+                    : showingGames ? 'No game line clears the bar right now.' : 'No player prop clears the bar right now.'}
+                  {!searching && recommendedOnly && watchRows.length > 0 && ' The watch list below has the closest ones.'}
                 </div>
               ) : (
                 shown.map(card)
               )}
-              {recommendedOnly && watchRows.length > 0 && (
+              {!searching && recommendedOnly && watchRows.length > 0 && (
                 <div className="rounded-lg border border-hairline">
                   <button
                     onClick={() => setShowWatch((v) => !v)}

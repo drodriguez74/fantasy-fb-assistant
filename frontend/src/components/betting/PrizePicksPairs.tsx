@@ -9,7 +9,8 @@ import { SafestPicks } from './SafestPicks'
 import { CorrelatedStacks, type Stack } from './CorrelatedStacks'
 import { AddButton, TicketTray } from './TicketTray'
 import { legKey, type TicketActions, type TicketLeg } from './ticketTypes'
-import type { MostLikely } from './betTypes'
+import { matchesQuery, type MostLikely } from './betTypes'
+import { PlayerSearch } from './PlayerSearch'
 export interface PrizePicksLeg {
   player: string
   team?: string | null
@@ -28,6 +29,12 @@ export interface PrizePicksLeg {
 
 export interface PrizePicksAltLine extends PrizePicksLeg {
   odds_type: 'goblin' | 'demon'
+}
+
+// One line of the uploaded board, for search (betting_service.board_lines).
+export interface PrizePicksBoardLine extends PrizePicksLeg {
+  odds_type: 'standard' | 'goblin' | 'demon'
+  espn_agrees?: boolean | null
 }
 
 export interface PrizePicksPair {
@@ -55,6 +62,7 @@ export interface PrizePicksBoard {
   goblins?: PrizePicksAltLine[]
   demons?: PrizePicksAltLine[]
   stacks?: Stack[]
+  board_lines?: PrizePicksBoardLine[]
 }
 
 const BOARD_URL = 'https://api.prizepicks.com/projections?league_id=9&per_page=1000'
@@ -191,6 +199,44 @@ function AltLines({ rows, note, ticket }: { rows?: PrizePicksAltLine[]; note: st
   )
 }
 
+const ODDS_TAG: Record<string, string> = { goblin: 'Goblin', demon: 'Demon' }
+
+function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; query: string; ticket: TicketActions }) {
+  if (rows.length === 0) {
+    return (
+      <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
+        No PrizePicks line matches "{query.trim()}" on this board. Lines the books don't quote can't be priced, so they
+        aren't here.
+      </div>
+    )
+  }
+  return (
+    <ul className="rounded-lg border border-hairline bg-surface divide-y divide-hairline px-4">
+      {rows.map((r) => (
+        <li key={`${r.player}-${r.market}-${r.line}-${r.odds_type}`} className="py-2.5 flex items-baseline gap-3">
+          <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm text-body">
+              {r.player} <span className="text-faint text-xs">{r.team}</span>{' '}
+              <span className="text-body font-medium">{r.side}</span> <span className="stat-nums">{r.line}</span>{' '}
+              <span className="text-muted">{r.market_label}</span>
+              {ODDS_TAG[r.odds_type] && <span className="ml-1.5 text-xs text-faint">{ODDS_TAG[r.odds_type]}</span>}
+            </span>
+            <span className="block stat-nums text-xs text-faint">
+              books {pct(r.market_prob)}
+              {r.projection != null && ` · Sleeper ${r.projection.toFixed(1)}`}
+              {r.espn_projection != null && ` · ESPN ${r.espn_projection.toFixed(1)}`}
+              {r.book_line != null && r.book_line !== r.line && ` · books at ${r.book_line}`}
+              {r.espn_agrees === false && ' · ESPN leans the other way'}
+            </span>
+          </span>
+          <AddButton active={ticket.has(r)} onClick={() => ticket.toggle(r)} />
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function PairCard({ pair }: { pair: PrizePicksPair }) {
   return (
     <div className={`border rounded-lg p-4 bg-surface ${pair.ev > 0 ? 'border-line' : 'border-hairline opacity-80'}`}>
@@ -227,6 +273,16 @@ export function PrizePicksPairs({
   mostLikely?: MostLikely
 }) {
   const positive = data?.pairs.filter((p) => p.ev > 0) ?? []
+  const [query, setQuery] = useState('')
+  const searching = query.trim() !== ''
+  // Every priced line of an uploaded board; without an upload, the lines we have.
+  const searchable: PrizePicksBoardLine[] =
+    data?.board_lines ?? [
+      ...(data?.legs ?? []).map((l) => ({ ...l, odds_type: 'standard' as const })),
+      ...(data?.goblins ?? []),
+      ...(data?.demons ?? []),
+    ]
+  const results = searching ? searchable.filter((l) => matchesQuery(query, l.player, l.team, l.game)) : []
   // The entry-builder tray: one pick per player (a new pick replaces that player's old one).
   const [picks, setPicks] = useState<TicketLeg[]>([])
   const ticket: TicketActions = {
@@ -246,40 +302,49 @@ export function PrizePicksPairs({
   return (
     <div className={`space-y-5 ${picks.length ? 'pb-40' : ''}`}>
       <UploadPanel data={data} onUploaded={onUploaded} />
-      <CorrelatedStacks stacks={data?.stacks} power={entries.power} ticket={ticket} />
-      <SafestPicks data={mostLikely} ticket={ticket} />
-      <PrizePicksEntries state={entries} ticket={ticket} />
-      {data && data.pairs.length > 0 && (
-        <Fold
-          title="2-pick pairs"
-          summary={positive.length ? `${positive.length} profitable` : 'none profitable this week'}
-          defaultOpen={positive.length > 0}
-        >
-          <p className="text-xs text-muted leading-relaxed">
-            A 2-pick Power Play pays {data.payout}x, so each pick needs about {pct(data.breakeven_leg)} to break even. Pairs
-            never use teammates (PrizePicks needs two teams); opponents in the same game are priced together.
-          </p>
-          {(positive.length ? positive : data.pairs.slice(0, 5)).map((pair) => (
-            <PairCard key={`${pair.legs[0].player}-${pair.legs[0].market}-${pair.legs[1].player}-${pair.legs[1].market}`} pair={pair} />
-          ))}
-        </Fold>
+      {searchable.length > 0 && (
+        <PlayerSearch value={query} onChange={setQuery} count={searching ? results.length : undefined} />
       )}
-      {!data?.pairs.length && data?.detail && (
-        <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">{data.detail}</div>
-      )}
-      {(data?.goblins?.length ?? 0) > 0 && (
-        <Fold title="Goblins" summary="easier lines, smaller payout · most likely to hit">
-          <AltLines
-            ticket={ticket}
-            rows={data?.goblins}
-            note="The file has no payouts, so compare with PrizePicks' multiplier: two 85% picks hit together about 72% of the time, so that pair needs at least 1.4x."
-          />
-        </Fold>
-      )}
-      {(data?.demons?.length ?? 0) > 0 && (
-        <Fold title="Demons" summary="harder lines, bigger payout · most likely to hit">
-          <AltLines ticket={ticket} rows={data?.demons} note="Compare each hit chance with the multiplier PrizePicks shows." />
-        </Fold>
+      {searching ? (
+        <SearchResults rows={results} query={query} ticket={ticket} />
+      ) : (
+        <>
+          <CorrelatedStacks stacks={data?.stacks} power={entries.power} ticket={ticket} />
+          <SafestPicks data={mostLikely} ticket={ticket} />
+          <PrizePicksEntries state={entries} ticket={ticket} />
+          {data && data.pairs.length > 0 && (
+            <Fold
+              title="2-pick pairs"
+              summary={positive.length ? `${positive.length} profitable` : 'none profitable this week'}
+              defaultOpen={positive.length > 0}
+            >
+              <p className="text-xs text-muted leading-relaxed">
+                A 2-pick Power Play pays {data.payout}x, so each pick needs about {pct(data.breakeven_leg)} to break even. Pairs
+                never use teammates (PrizePicks needs two teams); opponents in the same game are priced together.
+              </p>
+              {(positive.length ? positive : data.pairs.slice(0, 5)).map((pair) => (
+                <PairCard key={`${pair.legs[0].player}-${pair.legs[0].market}-${pair.legs[1].player}-${pair.legs[1].market}`} pair={pair} />
+              ))}
+            </Fold>
+          )}
+          {!data?.pairs.length && data?.detail && (
+            <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">{data.detail}</div>
+          )}
+          {(data?.goblins?.length ?? 0) > 0 && (
+            <Fold title="Goblins" summary="easier lines, smaller payout · most likely to hit">
+              <AltLines
+                ticket={ticket}
+                rows={data?.goblins}
+                note="The file has no payouts, so compare with PrizePicks' multiplier: two 85% picks hit together about 72% of the time, so that pair needs at least 1.4x."
+              />
+            </Fold>
+          )}
+          {(data?.demons?.length ?? 0) > 0 && (
+            <Fold title="Demons" summary="harder lines, bigger payout · most likely to hit">
+              <AltLines ticket={ticket} rows={data?.demons} note="Compare each hit chance with the multiplier PrizePicks shows." />
+            </Fold>
+          )}
+        </>
       )}
       <TicketTray
         legs={picks}

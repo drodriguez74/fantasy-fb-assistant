@@ -516,6 +516,19 @@ def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, 
     }
 
 
+def board_lines(priced: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Every priced line of an uploaded PrizePicks board (standard, goblin,
+    demon), compact, for the PrizePicks tab's player search -- the ranked
+    sections only carry the top lines. p_win is our blend; espn_agrees False
+    flags a line ESPN's projection leans against (pairs and entries skip those)."""
+    keep = ("line", "side", "p_win", "market_prob", "book_line", "espn_agrees")
+    return [{"player": p["player"], "team": p.get("team"), "game": p.get("game"), "market": p["market"],
+             "market_label": p["market_label"], "projection": p.get("projection"),
+             "espn_projection": p.get("espn_projection"), "odds_type": p.get("odds_type", "standard"),
+             **{k: p["prizepicks"].get(k) for k in keep}}
+            for p in sorted(priced, key=lambda p: (p["player"], p["market"]))]
+
+
 def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: int, scales: Dict[str, float],
                          td_scales: Dict[str, Optional[float]], espn_means: Dict[Tuple[str, str], Optional[float]],
                          espn_scales: Dict[str, float]) -> Dict[str, Any]:
@@ -587,7 +600,7 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
 
     return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
             "lines_priced": len(priced), "lines_unmatched": unmatched,
-            "goblins": ranked("goblin"), "demons": ranked("demon"),
+            "goblins": ranked("goblin"), "demons": ranked("demon"), "board_lines": board_lines(priced),
             "stacks": correlated_stacks([p for p in priced if p["odds_type"] == "standard"]),
             "most_likely": most_likely([p for p in priced if p["odds_type"] != "demon"])}
 
@@ -1399,7 +1412,7 @@ async def price_cfb_prizepicks(uploaded: Dict[str, Any], games: List[Dict[str, A
 
     return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
             "lines_priced": len(priced), "lines_unmatched": unmatched, "games_with_props": len(picked),
-            "goblins": ranked("goblin"), "demons": ranked("demon")}
+            "goblins": ranked("goblin"), "demons": ranked("demon"), "board_lines": board_lines(priced)}
 
 
 async def build_cfb_board(force: bool = False) -> Dict[str, Any]:

@@ -54,6 +54,10 @@ def test_price_uploaded_board_prices_goblins_on_allowed_side():
     goblin = out["goblins"][0]
     assert goblin["side"] == "More" and goblin["line"] == 45.5
     assert goblin["p_win"] > 0.6  # 15 yards under the books' 50% line (receiving yards are noisy)
+    # The search list carries every priced line, standard and alternate.
+    assert len(out["board_lines"]) == 2
+    assert {r["odds_type"] for r in out["board_lines"]} == {"standard", "goblin"}
+    assert all(r["player"] == "WR One" and r["side"] in ("More", "Less") for r in out["board_lines"])
 
 
 def test_upload_endpoint_stores_board_and_rejects_captcha_page(monkeypatch):

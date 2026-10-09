@@ -133,3 +133,6 @@ ProBowl_Fantasy_*.csv
 
 # PrizePicks boards saved from the browser for upload (see prizepicks_board.py)
 *prizepicks*.json
+
+# Radio/podcast transcripts (copyrighted; kept local, never committed)
+backend/transcripts/
