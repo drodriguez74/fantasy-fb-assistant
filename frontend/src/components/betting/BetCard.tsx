@@ -106,7 +106,7 @@ export function BetCard({
             <span className="font-medium">{title}</span>{' '}
             <span className="font-semibold">{pickText(row)}</span> <span className="text-muted">{what}</span>
           </p>
-          <p className="stat-nums text-xs text-muted truncate mt-0.5">
+          <p className="stat-nums text-xs text-muted break-words mt-0.5">
             {odds(row.price)} at {row.book}
             {row.type === 'player_prop' ? ` · ${row.game}` : ''}
             {when && ` · ${when}`}

@@ -70,7 +70,7 @@ export function ThisWeekCard({
     .join(' + ')
 
   return (
-    <section className="rounded-xl border border-hairline bg-surface p-4 sm:p-5" aria-labelledby="this-week-card">
+    <section className="rounded-xl border border-hairline bg-surface p-3 sm:p-5" aria-labelledby="this-week-card">
       <div className="flex flex-wrap items-baseline justify-between gap-3">
         <div>
           <h2 id="this-week-card" className="font-display font-bold uppercase tracking-tight text-xl text-body">
