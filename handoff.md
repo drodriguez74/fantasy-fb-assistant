@@ -1,3 +1,27 @@
+# START HERE — Session 21 (2026-10-08 → 10-09): player search + Shows (radio/podcast picks)
+
+> Session 20's wrap below is still the main summary; this adds two features.
+
+## State right now
+- Pushed to `main`. Backend **272 tests pass**; frontend build + lint clean on the touched files.
+- **Migration `8a1d317921b0` (analyst_picks) applied to Supabase.** Alembic head = `8a1d317921b0`.
+- Model version unchanged (`2026-10-08.6`): nothing here changes a price.
+
+## What was built
+- **Player search** (`ad21bd0`): Play tab searches every priced line (All lines stopped at 60); PrizePicks tab searches the whole uploaded board via `betting_service.board_lines` (needs Render's deploy), results add to the tray.
+- **Shows tab** (`analyst_picks.py`, `scripts/import_analyst_picks.py`, `ShowPicks.tsx`, `showTypes.ts`): one section per show with its record, by-host records, model-agreed vs not, and its numbers vs our board's; an "On air" note on board cards. Tracked only, never priced.
+- **Loaded so far (30 picks):** The Fantasy Alarm Show (10/7, NFL, 7), Fantasy Football Morning (10/8, NFL, 9 incl. 2 leans), The College Draft (10/8, college week 6, 14 incl. 1 lean). JSON files + transcripts in `backend/transcripts/` (gitignored, local only).
+
+## How to add an episode
+Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped.
+
+## Findings worth remembering
+- Of 22 picks with a model view, only Brawley's Tyler Warren Under 51.5 matched a real model lean (+3.1%, watch). Everything else was a coin flip at the market.
+- The useful part so far is context: the show explained the board's +15% Jalon Daniels rushing Under as a stale projection (rookie QB, ran 55 in his first start), which the engine had already refused to bet.
+- College Draft: Emory Hunt self-reports 30-26-1. His NDSU "+3.5" had NDSU a 3.5-pt favorite on our board -- flagged, recorded as said.
+
+---
+
 # START HERE — Session 20 wrap (2026-10-07 → 10-08): model review, edge search, auditability, Bets redesign
 
 > Read this, then `docs/guides/BETTING_GUIDE.md` (section 3 decisions, section 8 open items, section 9 evidence).

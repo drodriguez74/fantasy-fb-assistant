@@ -282,6 +282,8 @@ export const betting = {
   // saved with Cmd+S -- PrizePicks blocks server fetches with a CAPTCHA).
   // The user's own PrizePicks entries ("My entries"): graded from real stats.
   getEntries: () => api.get('/betting/entries'),
+  // Picks made on radio shows and podcasts, by show (tracked only, never priced).
+  getAnalystPicks: () => api.get('/betting/analyst-picks'),
   logEntry: (entry: {
     entry_type: 'power' | 'flex'
     stake: number

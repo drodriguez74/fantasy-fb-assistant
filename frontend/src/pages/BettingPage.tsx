@@ -9,6 +9,8 @@ import { BetCard } from '../components/betting/BetCard'
 import { ThisWeekCard } from '../components/betting/ThisWeekCard'
 import { MyEntries } from '../components/betting/MyEntries'
 import { PlayerSearch } from '../components/betting/PlayerSearch'
+import { ShowPicks } from '../components/betting/ShowPicks'
+import { onAirFor, useShowPicks } from '../components/betting/showTypes'
 import { type Board, type BoardRow, type WatchAlert, matchesQuery, useBankroll, watchKey } from '../components/betting/betTypes'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
 
@@ -18,13 +20,14 @@ import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@hero
 // evidence per tab.
 
 // Tabs follow the weekly loop: what to play (sportsbook), PrizePicks, the
-// entries you placed, and how the picks did.
-type Tab = 'play' | 'prizepicks' | 'entries' | 'track'
+// entries you placed, what the shows picked, and how the picks did.
+type Tab = 'play' | 'prizepicks' | 'entries' | 'shows' | 'track'
 
 const TAB_LABELS: Record<Tab, string> = {
   play: 'Play',
   prizepicks: 'PrizePicks',
   entries: 'My entries',
+  shows: 'Shows',
   track: 'Track record',
 }
 
@@ -91,6 +94,8 @@ export function BettingPage() {
   const [collegeError, setCollegeError] = useState('')
   const [recommendedOnly, setRecommendedOnly] = useState(true)
   const [query, setQuery] = useState('')
+  // Radio/podcast picks: the Shows tab and the "On air" note on board cards.
+  const showPicks = useShowPicks()
   const [slow, setSlow] = useState(false)
   const [bankroll, setBankroll] = useBankroll()
   const [alerts, setAlerts] = useState<WatchAlert[]>([])
@@ -173,7 +178,7 @@ export function BettingPage() {
   }, [sport, college, collegeLoading, collegeError, loadCollege])
 
   // College: game lines + the shared Results (college player props are shelved).
-  const tabs: readonly Tab[] = sport === 'cfb' ? ['play', 'track'] : ['play', 'prizepicks', 'entries', 'track']
+  const tabs: readonly Tab[] = sport === 'cfb' ? ['play', 'shows', 'track'] : ['play', 'prizepicks', 'entries', 'shows', 'track']
   const switchSport = (next: 'nfl' | 'cfb') => {
     setSport(next)
     setTab('play')
@@ -210,6 +215,7 @@ export function BettingPage() {
       bankroll={bankroll}
       alert={alertFor(row)}
       onToggleAlert={toggleAlert}
+      onAir={onAirFor(row, showPicks.shows)}
     />
   )
 
@@ -343,6 +349,8 @@ export function BettingPage() {
 
           {tab === 'track' ? (
             <BettingResults sport={sport} />
+          ) : tab === 'shows' ? (
+            <ShowPicks shows={showPicks.shows} error={showPicks.error} sport={sport} />
           ) : tab === 'entries' ? (
             <MyEntries
               players={[

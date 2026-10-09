@@ -9,7 +9,7 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Upload
 
 from app.api.deps import get_current_active_user
 from app.models.user import User
-from app.services import betting_service, entry_screenshot, prizepicks_board, tracked_entries, user_entries
+from app.services import analyst_picks, betting_service, entry_screenshot, prizepicks_board, tracked_entries, user_entries
 from app.services.sleeper_service import sleeper_service
 from app.services.betting_service import build_board
 from app.services.betting_tracking import grade_pending, summarize
@@ -158,6 +158,18 @@ async def get_my_entries(current_user: User = Depends(get_current_active_user)):
     season, week = await _nfl_week()
     graded = await user_entries.grade_pending(current_user.id, season, week)
     return {**await asyncio.to_thread(user_entries.summary, current_user.id), "newly_graded": graded}
+
+
+@router.get("/analyst-picks")
+async def get_analyst_picks(current_user: User = Depends(get_current_active_user)):
+    """Picks made on radio shows and podcasts, grouped by show: each pick
+    with what our board said when it was imported, and each show's record
+    (bets and leans apart, per host, and when our board agreed vs not).
+    Grades anything newly final first (free sources). Tracked only: shows
+    carry no weight in pricing (analyst_picks.py)."""
+    season, week = await _nfl_week()
+    graded = await analyst_picks.grade_pending(season, week)
+    return {**await asyncio.to_thread(analyst_picks.summary), "newly_graded": graded}
 
 
 @router.post("/entries")

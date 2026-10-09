@@ -6,6 +6,7 @@
 import { useState } from 'react'
 import { ChevronDownIcon } from '@heroicons/react/24/outline'
 import { type BoardRow, type WatchAlert, dollars, kickoffLabel, odds, pct, sideSpread, signedPct } from './betTypes'
+import { type ShowPick, showPickText } from './showTypes'
 
 const whole = (p: number) => `${Math.round(p * 100)}%`
 
@@ -64,12 +65,15 @@ export function BetCard({
   bankroll,
   alert,
   onToggleAlert,
+  onAir,
 }: {
   row: BoardRow
   bankroll: number | null
   // The user's alert on this pick, if any (watch-list lines only).
   alert?: WatchAlert
   onToggleAlert?: (row: BoardRow) => void
+  // Radio/podcast picks on this line (context only; never in the price).
+  onAir?: ShowPick[]
 }) {
   const [open, setOpen] = useState(false)
   const isBet = row.units > 0
@@ -117,6 +121,11 @@ export function BetCard({
         <ChevronDownIcon className={`h-4 w-4 shrink-0 text-faint transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
       </button>
       {warning && <p className="px-3 -mt-1 pb-2 text-xs text-warning-700">{warning}</p>}
+      {onAir && onAir.length > 0 && (
+        <p className="px-3 -mt-1 pb-2 text-xs text-muted break-words">
+          On air: {onAir.map((p) => `${p.analyst} (${p.source}) ${showPickText(p)}`).join(' · ')}
+        </p>
+      )}
       {open && (
         <div className="border-t border-hairline px-3 py-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 stat-nums">
