@@ -146,7 +146,14 @@ export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' 
       </p>
 
       {loading && <p className="text-xs text-faint mt-3">Loading...</p>}
-      {error && <p className="text-xs text-warning-700 mt-3">{error}</p>}
+      {error && (
+        <p className="text-xs text-warning-700 mt-3">
+          {error}{' '}
+          <button onClick={() => load(data?.season ?? undefined, data?.week ?? undefined)} className="text-body underline">
+            Try again
+          </button>
+        </p>
+      )}
       {!loading && data && data.rows.length === 0 && <p className="text-xs text-faint mt-3">Nothing tracked yet.</p>}
 
       {!loading && data && data.rows.length > 0 && (

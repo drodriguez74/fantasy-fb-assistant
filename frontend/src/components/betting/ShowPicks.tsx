@@ -39,10 +39,10 @@ const settled = (r: ShowRecord) => r.won + r.lost
 
 function recordLine(r: ShowRecord, what: string) {
   const n = settled(r)
-  if (!n) return r.pending ? `${r.pending} ${what} pending` : null
+  if (!n) return r.pending ? `${r.pending} ${what} pending.` : null
   const units = `${r.units > 0 ? '+' : ''}${r.units.toFixed(2)}u`
   const rate = n >= JUDGE_AT && r.hit_rate != null ? ` · ${Math.round(r.hit_rate * 100)}%` : ''
-  return `${r.won}-${r.lost}${r.push ? `-${r.push}` : ''} on ${what}${rate} · ${units} at 1u each`
+  return `${r.won}-${r.lost}${r.push ? `-${r.push}` : ''} on ${what}${rate} · ${units} at 1u each.`
 }
 
 function PickRow({ p, v }: { p: ShowPick; v: Verdict }) {
