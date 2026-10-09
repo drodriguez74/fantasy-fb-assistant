@@ -1,20 +1,9 @@
 // "This week's card": the bets actually worth placing, across player props,
 // game lines and PrizePicks, in kickoff order -- what a bettor opens the page
 // for. Everything else on the page is the evidence behind it.
-import { useState } from 'react'
-import { type Board, type BoardRow, dollars, kickoffLabel, odds } from './betTypes'
+import { type ReactNode, useState } from 'react'
+import { type Board, type BoardRow, dollars } from './betTypes'
 import { rankEntries, type EntriesState } from './prizePicksEntriesData'
-
-function pickLabel(row: BoardRow): string {
-  if (row.type === 'player_prop') {
-    const what = row.market === 'player_anytime_td' ? 'Anytime TD' : `${row.side} ${row.line} ${row.market_label.toLowerCase()}`
-    return `${row.player} ${what}`
-  }
-  if (row.market === 'spread' && row.line != null) {
-    return `${row.side} ${row.line > 0 ? `+${row.line}` : row.line === 0 ? 'PK' : row.line}`
-  }
-  return `${row.game} ${row.side} ${row.line}`
-}
 
 const whole = (p: number) => `${Math.round(p * 100)}%`
 
@@ -49,22 +38,36 @@ export function ThisWeekCard({
   bankroll,
   setBankroll,
   onOpen,
+  renderBet,
 }: {
   board: Board
+  // The page's BetCard: the bets live here only (tap for the evidence and alerts),
+  // so the Play tab below lists what isn't a bet.
+  renderBet: (row: BoardRow, i: number) => ReactNode
   entries?: EntriesState
   bankroll: number | null
   setBankroll: (v: number | null) => void
   onOpen: (tab: 'play' | 'prizepicks') => void
 }) {
-  // Biggest stakes first; the full list lives in the Player props / Game lines tabs.
+  const [showAll, setShowAll] = useState(false)
+  // Biggest stakes first. This is the only list of the bets.
   const bets = [...(board.player_props ?? []), ...(board.game_props ?? [])]
     .filter((r) => r.units > 0)
     .sort((a, b) => Number(Boolean(a.card_fill)) - Number(Boolean(b.card_fill)) || b.units - a.units)
-  const shown = bets.slice(0, TOP)
+  const shown = showAll ? bets : bets.slice(0, TOP)
   const bestEntry = entries ? rankEntries(entries.entries).find((e) => e.ev > 0) : undefined
   const totalUnits = bets.reduce((sum, r) => sum + r.units, 0)
   const fills = bets.filter((r) => r.card_fill).length
   const real = bets.length - fills
+  const watchProps = (board.player_props ?? []).filter((r) => r.units === 0 && r.watch).length
+  const watchGames = (board.game_props ?? []).filter((r) => r.units === 0 && r.watch).length
+  // Same split as the Play tab's Player props / Game lines watch lists.
+  const watchText = [
+    watchProps ? `${watchProps} prop${watchProps === 1 ? '' : 's'}` : '',
+    watchGames ? `${watchGames} game line${watchGames === 1 ? '' : 's'}` : '',
+  ]
+    .filter(Boolean)
+    .join(' + ')
 
   return (
     <section className="rounded-xl border border-hairline bg-surface p-4 sm:p-5" aria-labelledby="this-week-card">
@@ -79,44 +82,16 @@ export function ThisWeekCard({
               : `${real ? `${real} bet${real === 1 ? '' : 's'}` : 'No bets clear the bar'}${
                   fills ? ` + ${fills} best available` : ''
                 } · ${totalUnits}u${dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''} total`}
-            {board.watch_count ? ` · ${board.watch_count} on the watch list` : ''}
+            {watchText ? ` · ${watchText} on the watch list` : ''}
           </p>
         </div>
         <BankrollInput bankroll={bankroll} onChange={setBankroll} />
       </div>
 
-      {shown.length > 0 && (
-        <ul className="mt-3 divide-y divide-hairline">
-          {shown.map((r) => (
-            <li key={`${r.game}-${r.player ?? ''}-${r.market}`} className="py-2.5 flex items-center gap-3">
-              <div
-                className={`w-14 shrink-0 rounded-md py-1 text-center stat-nums ${
-                  r.card_fill ? 'border border-volt text-body' : 'bg-volt text-volt-ink'
-                }`}
-              >
-                <div className="text-sm font-bold leading-none">{r.units}u</div>
-                <div className="text-xs mt-0.5 leading-none">{dollars(r.units, bankroll) ?? (r.card_fill ? 'fill' : '')}</div>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm text-body font-medium break-words">{pickLabel(r)}</p>
-                <p className="stat-nums text-xs text-muted truncate">
-                  {odds(r.price)} at {r.book}
-                  {r.type === 'player_prop' || r.market === 'spread' ? ` · ${r.game}` : ''}
-                  {kickoffLabel(r.kickoff) && ` · ${kickoffLabel(r.kickoff)}`}
-                  {r.card_fill && ' · best available'}
-                </p>
-              </div>
-              <div className="shrink-0 text-right">
-                <div className="stat-nums text-xl font-bold text-body leading-none">{whole(r.p_win)}</div>
-                <div className="text-xs text-faint mt-1">to win</div>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+      {shown.length > 0 && <div className="mt-3 space-y-2">{shown.map(renderBet)}</div>}
       {bets.length > TOP && (
-        <button onClick={() => onOpen('play')} className="mt-1 text-xs text-body underline">
-          See all {bets.length} bets
+        <button onClick={() => setShowAll((v) => !v)} className="mt-2 text-xs text-body underline">
+          {showAll ? 'Show the top 5' : `Show all ${bets.length} bets`}
         </button>
       )}
       {fills > 0 && (
@@ -154,6 +129,7 @@ export function ThisWeekCard({
               .slice(0, 3)
               .map((p) => `${p.player} ${p.side} ${p.line} (${whole(p.p_win)})`)
               .join(' · ')}
+            {board.most_likely.picks.length > 3 && ` · +${board.most_likely.picks.length - 3} more`}
           </p>
         </button>
       )}

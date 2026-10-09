@@ -86,13 +86,13 @@ export function BettingPage() {
   const [tab, setTab] = useState<Tab>('play')
   // Play tab: sportsbook player props or game lines (college has game lines only).
   const [lines, setLines] = useState<'props' | 'games'>('props')
-  const [showWatch, setShowWatch] = useState(false)
   const [showInfo, setShowInfo] = useState(false)
   // College board (GET /betting/board?sport=cfb), loaded the first time College is picked.
   const [college, setCollege] = useState<Board | null>(null)
   const [collegeLoading, setCollegeLoading] = useState(false)
   const [collegeError, setCollegeError] = useState('')
-  const [recommendedOnly, setRecommendedOnly] = useState(true)
+  // Play lists what isn't a bet (the bets live in This week's best bets): the watch list, or every other line.
+  const [playView, setPlayView] = useState<'watch' | 'all'>('watch')
   const [query, setQuery] = useState('')
   // Radio/podcast picks: the Shows tab and the "On air" note on board cards.
   const showPicks = useShowPicks()
@@ -201,13 +201,14 @@ export function BettingPage() {
   const rows = (sport === 'cfb' ? college?.game_props : lines === 'props' ? board?.player_props : board?.game_props) ?? []
   const betRows = rows.filter((r) => r.units > 0)
   const watchRows = rows.filter((r) => r.units === 0 && r.watch)
-  // A search looks through every priced line, not just the bets or the first 60.
+  // A search looks through every priced line, bets included, not just the first 60.
   const searching = query.trim() !== ''
   const shown = searching
     ? rows.filter((r) => matchesQuery(query, r.player, r.game, r.home, r.away))
-    : recommendedOnly
-      ? betRows
-      : rows.slice(0, 60)
+    : playView === 'watch'
+      ? watchRows
+      : rows.filter((r) => r.units === 0).slice(0, 60)
+  const kind = showingGames ? 'game line' : 'player prop'
   const card = (row: BoardRow, i: number) => (
     <BetCard
       key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`}
@@ -319,6 +320,7 @@ export function BettingPage() {
 
           <ThisWeekCard
             board={view}
+            renderBet={card}
             entries={sport === 'nfl' ? entries : undefined}
             bankroll={bankroll}
             setBankroll={setBankroll}
@@ -389,12 +391,12 @@ export function BettingPage() {
                 )}
                 <Segmented
                   label="Which lines"
-                  value={recommendedOnly ? 'rec' : 'all'}
+                  value={playView}
                   options={[
-                    ['rec', 'Bets'],
-                    ['all', 'All lines'],
+                    ['watch', `Watch list (${watchRows.length})`],
+                    ['all', 'All other lines'],
                   ]}
-                  onChange={(v) => setRecommendedOnly(v === 'rec')}
+                  onChange={setPlayView}
                 />
               </div>
               <PlayerSearch
@@ -410,31 +412,26 @@ export function BettingPage() {
                 </p>
               )}
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
+              {!searching && (
+                <p className="text-xs text-muted">
+                  {betRows.length > 0
+                    ? `The ${betRows.length} ${kind} bet${betRows.length === 1 ? ' is' : 's are'} in This week's best bets above. `
+                    : `No ${kind} clears the bar right now. `}
+                  {playView === 'watch'
+                    ? 'These are close to a bet: tap one to get an alert if it gets there.'
+                    : 'Every other line we priced, best first.'}
+                </p>
+              )}
               {shown.length === 0 ? (
                 <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
                   {searching
-                    ? `No ${showingGames ? 'game line' : 'player prop'} matches "${query.trim()}" on this board.`
-                    : showingGames ? 'No game line clears the bar right now.' : 'No player prop clears the bar right now.'}
-                  {!searching && recommendedOnly && watchRows.length > 0 && ' The watch list below has the closest ones.'}
+                    ? `No ${kind} matches "${query.trim()}" on this board.`
+                    : playView === 'watch'
+                      ? `Nothing on the ${kind} watch list right now.`
+                      : `No other ${kind}s priced right now.`}
                 </div>
               ) : (
                 shown.map(card)
-              )}
-              {!searching && recommendedOnly && watchRows.length > 0 && (
-                <div className="rounded-lg border border-hairline">
-                  <button
-                    onClick={() => setShowWatch((v) => !v)}
-                    aria-expanded={showWatch}
-                    className="w-full flex items-baseline gap-3 px-4 py-3 text-left"
-                  >
-                    <span className="text-sm font-medium text-body">Watch list</span>
-                    <span className="text-xs text-muted">
-                      {watchRows.length} close to a bet · tap one to get an alert if it gets there
-                    </span>
-                    <span className="ml-auto text-xs text-muted">{showWatch ? 'Hide' : 'Show'}</span>
-                  </button>
-                  {showWatch && <div className="px-3 pb-3 space-y-3">{watchRows.map(card)}</div>}
-                </div>
               )}
               {showingGames && <GameCombos games={view.game_combos} />}
             </div>
