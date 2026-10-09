@@ -136,3 +136,6 @@ ProBowl_Fantasy_*.csv
 
 # Radio/podcast transcripts (copyrighted; kept local, never committed)
 backend/transcripts/
+# Saved PrizePicks boards (Cmd+S of api.prizepicks.com/projections) -- upload them, never commit
+backend/projections*.json
+backend/nfl-*.json
