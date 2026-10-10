@@ -269,12 +269,14 @@ def _out(r: AnalystPick) -> Dict[str, Any]:
 def summary() -> Dict[str, Any]:
     """Every show with its picks (newest first), its record on bets and on
     leans separately, each host's record, how its bets did when our board
-    agreed vs disagreed, and how the market has moved on its stated lines."""
+    agreed vs disagreed, and how the market has moved on its stated lines.
+    One entry per show per sport: a show that picks NFL and college (Elite
+    Sports) gets a separate record on each tab, never a blended one."""
     with SessionLocal() as db:
         rows = [_out(r) for r in db.query(AnalystPick).order_by(AnalystPick.aired_on.desc(), AnalystPick.id).all()]
     shows = []
-    for source in dict.fromkeys(r["source"] for r in rows):
-        picks = [r for r in rows if r["source"] == source]
+    for source, sport in dict.fromkeys((r["source"], r["sport"]) for r in rows):
+        picks = [r for r in rows if r["source"] == source and r["sport"] == sport]
         bets = [r for r in picks if r["conviction"] == "bet"]
         snap = [r for r in bets if r["snapshot"] and r["snapshot"].get("agrees") is not None]
         moved = [r["snapshot"]["line_value"] for r in picks

@@ -7,7 +7,7 @@
 - **Migration `8a1d317921b0` (analyst_picks) applied to Supabase.** Alembic head = `8a1d317921b0`.
 - Model version unchanged (`2026-10-08.6`): nothing this session changes a price.
 - **Week 5 so far (after TB @ DAL):** Track record bets 3-1, +1.06u. Shows: Fantasy Football Morning 2-1 on bets, The Fantasy Alarm Show 1-2. My entries 1-2, +$32.19 (the Pickens/Irving promo won). Everything else grades Sunday/Monday.
-- **The founder's live session expired** during the last check (redirected to `/auth`); Claude can't sign in, so the final phone pass of the week-tracking build is unverified. Ask the founder to sign in and look at Track record, My entries and Shows on a phone.
+- **Phone pass done (10/9, 390px, NFL + College):** every Bets tab fits with no sideways scroll. It found one bug, now fixed: a show with picks in both sports (Elite Sports) had its season record blended across sports, so `analyst_picks.summary()` now returns one entry per show per sport.
 
 ## What was built (commits, oldest → newest)
 | Commit | What |
@@ -26,7 +26,7 @@
 - **Weeks** = the NFL betting week (Thu–Mon) for everything, college included. Season-wide views stay season-wide.
 
 ## How to add an episode
-Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names; `week` is the NFL betting week, college included), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped. Loaded so far (30): The Fantasy Alarm Show (10/7), Fantasy Football Morning (10/8), The College Draft (10/8, college, filed under NFL week 5).
+Founder drops the transcript in `backend/transcripts/`. Read it, write `<date>-<show>.json` (shape in `analyst_picks.py`; college uses the college board's full team names; `week` is the NFL betting week, college included), run `python scripts/import_analyst_picks.py transcripts/<file>.json` from `backend/` **before kickoff** (the snapshot is the saved board at import time). Only explicit picks: fantasy start/sit, survivor and futures are skipped. Loaded so far (41): The Fantasy Alarm Show (10/7), Fantasy Football Morning (10/8), The College Draft (10/8, college, filed under NFL week 5), RotoWire Fantasy Sports Today (10/9, 2), Elite Sports (10/9, 5 NFL + 4 college; split into two files since a file holds one sport). A parlay is recorded as one `team_win` pick per leg (the price is the parlay's, so it isn't put on the legs).
 
 ## Findings worth remembering
 - Of the show picks with a model view, only Brawley's Tyler Warren Under 51.5 matches a real model lean (56% vs books 50.5%; a bet at -119 or better, Hard Rock was -120). Everything else is a coin flip at the market or the model is against it. The shows' value so far is context, e.g. explaining the board's +15% Jalon Daniels rushing Under as a stale projection; that Over (Hansen's lean) lost with 23 yards.
