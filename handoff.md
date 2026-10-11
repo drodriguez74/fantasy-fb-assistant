@@ -8,6 +8,9 @@
 - Model version unchanged (`2026-10-08.6`): nothing this session changes a price.
 - **Week 5 so far (after TB @ DAL):** Track record bets 3-1, +1.06u. Shows: Fantasy Football Morning 2-1 on bets, The Fantasy Alarm Show 1-2. My entries 1-2, +$32.19 (the Pickens/Irving promo won). Everything else grades Sunday/Monday.
 - **Phone pass done (10/9, 390px, NFL + College):** every Bets tab fits with no sideways scroll. It found one bug, now fixed: a show with picks in both sports (Elite Sports) had its season record blended across sports, so `analyst_picks.summary()` now returns one entry per show per sport.
+- **Lines tab (10/10, `085c42a`, `329ab0e`):** the Watch list tab is now Lines and opens on Games, one card per game (`GameSlate.tsx`): the books' projected score, spread and total, and Bet / Watch / Pass for the better side at Hard Rock (the founder preferred words over A-F letters). Sleeper/ESPN shown for reference only. Started games sink and show Closed; All / Bets & watch filter. Player props are the other toggle.
+- **Shows:** the VSiN College Football Tailgate Show (10/10, 6 college picks) is loaded, so 47 show picks in total.
+- **Founder now has a Hard Rock Bet account** (10/10). No config change: `BETTING_MY_BOOKS` already defaulted to `hardrockbet`.
 
 ## What was built (commits, oldest → newest)
 | Commit | What |
