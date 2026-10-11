@@ -85,7 +85,7 @@ export function ThisWeekCard({
                 } · ${totalUnits}u${dollars(totalUnits, bankroll) ? ` (${dollars(totalUnits, bankroll)})` : ''} total${
                   bets.length && bets.every((r) => r.book === MY_BOOK) ? ' · all at Hard Rock Bet' : ''
                 }`}
-            {watchText ? ` · ${watchText} on the watch list` : ''}
+            {watchText ? ` · ${watchText} to watch` : ''}
           </p>
         </div>
         <BankrollInput bankroll={bankroll} onChange={setBankroll} />

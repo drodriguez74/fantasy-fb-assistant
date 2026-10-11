@@ -5,6 +5,7 @@ import { BettingResults } from '../components/betting/BettingResults'
 import { PrizePicksPairs } from '../components/betting/PrizePicksPairs'
 import { usePrizePicksEntries } from '../components/betting/prizePicksEntriesData'
 import { GameCombos } from '../components/betting/GameCombos'
+import { GameSlate } from '../components/betting/GameSlate'
 import { BetCard } from '../components/betting/BetCard'
 import { ThisWeekCard } from '../components/betting/ThisWeekCard'
 import { MyEntries } from '../components/betting/MyEntries'
@@ -28,7 +29,8 @@ const TAB_LABELS: Record<Tab, [string, string]> = {
   // [full label, phone label]: all five fit at 390px without scrolling.
   prizepicks: ['PrizePicks', 'PrizePicks'],
   shows: ['Shows', 'Shows'],
-  watch: ['Watch list', 'Watch'],
+  // Every game graded (spread + total), then the player-prop watch list.
+  watch: ['Lines', 'Lines'],
   entries: ['My entries', 'Entries'],
   track: ['Track record', 'Record'],
 }
@@ -86,8 +88,8 @@ export function BettingPage() {
   const [error, setError] = useState('')
   const [sport, setSport] = useState<'nfl' | 'cfb'>('nfl')
   const [tab, setTab] = useState<Tab>('prizepicks')
-  // Play tab: sportsbook player props or game lines (college has game lines only).
-  const [lines, setLines] = useState<'props' | 'games'>('props')
+  // Lines tab: every game graded, or sportsbook player props (college has games only).
+  const [lines, setLines] = useState<'props' | 'games'>('games')
   const [showInfo, setShowInfo] = useState(false)
   // College board (GET /betting/board?sport=cfb), loaded the first time College is picked.
   const [college, setCollege] = useState<Board | null>(null)
@@ -395,23 +397,25 @@ export function BettingPage() {
                     label="Bet type"
                     value={lines}
                     options={[
+                      ['games', 'Games'],
                       ['props', 'Player props'],
-                      ['games', 'Game lines'],
                     ]}
                     onChange={setLines}
                   />
                 ) : (
-                  <p className="text-sm text-body font-medium">College game lines</p>
+                  <p className="text-sm text-body font-medium">College games</p>
                 )}
-                <Segmented
-                  label="Which lines"
-                  value={playView}
-                  options={[
-                    ['watch', `Close to a bet (${watchRows.length})`],
-                    ['all', 'All lines'],
-                  ]}
-                  onChange={setPlayView}
-                />
+                {!showingGames && (
+                  <Segmented
+                    label="Which lines"
+                    value={playView}
+                    options={[
+                      ['watch', `Close to a bet (${watchRows.length})`],
+                      ['all', 'All lines'],
+                    ]}
+                    onChange={setPlayView}
+                  />
+                )}
               </div>
               <PlayerSearch
                 value={query}
@@ -426,7 +430,14 @@ export function BettingPage() {
                 </p>
               )}
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
-              {!searching && (
+              {/* Games: one graded card per game replaces the per-side cards. */}
+              {showingGames ? (
+                <GameSlate
+                  rows={rows.filter((r) => matchesQuery(query, r.game, r.home, r.away))}
+                  alertFor={alertFor}
+                  onToggleAlert={toggleAlert}
+                />
+              ) : !searching && (
                 <p className="text-xs text-muted">
                   {playView === 'watch'
                     ? 'Not bets yet. Tap one to get an alert if its price gets good enough.'
@@ -434,7 +445,7 @@ export function BettingPage() {
                   {betRows.length === 0 && ` No ${kind} clears the bar right now.`}
                 </p>
               )}
-              {shown.length === 0 ? (
+              {showingGames ? null : shown.length === 0 ? (
                 <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
                   {searching
                     ? `No ${kind} matches "${query.trim()}" on this board.`
