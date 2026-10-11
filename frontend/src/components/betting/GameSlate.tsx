@@ -1,12 +1,13 @@
 // Every game on the board, one card each: the projected score, the spread
-// and the total, and a grade for the best price at the user's book. Built
+// and the total, and a verdict (Bet / Watch / Pass) for the best price at the user's book. Built
 // from GET /betting/board's game_props (one row per game per market: the
 // best-priced side, see betting_service.evaluate_game).
 //
 // The projection is the books' consensus: NFL game lines are market-only
 // (GAME_MODEL_WEIGHT = 0) and ESPN's college predictor added nothing to the
 // line over 2025, so Sleeper's and ESPN's numbers are shown for reference
-// only. A grade above D means Hard Rock's price beats the market.
+// only. A Bet means Hard Rock's price beats the market. The A-F tiers stay
+// internal (sorting, filters); the founder prefers words over letters on screen.
 //
 // Volt is reserved for real bets (as on BetCard): only A/B chips and a game
 // holding a bet use it. A pass still names the better side, but quietly, so
@@ -50,23 +51,35 @@ const isAction = (g: Grade) => RANK[g] <= RANK.C
 const signed = (v: number) => (v === 0 ? 'PK' : v > 0 ? `+${v}` : `${v}`)
 const one = (v: number) => (Math.round(v * 10) / 10).toFixed(1)
 
-function GradeChip({ grade, fill, started }: { grade: Grade; fill?: boolean; started: boolean }) {
+function GradeChip({
+  grade,
+  fill,
+  units,
+  started,
+}: {
+  grade: Grade
+  fill?: boolean
+  units?: number
+  started: boolean
+}) {
   if (started) {
     return (
-      <div className="w-14 shrink-0 rounded-md border border-hairline px-1 py-1.5 text-center text-faint" aria-label="Started: line closed">
-        <div className="text-base font-bold leading-none">–</div>
-        <div className="text-xs mt-1 leading-none">Closed</div>
+      <div
+        className="w-14 shrink-0 rounded-md border border-hairline px-1 py-1.5 text-center text-faint"
+        aria-label="Started: line closed"
+      >
+        <div className="text-sm font-bold leading-none">Closed</div>
       </div>
     )
   }
   return (
     <div
       className={`w-14 shrink-0 rounded-md px-1 py-1.5 text-center ${GRADE_LOOK[grade]}`}
-      aria-label={`Grade ${grade}: ${GRADE_LONG[grade]}`}
+      aria-label={fill ? 'Best available fill' : GRADE_LONG[grade]}
       title={GRADE_LONG[grade]}
     >
-      <div className="text-base font-bold leading-none">{grade}</div>
-      <div className="text-xs mt-1 leading-none">{fill ? 'Fill' : GRADE_TEXT[grade]}</div>
+      <div className="text-sm font-bold leading-none">{fill ? 'Fill' : GRADE_TEXT[grade]}</div>
+      {units != null && units > 0 && <div className="stat-nums text-xs mt-1 leading-none">{units}u</div>}
     </div>
   )
 }
@@ -104,7 +117,7 @@ function Market({
 
   return (
     <div className="flex items-start gap-3 py-2.5">
-      <GradeChip grade={grade} fill={row.card_fill} started={started} />
+      <GradeChip grade={grade} fill={row.card_fill} units={row.units} started={started} />
       <div className="min-w-0 flex-1">
         <p className="text-sm break-words">
           <span className="text-muted">{row.market_label}</span>{' '}
@@ -120,7 +133,7 @@ function Market({
         </p>
         <p className="stat-nums text-xs text-muted break-words mt-0.5">
           {Math.round(row.p_win * 100)}% to win · edge {signedPct(row.ev)}
-          {!started && row.units > 0 && ` · ${row.units}u`}
+          {!started && grade === 'F' && ` · poor price at ${MY_BOOK}`}
           {row.watch && row.bet_at != null && ` · bet at ${odds(row.bet_at)}`}
           {isSpread && row.p_push > 0.005 && ` · ${Math.round(row.p_push * 100)}% push`}
         </p>
@@ -244,8 +257,8 @@ export function GameSlate({
         </div>
       </div>
       <p className="text-xs text-muted leading-relaxed">
-        Projected score is the books' consensus; Sleeper and ESPN are shown for reference (neither has beaten the market).
-        Grades the better side at {MY_BOOK}: A–B bet, C watch, D fair price, F poor price.
+        Projected score is the books' consensus; Sleeper and ESPN are shown for reference (neither has beaten the
+        market). Bet / Watch / Pass is for the better side at {MY_BOOK}.
       </p>
       {games.length === 0 && (
         <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
