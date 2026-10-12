@@ -11,6 +11,11 @@ transcripts/ (gitignored) as <upload date>-vsin-<nfl|cfb>-<slug>-<video id>.txt;
 a video already saved is skipped, and one whose captions aren't up yet is
 retried on the next run. Picks are still extracted by hand into JSON and
 loaded with import_analyst_picks.py.
+
+Feeds the Shows tab on the Bets page (analyst_picks.py). On the founder's Mac
+it runs three times a day from a launchd job, label
+com.fantasyfootball.show-transcripts (scripts/launchd/ has the plist with
+install/remove steps; log at ~/Library/Logs/show-transcripts.log).
 """
 import argparse
 import re

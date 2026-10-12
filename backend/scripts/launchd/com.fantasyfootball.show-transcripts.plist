@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Fantasy Football Assistant (this repo): runs backend/scripts/fetch_show_transcripts.py
+     at 9:00, 14:00 and 19:00 to save new VSiN YouTube picks-show transcripts into
+     backend/transcripts/. Paths are the founder's Mac; edit them for another machine.
+     Install:   cp this file ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasyfootball.show-transcripts.plist
+     Remove:    launchctl bootout gui/$(id -u)/com.fantasyfootball.show-transcripts && rm ~/Library/LaunchAgents/com.fantasyfootball.show-transcripts.plist
+     Log:       ~/Library/Logs/show-transcripts.log -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.fantasyfootball.show-transcripts</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/venv/bin/python</string>
+    <string>/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/scripts/fetch_show_transcripts.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/darwinrodriguez/projects/fantasy-football-assistant/backend</string>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>9</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>14</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>0</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/darwinrodriguez/Library/Logs/show-transcripts.log</string>
+  <key>StandardErrorPath</key><string>/Users/darwinrodriguez/Library/Logs/show-transcripts.log</string>
+</dict>
+</plist>
