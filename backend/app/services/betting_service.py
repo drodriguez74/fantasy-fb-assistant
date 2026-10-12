@@ -176,6 +176,31 @@ _zero_catch: Dict[str, float] = {}
 _zero_rush: Dict[str, float] = {}
 
 
+# Each player's mean offensive snap share over his earlier games this season
+# (Sleeper stats), by normalized name, refreshed per board build. Used only to
+# keep part-time players out of most_likely (bm.MOST_LIKELY_MIN_SNAP).
+_snap_share: Dict[str, float] = {}
+
+
+async def _lagged_snap_shares(season: int, week: int) -> Dict[str, float]:
+    """{normalized name: mean off_snp / tm_off_snp over weeks before `week`},
+    the props_dist_data.py definition. Cached a day in odds_cache: one Sleeper
+    stats call per earlier week, reduced week by week to keep memory low."""
+    key = f"snap_share:{season}:{week}"
+    cached = await odds_service._cache_get(key, 24 * 3600)
+    if cached is not None:
+        return cached
+    from app.services.betting_tracking import _sleeper_stats
+    shares: Dict[str, List[float]] = {}
+    for w in range(1, week):
+        for (name, _), st in (await _sleeper_stats(season, w)).items():
+            if st.get("tm_off_snp"):
+                shares.setdefault(name, []).append(float(st.get("off_snp") or 0) / float(st["tm_off_snp"]))
+    out = {name: round(sum(v) / len(v), 3) for name, v in shares.items()}
+    await odds_service._cache_put(key, out)
+    return out
+
+
 def _p_zero(player: str, market: str) -> Optional[float]:
     if market in bm.ZERO_CATCH_MARKETS:
         return _zero_catch.get(normalize_name(player))
@@ -356,6 +381,11 @@ def _side_prob(samples, side: str, line: Optional[float]) -> float:
 # 37-45% for passing yards -- there the check only filtered noise
 # (scripts/experiments/props_mean_analyze.py extras).
 ESPN_CHECK_EXEMPT = frozenset({"player_pass_yds"})
+# An exempt bet rests on Sleeper alone, so it's capped at this many units
+# when ESPN projects the other side of the line (its own P(side) < 50%).
+# Week 5 2026: passing bets went 1-4 with Sleeper at 65-72% vs the books'
+# 50%, e.g. Kyler Murray Under 213.5 with Sleeper 166 vs ESPN 231 (229 real).
+SPLIT_PROJECTION_MAX_UNITS = 1.0
 
 
 def _espn_check(c: Dict[str, Any], espn_samples, market: Optional[str] = None) -> Dict[str, Any]:
@@ -367,10 +397,15 @@ def _espn_check(c: Dict[str, Any], espn_samples, market: Optional[str] = None) -
     Sleeper alone; e.g. Brian Robinson Jr. Under 35.5 at 2.5u where ESPN had
     exactly the books' 50%). A side ESPN leans toward but doesn't confirm
     stays on the watch list (espn_confirms False). Shown but not required for
-    ESPN_CHECK_EXEMPT markets."""
+    ESPN_CHECK_EXEMPT markets, which are only capped at
+    SPLIT_PROJECTION_MAX_UNITS when ESPN projects the other side."""
     p = _side_prob(espn_samples, c["side"], c["line"])
     if market in ESPN_CHECK_EXEMPT:
-        return {**c, "espn_prob": round(p, 4), "espn_agrees": None, "espn_confirms": None}
+        c = {**c, "espn_prob": round(p, 4), "espn_agrees": None, "espn_confirms": None}
+        if p < 0.5 and c["units"] > SPLIT_PROJECTION_MAX_UNITS:
+            c = {**c, "units": SPLIT_PROJECTION_MAX_UNITS,
+                 "confidence": bm.confidence_label(SPLIT_PROJECTION_MAX_UNITS)}
+        return c
     agrees = p > c["market_prob"]
     c = {**c, "espn_prob": round(p, 4), "espn_agrees": agrees, "espn_confirms": None}
     if not agrees:
@@ -752,8 +787,9 @@ def correlated_stacks(rows: List[Dict[str, Any]], payout: float = bm.POWER_PAYOU
 
 def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
     """The PrizePicks picks most likely to win: calibrated win chance >=
-    MOST_LIKELY_MIN, backed by our engine (its chance >= the books') and not
-    contradicted by ESPN, one pick per player (its likeliest line), best
+    MOST_LIKELY_MIN, backed by our engine (its chance >= the books'), not
+    contradicted by ESPN and not a part-time player (lagged snap share under
+    MOST_LIKELY_MIN_SNAP; unknown shares pass), one pick per player (its likeliest line), best
     first. `engine_edge` is how far the blended chance sits above the books'. Plus the safest 2-pick from two teams (P(both),
     same-game correlation included). rows: {player, team, game, kickoff,
     home, away, market, market_label, odds_type, prizepicks: leg}. Stale
@@ -763,6 +799,8 @@ def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         leg = r.get("prizepicks") or {}
         if leg.get("p_win", 0) < bm.MOST_LIKELY_MIN or leg.get("espn_agrees") is False:
             continue
+        if _snap_share.get(normalize_name(r["player"]), 1.0) < bm.MOST_LIKELY_MIN_SNAP:
+            continue  # part-time: its low tail is fatter than modeled
         model, books = leg.get("model_prob"), leg.get("market_prob")
         if model is not None and books is not None and model < books:
             continue  # the engine doesn't back it: the books alone aren't an edge
@@ -1145,6 +1183,13 @@ async def _build_board_now() -> Dict[str, Any]:
                                                  fetch_espn_weekly_projections(season, int(week)),
                                                  fetch_home_win_probs(season, int(week)))
     projections = _projection_index(rows)
+    try:
+        snaps = await _lagged_snap_shares(season, int(week))
+    except Exception as e:  # noqa: BLE001 - without it most_likely just isn't snap-filtered
+        logger.warning("Snap shares unavailable: %s", e)
+        snaps = {}
+    _snap_share.clear()
+    _snap_share.update(snaps)
 
     sem = asyncio.Semaphore(_PROP_CONCURRENCY)
 

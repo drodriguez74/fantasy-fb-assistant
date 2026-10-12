@@ -295,6 +295,17 @@ def test_espn_check_does_not_gate_passing_yards():
     assert _espn_check(c, espn_says_under, "player_reception_yds")["units"] == 0.0
 
 
+def test_passing_bet_capped_when_espn_projects_other_side():
+    from app.services.betting_service import SPLIT_PROJECTION_MAX_UNITS, _espn_check
+    c = {"side": "Under", "line": 213.5, "market_prob": 0.5, "units": 3.0, "confidence": "strong"}
+    espn_says_over = np.full(1000, 231.0)
+    espn_says_under = np.full(1000, 190.0)
+    capped = _espn_check(c, espn_says_over, "player_pass_yds")
+    assert capped["units"] == SPLIT_PROJECTION_MAX_UNITS
+    assert capped["confidence"] != "strong"
+    assert _espn_check(c, espn_says_under, "player_pass_yds")["units"] == 3.0
+
+
 def test_card_is_filled_to_three_picks():
     from app.services.betting_service import fill_card
 
@@ -333,6 +344,18 @@ def test_most_likely_picks_and_safest_pair():
     assert set(out["safest_pair"]["legs"]) == {"A", "C"}             # A+B are teammates: not allowed
     assert abs(out["safest_pair"]["p_both"] - 0.82 * 0.76) < 1e-6
 
+
+
+def test_most_likely_leaves_out_part_time_players(monkeypatch):
+    from app.services import betting_service
+    monkeypatch.setattr(betting_service, "_snap_share", {"part timer": 0.39, "starter": 0.85})
+
+    def row(player, team):
+        return {"player": player, "team": team, "game": f"{team} @ X", "market": "player_reception_yds",
+                "market_label": "x", "odds_type": "goblin",
+                "prizepicks": {"side": "More", "line": 9.5, "p_win": 0.85, "espn_agrees": None}}
+    out = betting_service.most_likely([row("Part Timer", "DET"), row("Starter", "KC"), row("Rookie", "TEN")])
+    assert [p["player"] for p in out["picks"]] == ["Starter", "Rookie"]  # unknown share passes
 
 def test_pp_leg_rows_track_without_price():
     from app.services.betting_tracking import _row_values, profit

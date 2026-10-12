@@ -1,3 +1,20 @@
+# START HERE — Session 22 (2026-10-12): Week 5 read, two engine guards, VSiN transcript fetcher
+
+> Session 21's wrap below still holds for everything not mentioned here.
+
+## State right now
+- **Engine `2026-10-12.2`** (two changes, both in BETTING_GUIDE section 3):
+  - `.1` passing bets capped at 1u when ESPN projects the other side (`SPLIT_PROJECTION_MAX_UNITS`, closes open item 10).
+  - `.2` part-time players (lagged snap share < 50%, `MOST_LIKELY_MIN_SNAP`) left out of Most likely to win. Held-out backtest backs it; it would NOT have caught week 5's misses (their earlier shares were 51-84%).
+- **Week 5 read** (closes open item 6): BETTING_GUIDE section 9, "Week 5 results". Bets 21-15 +11.7u, 69% beat the close; passing 1-4; Unders beat predictions in every market (watch weeks 6-7, don't tune); Hard Rock-only 6-6 +1.3u.
+- **VSiN YouTube transcripts:** `backend/scripts/fetch_show_transcripts.py` (deps in `backend/requirements-scripts.txt`, local only) saves new NFL/college picks shows to `backend/transcripts/`. Founder may install a launchd job (plist written to the session scratchpad; installing it was blocked for Claude) or run it by hand. Imports stay by hand, before kickoff.
+- **Shows:** VSiN Prop Points 10/12 (Bills @ Rams MNF, 6 picks) imported.
+- 274 backend tests pass.
+
+## Next
+- Re-read weeks 6-7: the Under pattern, the 50-65% snap tier in Most likely, the Hard Rock-only record, CLV (open item 7).
+- Not committed by this session (founder's own work): `backend/app/services/user_entries.py`, `scripts/fetch_nfl_prizepicks.mjs`, `backend/2026-10-12-projections.json`.
+
 # START HERE — Session 21 wrap (2026-10-08 → 10-09): player search, Shows, Bets review pass, weekly tracking
 
 > Read this, then `docs/guides/BETTING_GUIDE.md` (section 6 the page, section 8 open items). Session 20's wrap below still holds for the model.

@@ -1,0 +1,4 @@
+# Local-only tools for scripts/ (not installed on Render).
+# fetch_show_transcripts.py
+yt-dlp==2026.8.19
+youtube-transcript-api==1.2.4

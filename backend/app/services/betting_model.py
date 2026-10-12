@@ -47,7 +47,7 @@ import numpy as np
 # Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
 # with key-number spreads, measured correlations, zero-catch and zero-rush
 # games. Rows from before versioning have NULL ("pre-versioning").
-ENGINE_VERSION = "2026-10-08.6"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution
+ENGINE_VERSION = "2026-10-12.2"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution; 2026-10-12.1: passing bets capped at 1u when ESPN projects the other side; .2: part-time players out of most_likely
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
@@ -75,6 +75,16 @@ FILL_UNITS = 0.5
 # predicted vs actual in Results.
 MOST_LIKELY_MIN = 0.70
 MOST_LIKELY_COUNT = 5
+# Players under this lagged snap share are left out of most_likely. Held out
+# (2024 wk 4-17, 2025 wk 11-17, 2026 wk 1-4; current model's own 20th
+# percentile as the line), "80%" Overs hit 73% / 75% / 66% for players under
+# 50% of snaps (rec yds / rush yds / receptions) vs 82% / 81% / 73% at 65%+;
+# snap share in the model itself didn't help on every set
+# (experiments/props_dist_role.py). The 50-65% tier is in between (76% / 81%
+# / 68%). It would not have caught week 5 2026's misses: their lagged shares
+# were 51-84%; the small roles showed up only that week. Unknown shares
+# (rookies' first game) pass.
+MOST_LIKELY_MIN_SNAP = 0.50
 # Anytime TD is quoted "Yes" only, so it can't be de-vigged pairwise. Summed
 # over a full game, the books' Yes prices imply ~5.5-7.5 rushing/receiving
 # TDs where ~4-5 actually happen: the hold is ~30-40%, not a few percent,
