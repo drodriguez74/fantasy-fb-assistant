@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd \"$CLAUDE_PROJECT_DIR/backend\" && venv/bin/python scripts/transcript_status.py --hook 2>/dev/null || true",
+            "timeout": 90,
+            "statusMessage": "Checking for new show transcripts..."
+          }
+        ]
+      }
+    ]
+  }
+}

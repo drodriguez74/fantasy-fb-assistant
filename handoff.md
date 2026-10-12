@@ -9,6 +9,7 @@
 - **Week 5 read** (closes open item 6): BETTING_GUIDE section 9, "Week 5 results". Bets 21-15 +11.7u, 69% beat the close; passing 1-4; Unders beat predictions in every market (watch weeks 6-7, don't tune); Hard Rock-only 6-6 +1.3u.
 - **VSiN YouTube transcripts:** `backend/scripts/fetch_show_transcripts.py` (deps in `backend/requirements-scripts.txt`, local only) saves new NFL/college picks shows to `backend/transcripts/`. Founder installed the launchd job 2026-10-12 (plist copy + install/remove steps in `backend/scripts/launchd/`). Imports stay by hand, before kickoff.
 - **Shows:** VSiN Prop Points 10/12 (Bills @ Rams MNF, 6 picks) imported.
+- **Import tracker + session-start hook:** `.claude/settings.json` runs `backend/scripts/transcript_status.py --hook` at every session start; pending transcripts (not in `backend/transcripts/import_log.json`) are listed for import. Picks JSON gets a `"transcript"` field; `--skip FILE --note` for ones with nothing to import. 3 pending at handoff, all for games already played (Bucs-Cowboys props, Week 5 MegaPod, college week 6).
 - 274 backend tests pass.
 
 ## Next
