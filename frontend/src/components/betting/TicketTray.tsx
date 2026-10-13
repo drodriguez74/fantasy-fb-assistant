@@ -9,6 +9,8 @@ import { XMarkIcon } from '@heroicons/react/24/outline'
 import { betting, getErrorMessage } from '../../services/api'
 import type { Flex, Power } from './prizePicksEntriesData'
 import { legKey, type TicketLeg } from './ticketTypes'
+import { chance, signedPct } from './format'
+import { Segmented } from './ui'
 
 interface Priced {
   p_all: number
@@ -17,7 +19,6 @@ interface Priced {
   breakeven_power: number | null
 }
 
-const pct = (p: number) => `${(p * 100).toFixed(1)}%`
 
 export function TicketTray({
   legs,
@@ -101,7 +102,7 @@ export function TicketTray({
           <span className="text-sm font-medium text-body">Your ticket · {size} pick{size === 1 ? '' : 's'}</span>
           {priced && (
             <span className="stat-nums text-xs text-muted">
-              {pct(priced.p_all)} all hit{edge != null && ` · edge ${edge > 0 ? '+' : ''}${(edge * 100).toFixed(1)}%`}
+              {chance(priced.p_all)} all hit{edge != null && ` · edge ${signedPct(edge)}`}
             </span>
           )}
           <span className="ml-auto text-xs text-muted">{open ? 'Hide' : 'Show'}</span>
@@ -119,7 +120,7 @@ export function TicketTray({
                       <span className="ml-1 text-xs text-muted border border-hairline rounded px-1 capitalize">{l.odds_type}</span>
                     )}
                   </span>
-                  <span className="stat-nums text-xs text-faint shrink-0">{Math.round(l.p_win * 100)}%</span>
+                  <span className="stat-nums text-xs text-faint shrink-0">{chance(l.p_win)}</span>
                   <button onClick={() => onRemove(l)} aria-label={`Remove ${l.player}`} className="text-faint hover:text-body">
                     <XMarkIcon className="h-4 w-4" />
                   </button>
@@ -133,19 +134,15 @@ export function TicketTray({
             ) : priced ? (
               <>
                 <div className="flex flex-wrap items-end gap-3 text-xs">
-                  <div className="flex rounded-lg border border-hairline p-0.5" role="tablist" aria-label="Entry type">
-                    {(['power', 'flex'] as const).map((t) => (
-                      <button
-                        key={t}
-                        role="tab"
-                        aria-selected={type === t}
-                        onClick={() => setType(t)}
-                        className={`px-3 py-1 rounded-md ${type === t ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-                      >
-                        {t === 'power' ? 'Power' : 'Flex'}
-                      </button>
-                    ))}
-                  </div>
+                  <Segmented
+                    label="Entry type"
+                    value={type}
+                    options={[
+                      ['power', 'Power'],
+                      ['flex', 'Flex'],
+                    ]}
+                    onChange={setType}
+                  />
                   <label className="flex flex-col gap-1 text-muted">
                     {type === 'power' ? 'Pays (x) if all hit' : `Pays (x) for ${size}/${size}`}
                     <input
@@ -160,14 +157,14 @@ export function TicketTray({
                     />
                   </label>
                   <p className="stat-nums text-muted pb-1">
-                    {pct(priced.p_all)} all hit (vs {pct(priced.p_independent)} if independent)
+                    {chance(priced.p_all)} all hit (vs {chance(priced.p_independent)} if independent)
                     {priced.breakeven_power && type === 'power' && ` · needs ${priced.breakeven_power}x`}
                   </p>
                 </div>
                 {edge != null ? (
                   <p className={`text-sm stat-nums ${edge > 0 ? 'text-success-700' : 'text-danger-700'}`}>
                     Edge {edge > 0 ? '+' : ''}
-                    {(edge * 100).toFixed(1)}% at {x}x{edge <= 0 && ' -- PrizePicks pays less than the chance needs'}
+                    {signedPct(edge)} at {x}x{edge <= 0 && ' -- PrizePicks pays less than the chance needs'}
                   </p>
                 ) : (
                   <p className="text-xs text-muted">

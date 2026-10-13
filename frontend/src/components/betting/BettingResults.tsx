@@ -3,6 +3,8 @@ import { betting, getErrorMessage } from '../../services/api'
 import { ClockIcon } from '@heroicons/react/24/outline'
 import { BettingAudit } from './BettingAudit'
 import type { BetWeek } from './betTypes'
+import { chance, rate, signedNum } from './format'
+import { Explainer, Segmented } from './ui'
 
 // GET /betting/results -- backend/app/services/betting_tracking.py.
 interface RecordSummary {
@@ -77,8 +79,6 @@ const MARKET_LABELS: Record<string, string> = {
 }
 const SIZE_NAME = { high: 'Max', strong: 'Medium', lean: 'Small' } as const
 
-const signed = (n: number, digits = 2) => `${n > 0 ? '+' : ''}${n.toFixed(digits)}`
-const pct = (n: number | null) => (n == null ? '—' : `${(n * 100).toFixed(1)}%`)
 
 const tone = (n: number | null) => ((n ?? 0) > 0 ? 'text-success-700' : (n ?? 0) < 0 ? 'text-danger-700' : 'text-body')
 
@@ -86,14 +86,14 @@ const tone = (n: number | null) => ((n ?? 0) > 0 ? 'text-success-700' : (n ?? 0)
 function PeriodTable({ rows }: { rows: [string, RecordSummary | undefined][] }) {
   return (
     <div className="bg-surface rounded-lg border border-hairline p-4 overflow-x-auto">
-      <table className="w-full stat-nums text-sm">
+      <table className="w-full stat-nums text-xs sm:text-sm [&_th+th]:pl-3 [&_td+td]:pl-3">
         <thead>
           <tr className="text-xs text-faint text-left">
             <th className="font-normal pb-1"></th>
             <th className="font-normal pb-1 text-right">Record</th>
             <th className="font-normal pb-1 text-right">Units</th>
             <th className="font-normal pb-1 text-right">ROI</th>
-            <th className="font-normal pb-1 text-right">Pending</th>
+            <th className="font-normal pb-1 text-right">Open</th>
           </tr>
         </thead>
         <tbody>
@@ -103,8 +103,8 @@ function PeriodTable({ rows }: { rows: [string, RecordSummary | undefined][] }) 
               {r ? (
                 <>
                   <td className="text-right text-body">{r.won + r.lost + r.push ? recordText(r) : '—'}</td>
-                  <td className={`text-right ${tone(r.units_profit)}`}>{r.won + r.lost ? `${signed(r.units_profit)}u` : '—'}</td>
-                  <td className={`text-right ${tone(r.roi)}`}>{pct(r.roi)}</td>
+                  <td className={`text-right ${tone(r.units_profit)}`}>{r.won + r.lost ? `${signedNum(r.units_profit)}u` : '—'}</td>
+                  <td className={`text-right ${tone(r.roi)}`}>{rate(r.roi)}</td>
                   <td className="text-right text-muted">{r.pending}</td>
                 </>
               ) : (
@@ -125,7 +125,7 @@ function recordText(r: RecordSummary) {
 function SplitTable({ title, rows }: { title: string; rows: [string, RecordSummary][] }) {
   if (rows.length === 0) return null
   return (
-    <div className="bg-surface rounded-lg border border-hairline p-4">
+    <div>
       <h3 className="text-sm font-medium text-body mb-2">{title}</h3>
       <table className="w-full stat-nums text-xs">
         <thead>
@@ -142,9 +142,9 @@ function SplitTable({ title, rows }: { title: string; rows: [string, RecordSumma
               <td className="py-1.5 text-body">{name}</td>
               <td className="text-body">{recordText(r)}{r.pending ? <span className="text-faint"> ({r.pending} pending)</span> : null}</td>
               <td className={`text-right ${r.units_profit > 0 ? 'text-success-700' : r.units_profit < 0 ? 'text-danger-700' : 'text-muted'}`}>
-                {signed(r.units_profit)}u
+                {signedNum(r.units_profit)}u
               </td>
-              <td className="text-right text-muted">{pct(r.roi)}</td>
+              <td className="text-right text-muted">{rate(r.roi)}</td>
             </tr>
           ))}
         </tbody>
@@ -156,7 +156,17 @@ function SplitTable({ title, rows }: { title: string; rows: [string, RecordSumma
 const SPORT_NAME = { nfl: 'NFL', cfb: 'College' } as const
 
 /** Track record for the sport picked at the top of the page (each model is judged on its own). */
-export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; current: BetWeek | null }) {
+export function BettingResults({
+  sport,
+  current,
+  picked,
+  onPick,
+}: {
+  sport: 'nfl' | 'cfb'
+  current: BetWeek | null
+  picked: BetWeek | null
+  onPick: (w: BetWeek) => void
+}) {
   const [currentOnly, setCurrentOnly] = useState(false)
   const [data, setData] = useState<Results | null>(null)
   const [error, setError] = useState('')
@@ -172,21 +182,15 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
   }, [sport, currentOnly])
 
   const scopeToggle = (
-    <div className="flex flex-wrap items-center gap-3">
-    <div className="flex rounded-lg border border-hairline p-0.5 w-fit" role="tablist" aria-label="Model version">
-      {([false, true] as const).map((v) => (
-        <button
-          key={String(v)}
-          role="tab"
-          aria-selected={currentOnly === v}
-          onClick={() => setCurrentOnly(v)}
-          className={`px-3 py-1 rounded-md text-xs ${currentOnly === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-        >
-          {v ? 'Current model' : 'All picks'}
-        </button>
-      ))}
-    </div>
-    </div>
+    <Segmented
+      label="Model version"
+      value={currentOnly}
+      options={[
+        [false, 'All picks'],
+        [true, 'Current model'],
+      ]}
+      onChange={setCurrentOnly}
+    />
   )
 
   if (loading) {
@@ -228,7 +232,7 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
         <PeriodTable
           rows={[
             [
-              current ? `This week (${current.week})` : 'This week',
+              current ? `Week ${current.week}` : 'This week',
               current ? data.by_week.find((w) => w.season === current.season && w.week === current.week) : undefined,
             ],
             ['Season', o],
@@ -242,7 +246,7 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
             <span className="font-medium">Beat the closing line</span>{' '}
             <span className="text-muted">(games already started):</span>{' '}
             <span className="stat-nums">
-              {data.clv.beat} of {data.clv.moved} ({Math.round((data.clv.beat_rate ?? 0) * 100)}%)
+              {data.clv.beat} of {data.clv.moved} ({chance(data.clv.beat_rate)})
             </span>
             {data.clv.avg_prob_move != null && (
               <span className={`stat-nums ${data.clv.avg_prob_move > 0 ? 'text-success-700' : 'text-danger-700'}`}>
@@ -252,14 +256,18 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
               </span>
             )}
           </p>
-          <p className="text-xs text-muted mt-1">
+          <div className="mt-1">
+            <Explainer>
+            <p>
             The early sign of a real edge: if the market keeps moving toward our picks before kickoff, we're ahead of it,
             long before wins and losses can show it. Above 50% consistently is good.
           </p>
+          </Explainer>
+          </div>
         </div>
       )}
 
-      <BettingAudit sport={sport} />
+      <BettingAudit sport={sport} current={current} picked={picked} onPick={onPick} />
 
       {graded && (
         <details className="bg-surface rounded-lg border border-hairline p-4 group">
@@ -268,12 +276,16 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
             <span className="text-xs text-muted group-open:hidden">Show</span>
             <span className="text-xs text-muted hidden group-open:inline">Hide</span>
           </summary>
-          <p className="text-xs text-muted mt-2">
+          <div className="mt-2">
+            <Explainer>
+            <p>
             {`${SPORT_NAME[sport]} only (switch sport at the top). `}
             Every pick is saved at the price shown and graded from real stats; {data.lines_tracked} lines tracked, including
             lines we passed on, which is what the calibration check uses.
           </p>
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
+          </Explainer>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6 gap-y-5 mt-4">
             <SplitTable
               title="By bet size"
               rows={(['high', 'strong', 'lean', 'fill'] as const)
@@ -289,16 +301,16 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
               />
             )}
             {data.most_likely && data.most_likely.decided > 0 && (
-              <div className="bg-surface rounded-lg border border-hairline p-4">
+              <div>
                 <h3 className="text-sm font-medium text-body mb-1">Safest picks</h3>
                 <p className="text-xs text-muted">
-                  {data.most_likely.decided} graded: we said {Math.round((data.most_likely.predicted ?? 0) * 100)}% on
-                  average, they hit {Math.round((data.most_likely.actual ?? 0) * 100)}%.
+                  {data.most_likely.decided} graded: we said {chance(data.most_likely.predicted)} on
+                  average, they hit {chance(data.most_likely.actual)}.
                 </p>
               </div>
             )}
             {data.calibration.lines > 0 && (
-              <div className="bg-surface rounded-lg border border-hairline p-4">
+              <div>
                 <h3 className="text-sm font-medium text-body mb-1">Calibration</h3>
                 <p className="text-xs text-muted mb-2">When we said a side wins X% of the time, how often did it?</p>
                 <table className="w-full stat-nums text-xs">
@@ -314,8 +326,8 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
                     {data.calibration.buckets.map((b) => (
                       <tr key={b.range} className="border-t border-hairline">
                         <td className="py-1.5 text-body">{b.range}</td>
-                        <td className="text-right text-muted">{pct(b.predicted)}</td>
-                        <td className="text-right text-body">{pct(b.actual)}</td>
+                        <td className="text-right text-muted">{rate(b.predicted)}</td>
+                        <td className="text-right text-body">{rate(b.actual)}</td>
                         <td className="text-right text-faint">{b.n}</td>
                       </tr>
                     ))}

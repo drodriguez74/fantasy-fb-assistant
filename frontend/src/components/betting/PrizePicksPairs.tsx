@@ -12,6 +12,8 @@ import { AddButton, TicketTray } from './TicketTray'
 import { legKey, type TicketActions, type TicketLeg } from './ticketTypes'
 import { matchesQuery, type MostLikely } from './betTypes'
 import { PlayerSearch } from './PlayerSearch'
+import { chance, signedPct } from './format'
+import { Explainer } from './ui'
 export interface PrizePicksLeg {
   player: string
   team?: string | null
@@ -68,7 +70,6 @@ export interface PrizePicksBoard {
 
 const BOARD_URL = 'https://api.prizepicks.com/projections?league_id=9&per_page=1000'
 
-const pct = (p: number) => `${(p * 100).toFixed(1)}%`
 
 function Leg({ leg }: { leg: PrizePicksLeg }) {
   return (
@@ -82,7 +83,7 @@ function Leg({ leg }: { leg: PrizePicksLeg }) {
         <span className="stat-nums">{leg.line}</span> <span className="text-muted">{leg.market_label}</span>
       </p>
       <p className="stat-nums text-xs text-faint">
-        {pct(leg.p_win)} to hit · books {pct(leg.market_prob)}
+        {chance(leg.p_win)} to hit · books {chance(leg.market_prob)}
         {leg.projection != null && ` · Sleeper ${leg.projection.toFixed(1)}`}
         {leg.espn_projection != null && ` · ESPN ${leg.espn_projection.toFixed(1)}`}
         {leg.book_line != null && leg.book_line !== leg.line && ` · books at ${leg.book_line}`}
@@ -195,7 +196,7 @@ function AltLines({ rows, note, ticket }: { rows?: PrizePicksAltLine[]; note: st
         noun="more lines"
         render={(r) => (
           <li key={`${r.player}-${r.market}-${r.line}`} className="py-2 flex items-baseline gap-3">
-            <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
+            <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{chance(r.p_win)}</span>
             <span className="min-w-0 text-sm text-body">
               {r.player} <span className="text-faint text-xs">{r.team}</span>{' '}
               <span className="text-body font-medium">{r.side}</span>{' '}
@@ -232,7 +233,7 @@ function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; q
       noun="more matches"
       render={(r) => (
         <li key={`${r.player}-${r.market}-${r.line}-${r.odds_type}`} className="py-2.5 flex items-baseline gap-3">
-          <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
+          <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{chance(r.p_win)}</span>
           <span className="min-w-0 flex-1">
             <span className="block text-sm text-body">
               {r.player} <span className="text-faint text-xs">{r.team}</span>{' '}
@@ -241,7 +242,7 @@ function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; q
               {ODDS_TAG[r.odds_type] && <span className="ml-1.5 text-xs text-faint">{ODDS_TAG[r.odds_type]}</span>}
             </span>
             <span className="block stat-nums text-xs text-faint">
-              books {pct(r.market_prob)}
+              books {chance(r.market_prob)}
               {r.projection != null && ` · Sleeper ${r.projection.toFixed(1)}`}
               {r.espn_projection != null && ` · ESPN ${r.espn_projection.toFixed(1)}`}
               {r.book_line != null && r.book_line !== r.line && ` · books at ${r.book_line}`}
@@ -263,9 +264,9 @@ function PairCard({ pair }: { pair: PrizePicksPair }) {
         <Leg leg={pair.legs[1]} />
       </div>
       <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 stat-nums text-xs">
-        <span><span className="text-body">{pct(pair.joint_prob)}</span> <span className="text-faint">both hit</span></span>
+        <span><span className="text-body">{chance(pair.joint_prob)}</span> <span className="text-faint">both hit</span></span>
         <span className={pair.ev > 0 ? 'text-success-700' : 'text-muted'}>
-          Edge {pair.ev > 0 ? '+' : ''}{(pair.ev * 100).toFixed(1)}%
+          Edge {signedPct(pair.ev)}
         </span>
         {pair.units > 0 && <span className="text-body">{pair.units}u</span>}
         {pair.correlation !== 0 && (
@@ -336,10 +337,12 @@ export function PrizePicksPairs({
               summary={positive.length ? `${positive.length} profitable` : 'none profitable this week'}
               defaultOpen={positive.length > 0}
             >
-              <p className="text-xs text-muted leading-relaxed">
-                A 2-pick Power Play pays {data.payout}x, so each pick needs about {pct(data.breakeven_leg)} to break even. Pairs
-                never use teammates (PrizePicks needs two teams); opponents in the same game are priced together.
-              </p>
+              <Explainer>
+                <p>
+                  A 2-pick Power Play pays {data.payout}x, so each pick needs about {chance(data.breakeven_leg)} to break
+                  even. Pairs never use teammates (PrizePicks needs two teams); opponents in the same game are priced together.
+                </p>
+              </Explainer>
               {(positive.length ? positive : data.pairs.slice(0, 5)).map((pair) => (
                 <PairCard key={`${pair.legs[0].player}-${pair.legs[0].market}-${pair.legs[1].player}-${pair.legs[1].market}`} pair={pair} />
               ))}

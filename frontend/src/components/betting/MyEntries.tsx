@@ -6,6 +6,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
 import { type BetWeek, sameWeek, weeksOf } from './betTypes'
 import { WeekPicker } from './WeekPicker'
+import { chance, money } from './format'
+import { Explainer, Segmented, StatusBadge } from './ui'
 
 interface Snapshot {
   books_prob: number
@@ -29,7 +31,10 @@ interface EntryLeg {
 
 interface MyEntry {
   id: number
-  entry_type: 'power' | 'flex'
+  entry_type: 'power' | 'flex' | 'straight' | 'parlay'
+  // PrizePicks, or a sportsbook bet (e.g. Hard Rock Bet) logged in the same table.
+  platform?: 'prizepicks' | 'sportsbook'
+  book?: string | null
   stake: number
   to_win: number
   season: number
@@ -73,8 +78,6 @@ interface ScreenshotRead {
 }
 
 const blankLeg = (): DraftLeg => ({ player: '', market: 'player_reception_yds', side: 'More', line: '' })
-const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(0)}%`)
-const money = (x: number) => `${x < 0 ? '-' : ''}$${Math.abs(x).toFixed(2)}`
 
 /** Profit, stake and record for a set of entries (settled ones; pending counted apart). */
 function tally(entries: MyEntry[]) {
@@ -104,16 +107,6 @@ const LEG_DOT: Record<string, string> = {
   won: 'bg-success-700',
   lost: 'bg-danger-700',
   pending: 'bg-faint',
-}
-
-const STATUS_STYLE: Record<string, string> = {
-  won: 'bg-success-100 text-success-800',
-  partial: 'bg-highlight text-accent-ink',
-  refunded: 'bg-surface-2 text-muted',
-  lost: 'bg-danger-100 text-danger-700',
-  pending: 'bg-surface-2 text-muted',
-  push: 'bg-surface-2 text-muted',
-  void: 'bg-surface-2 text-muted',
 }
 
 function EntryForm({ markets, players, onSaved }: { markets: Record<string, string>; players: string[]; onSaved: () => void }) {
@@ -213,19 +206,15 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
         </ul>
       )}
       <div className="flex flex-wrap items-end gap-3 text-xs">
-        <div className="flex rounded-lg border border-hairline p-0.5" role="tablist" aria-label="Entry type">
-          {(['power', 'flex'] as const).map((t) => (
-            <button
-              key={t}
-              role="tab"
-              aria-selected={entryType === t}
-              onClick={() => setEntryType(t)}
-              className={`px-3 py-1 rounded-md ${entryType === t ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-            >
-              {t === 'power' ? 'Power' : 'Flex'}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          label="Entry type"
+          value={entryType}
+          options={[
+            ['power', 'Power'],
+            ['flex', 'Flex'],
+          ]}
+          onChange={setEntryType}
+        />
         <label className="flex flex-col gap-1 text-muted">
           Entry fee ($)
           <input type="number" min="0" inputMode="decimal" value={stake} onChange={(e) => setStake(e.target.value)} className="w-24 rounded border-line bg-surface-2 px-2 py-1 text-body stat-nums" />
@@ -308,19 +297,29 @@ function CheckRow({ label, c }: { label: string; c: Check | null }) {
     <tr className="border-t border-hairline">
       <td className="py-1.5 text-body">{label}</td>
       <td className="text-right text-faint">{c.picks}</td>
-      <td className="text-right text-muted">{pct(c.books_said)}</td>
-      <td className="text-right text-muted">{pct(c.model_said)}</td>
-      <td className="text-right text-body">{pct(c.hit_rate)}</td>
+      <td className="text-right text-muted">{chance(c.books_said)}</td>
+      <td className="text-right text-muted">{chance(c.model_said)}</td>
+      <td className="text-right text-body">{chance(c.hit_rate)}</td>
     </tr>
   )
 }
 
-export function MyEntries({ players, current }: { players: string[]; current: BetWeek | null }) {
+export function MyEntries({
+  players,
+  current,
+  picked,
+  onPick,
+}: {
+  players: string[]
+  current: BetWeek | null
+  // The page's chosen week (shared with Shows and the Audit); null = this week.
+  picked: BetWeek | null
+  onPick: (w: BetWeek) => void
+}) {
   const [data, setData] = useState<EntriesData | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
   const [formOpen, setFormOpen] = useState(false)
-  const [picked, setPicked] = useState<BetWeek | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -376,10 +375,12 @@ export function MyEntries({ players, current }: { players: string[]; current: Be
         </div>
       ) : (
         <>
-          <p className="text-xs text-muted leading-relaxed">
+          <Explainer>
+            <p>
             Entries you placed on PrizePicks, graded automatically from real stats once each game is final. A player who
             doesn't play, or a pick exactly on the line, drops out and the entry pays as a smaller one.
           </p>
+          </Explainer>
           <EntryForm
             markets={data.markets}
             players={players}
@@ -393,20 +394,20 @@ export function MyEntries({ players, current }: { players: string[]; current: Be
 
       {data.entries.length > 0 && (
         <div className="rounded-lg border border-hairline bg-surface p-4 overflow-x-auto">
-          <table className="w-full stat-nums text-sm">
+          <table className="w-full stat-nums text-xs sm:text-sm [&_th+th]:pl-3 [&_td+td]:pl-3">
             <thead>
               <tr className="text-xs text-faint text-left">
                 <th className="font-normal pb-1"></th>
                 <th className="font-normal pb-1 text-right">Profit</th>
                 <th className="font-normal pb-1 text-right">Staked</th>
                 <th className="font-normal pb-1 text-right">Record</th>
-                <th className="font-normal pb-1 text-right">Pending</th>
+                <th className="font-normal pb-1 text-right">Open</th>
               </tr>
             </thead>
             <tbody>
               {(
                 [
-                  [current ? `This week (${current.week})` : 'This week', thisWeek],
+                  [current ? `Week ${current.week}` : 'This week', thisWeek],
                   ['Season', { ...r, staked: r.staked, profit: r.profit }],
                 ] as const
               ).map(([label, t]) => (
@@ -426,7 +427,7 @@ export function MyEntries({ players, current }: { players: string[]; current: Be
         </div>
       )}
 
-      {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={setPicked} />}
+      {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={onPick} />}
       {data.entries.length > 0 && weekEntries.length === 0 && (
         <p className="text-sm text-muted">No entries logged for week {shownWeek?.week}.</p>
       )}
@@ -436,13 +437,15 @@ export function MyEntries({ players, current }: { players: string[]; current: Be
           <div key={e.id} className="rounded-lg border border-hairline bg-surface p-4">
             <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 stat-nums text-xs">
               <span className="text-sm font-semibold text-body">
-                {e.legs.length}-pick {e.entry_type === 'power' ? 'Power' : 'Flex'}
+                {e.platform === 'sportsbook'
+                  ? `${e.book ?? 'Sportsbook'} · ${e.entry_type === 'straight' ? 'Straight' : `${e.legs.length}-leg parlay`}`
+                  : `${e.legs.length}-pick ${e.entry_type === 'power' ? 'Power' : 'Flex'}`}
               </span>
               <span className="text-muted">
-                {money(e.stake)} to pay {money(e.to_win)} · week {e.week}
+                {money(e.stake)} to pay {money(e.to_win)}
               </span>
-              {e.est_hit_prob != null && <span className="text-faint">books: {pct(e.est_hit_prob)} to hit all</span>}
-              <span className={`ml-auto text-xs px-1.5 py-0.5 rounded ${STATUS_STYLE[e.status]}`}>{e.status}</span>
+              {e.est_hit_prob != null && <span className="text-faint">books: {chance(e.est_hit_prob)} to hit all</span>}
+              <span className="ml-auto"><StatusBadge status={e.status} /></span>
               {e.profit != null && (
                 <span className={e.profit > 0 ? 'text-success-700' : e.profit < 0 ? 'text-danger-700' : 'text-muted'}>{money(e.profit)}</span>
               )}
@@ -469,7 +472,7 @@ export function MyEntries({ players, current }: { players: string[]; current: Be
                   {l.actual != null && <span className="stat-nums text-xs text-faint">actual {l.actual}</span>}
                   {l.snapshot && (
                     <span className="stat-nums text-xs text-faint">
-                      · books {pct(l.snapshot.books_prob)} · model {pct(l.snapshot.model_prob)}
+                      · books {chance(l.snapshot.books_prob)} · model {chance(l.snapshot.model_prob)}
                       {l.snapshot.projections_disagree ? ' · projections disagreed' : ''}
                     </span>
                   )}

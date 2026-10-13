@@ -5,10 +5,10 @@
 // Volt is reserved for real bets, so a bet never looks like a no-bet.
 import { useState } from 'react'
 import { ChevronDownIcon } from '@heroicons/react/24/outline'
-import { type BoardRow, type WatchAlert, dollars, kickoffLabel, odds, pct, sideSpread, signedPct } from './betTypes'
+import { type BoardRow, type WatchAlert, dollars, kickoffLabel, sideSpread } from './betTypes'
 import { type ShowPick, showPickText } from './showTypes'
+import { chance, odds, signedPct } from './format'
 
-const whole = (p: number) => `${Math.round(p * 100)}%`
 
 function SizeChip({ row, bankroll }: { row: BoardRow; bankroll: number | null }) {
   const money = dollars(row.units, bankroll)
@@ -51,7 +51,7 @@ function pickText(row: BoardRow): string {
 // Where the number comes from: the books' fair chance and each projection.
 function sources(row: BoardRow): string[] {
   if (row.type === 'player_prop') {
-    const parts = [`Books ${pct(row.market_prob)}`]
+    const parts = [`Books ${chance(row.market_prob)}`]
     if (row.projection != null) parts.push(`Sleeper ${row.projection.toFixed(1)}`)
     if (row.espn_projection != null) parts.push(`ESPN ${row.espn_projection.toFixed(1)}`)
     if (row.market_line != null && row.market_line !== row.line) parts.push(`books' main line ${row.market_line}`)
@@ -62,13 +62,13 @@ function sources(row: BoardRow): string[] {
     const parts = [`Books ${row.side} ${sideSpread(row, row.consensus_line)}`]
     if (row.model_line != null) parts.push(`our model ${row.side} ${sideSpread(row, row.model_line)}`)
     if (row.check_line != null) parts.push(`ESPN ${row.side} ${sideSpread(row, row.check_line)}`)
-    if (row.p_push > 0.005) parts.push(`${pct(row.p_push)} push`)
+    if (row.p_push > 0.005) parts.push(`${chance(row.p_push)} push`)
     return parts
   }
   const parts = [`Books' total ${row.consensus_line}`]
   if (row.model_line != null) parts.push(`our model ${row.model_line}`)
   if (row.check_line != null) parts.push(`ESPN ${row.check_line}`)
-  if (row.p_push > 0.005) parts.push(`${pct(row.p_push)} push`)
+  if (row.p_push > 0.005) parts.push(`${chance(row.p_push)} push`)
   return parts
 }
 
@@ -127,7 +127,7 @@ export function BetCard({
         </div>
         <div className="shrink-0 text-right">
           <div className={`stat-nums text-xl font-bold leading-none ${isBet || row.watch ? 'text-body' : 'text-muted'}`}>
-            {whole(row.p_win)}
+            {chance(row.p_win)}
           </div>
           <div className="text-xs text-faint mt-1">to win</div>
         </div>
@@ -145,7 +145,7 @@ export function BetCard({
             <span className={row.ev > 0 ? 'text-success-700' : 'text-muted'} title="Expected profit per $1 bet">
               Edge {signedPct(row.ev)}
             </span>
-            <span className="text-muted">Win chance {pct(row.p_win)}</span>
+            <span className="text-muted">Win chance {chance(row.p_win)}</span>
             <span className="text-muted">
               {odds(row.price)} at {row.book}
             </span>

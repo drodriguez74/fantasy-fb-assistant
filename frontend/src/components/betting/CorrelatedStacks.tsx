@@ -9,6 +9,8 @@
 import type { Power } from './prizePicksEntriesData'
 import { AddButton } from './TicketTray'
 import type { TicketActions } from './ticketTypes'
+import { chance, signedPct } from './format'
+import { Explainer, SectionHeader } from './ui'
 
 export interface StackLeg {
   player: string
@@ -31,8 +33,6 @@ export interface Stack {
   payout: number
 }
 
-const whole = (p: number) => `${Math.round(p * 100)}%`
-const oneDp = (p: number) => `${(p * 100).toFixed(1)}%`
 
 export function CorrelatedStacks({ stacks, power, ticket }: { stacks?: Stack[]; power: Power | null; ticket?: TicketActions }) {
   if (!stacks || stacks.length === 0) return null
@@ -45,29 +45,29 @@ export function CorrelatedStacks({ stacks, power, ticket }: { stacks?: Stack[]; 
   const good = priced.filter((s) => s.ev > 0)
   return (
     <section className="rounded-lg border border-hairline bg-surface p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="font-display font-bold uppercase tracking-tight text-sm text-body">Correlated stacks</h3>
-        <span className="text-xs text-muted">Books' chances only · edge from picks that move together</span>
-      </div>
-      <p className="text-xs text-muted mt-1 leading-relaxed">
-        A QB and his own receivers going the same way hit together more often than PrizePicks' payout assumes (measured on
-        real games). Each stack adds one pick from another team, which PrizePicks requires.
-      </p>
+      <SectionHeader title="Correlated stacks" meta="picks that move together" />
+      <Explainer>
+        <p>
+          A QB and his own receivers going the same way hit together more often than PrizePicks' payout assumes (measured
+          on real games). Each stack adds one pick from another team, which PrizePicks requires. Priced from the books'
+          chances only, and tracked like every suggestion: Track record shows whether stacks hit as often as we say.
+        </p>
+      </Explainer>
       {good.length === 0 ? (
         <p className="text-xs text-muted mt-3">No stack has a positive edge at your payouts right now.</p>
       ) : (
-        <div className="mt-3 space-y-3">
+        <div className="mt-3 divide-y divide-hairline border-t border-hairline">
           {good.slice(0, 6).map((s) => (
-            <div key={s.legs.map((l) => `${l.player}${l.market}${l.side}`).join('|')} className="rounded-lg border border-hairline p-3">
+            <div key={s.legs.map((l) => `${l.player}${l.market}${l.side}`).join('|')} className="py-3">
               <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 stat-nums text-xs">
                 <span className="text-sm font-semibold text-body">{s.size}-pick Power</span>
                 <span className="text-success-700" title="Expected profit per $1 at your payout">
-                  Edge +{(s.ev * 100).toFixed(1)}%
+                  Edge {signedPct(s.ev)}
                 </span>
                 <span>
-                  <span className="text-body">{oneDp(s.p_all)}</span> <span className="text-faint">all hit</span>
+                  <span className="text-body">{chance(s.p_all)}</span> <span className="text-faint">all hit</span>
                 </span>
-                <span className="text-faint">vs {oneDp(s.p_independent)} if independent</span>
+                <span className="text-faint">vs {chance(s.p_independent)} if independent</span>
                 <span className="text-faint">at {s.payout}x · needs {(1 / s.p_all).toFixed(1)}x</span>
                 {ticket && (
                   <span className="ml-auto">
@@ -84,7 +84,7 @@ export function CorrelatedStacks({ stacks, power, ticket }: { stacks?: Stack[]; 
                       <span className="text-muted">{(l.market_label ?? l.market).toString().toLowerCase()}</span>
                       {i === s.legs.length - 1 && <span className="text-xs text-faint"> · other team</span>}
                     </span>
-                    <span className="stat-nums text-xs text-faint shrink-0">books {whole(l.p_win)}</span>
+                    <span className="stat-nums text-xs text-faint shrink-0">books {chance(l.p_win)}</span>
                   </li>
                 ))}
               </ul>
@@ -92,9 +92,6 @@ export function CorrelatedStacks({ stacks, power, ticket }: { stacks?: Stack[]; 
           ))}
         </div>
       )}
-      <p className="text-xs text-faint mt-3">
-        Tracked and graded like every suggestion: Track record shows whether stacks hit as often as we say.
-      </p>
     </section>
   )
 }

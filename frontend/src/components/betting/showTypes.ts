@@ -2,7 +2,8 @@
 // (backend/app/services/analyst_picks.py). Tracked, never priced.
 import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
-import { type BoardRow, odds, pct } from './betTypes'
+import { type BoardRow } from './betTypes'
+import { chance, odds } from './format'
 
 export interface ShowRecord {
   picks: number
@@ -226,13 +227,13 @@ export function verdictFor(p: ShowPick, rows: BoardRow[], now = Date.now()): Ver
     if (v.books != null && v.ours - v.books >= NO_LEAN)
       return {
         key: 'lean', label: 'Lean', ours: v.ours, lineNote,
-        reason: `Our model agrees (${pct(v.ours)} vs books ${pct(v.books)}) but the edge is under the bar.${
+        reason: `Our model agrees (${chance(v.ours)} vs books ${chance(v.books)}) but the edge is under the bar.${
           v.same && r.bet_at != null ? ` It's a bet at ${odds(r.bet_at)} or better.` : ''
         }`,
       }
     if (v.books == null || Math.abs(v.ours - v.books) < NO_LEAN)
       return { key: 'pass', label: 'Pass', ours: v.ours, lineNote, reason: `Priced at the market (${v.text}): a coin flip minus the vig.` }
-    return { key: 'pass', label: 'Pass', ours: v.ours, lineNote, reason: `Our model leans the other way: ${pct(v.ours)} for this side, books ${pct(v.books)}.` }
+    return { key: 'pass', label: 'Pass', ours: v.ours, lineNote, reason: `Our model leans the other way: ${chance(v.ours)} for this side, books ${chance(v.books)}.` }
   }
 
   // No live line (board rebuilt without it): what we said when it was imported.

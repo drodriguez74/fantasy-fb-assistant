@@ -15,6 +15,7 @@ import { ShowPicks } from '../components/betting/ShowPicks'
 import { onAirFor, useShowPicks } from '../components/betting/showTypes'
 import { type BetWeek, type Board, type BoardRow, type WatchAlert, matchesQuery, useBankroll, watchKey } from '../components/betting/betTypes'
 import { ClockIcon, ExclamationTriangleIcon, InformationCircleIcon } from '@heroicons/react/24/outline'
+import { Explainer, Segmented } from '../components/betting/ui'
 
 // GET /betting/board -- see backend/app/services/betting_service.py and
 // betting_model.py for the method (Monte Carlo + de-vigged market,
@@ -53,34 +54,6 @@ function Disclaimer({ text }: { text: string }) {
   )
 }
 
-function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string
-  value: T
-  options: [T, string][]
-  onChange: (v: T) => void
-}) {
-  return (
-    <div className="flex rounded-lg border border-hairline p-0.5 text-xs" role="tablist" aria-label={label}>
-      {options.map(([v, text]) => (
-        <button
-          key={v}
-          role="tab"
-          aria-selected={value === v}
-          onClick={() => onChange(v)}
-          className={`px-2.5 py-1 rounded-md ${value === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-        >
-          {text}
-        </button>
-      ))}
-    </div>
-  )
-}
-
 export function BettingPage() {
   const [board, setBoard] = useState<Board | null>(null)
   const [loading, setLoading] = useState(true)
@@ -101,6 +74,8 @@ export function BettingPage() {
   const showPicks = useShowPicks()
   // The NFL betting week (Thu-Mon) everything is filed under, college included.
   const currentWeek: BetWeek | null = board?.season && board?.week ? { season: board.season, week: board.week } : null
+  // One week for Shows, My entries and the Audit: picking it on one tab keeps it on the others (null = each tab's default).
+  const [pickedWeek, setPickedWeek] = useState<BetWeek | null>(null)
   const [slow, setSlow] = useState(false)
   const [bankroll, setBankroll] = useBankroll()
   const [alerts, setAlerts] = useState<WatchAlert[]>([])
@@ -183,7 +158,6 @@ export function BettingPage() {
   }, [sport, college, collegeLoading, collegeError, loadCollege])
 
   // College: game lines + the shared Results (college player props are shelved).
-  const tabs: readonly Tab[] = sport === 'cfb' ? ['shows', 'watch', 'track'] : ['prizepicks', 'shows', 'watch', 'entries', 'track']
   const switchSport = (next: 'nfl' | 'cfb') => {
     setSport(next)
     setTab(next === 'cfb' ? 'shows' : 'prizepicks')
@@ -191,6 +165,12 @@ export function BettingPage() {
   const view = sport === 'cfb' ? college : board
   const viewLoading = sport === 'cfb' ? collegeLoading || (!college && !collegeError) : loading
   const viewError = sport === 'cfb' ? collegeError : error
+  // Without lines (Monday night until Wednesday's props, or no key) the record, shows and
+  // entries still show: only PrizePicks and Lines need a priced board.
+  const linesUp = !!view?.available
+  const allTabs: readonly Tab[] = sport === 'cfb' ? ['shows', 'watch', 'track'] : ['prizepicks', 'shows', 'watch', 'entries', 'track']
+  const tabs = linesUp ? allTabs : allTabs.filter((t) => t !== 'prizepicks' && t !== 'watch')
+  const activeTab: Tab = tabs.includes(tab) ? tab : tabs[0]
 
   // After a few seconds of a first load, say why it's slow instead of spinning silently.
   useEffect(() => {
@@ -232,19 +212,16 @@ export function BettingPage() {
           <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Bets</h1>
         </div>
         <div className="flex items-center gap-3">
-          <div className="flex rounded-lg border border-hairline p-0.5" role="tablist" aria-label="Sport">
-            {(['nfl', 'cfb'] as const).map((s) => (
-              <button
-                key={s}
-                role="tab"
-                aria-selected={sport === s}
-                onClick={() => switchSport(s)}
-                className={`px-3 py-1.5 rounded-md text-sm ${sport === s ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-              >
-                {s === 'nfl' ? 'NFL' : 'College'}
-              </button>
-            ))}
-          </div>
+          <Segmented
+            label="Sport"
+            size="md"
+            value={sport}
+            options={[
+              ['nfl', 'NFL'],
+              ['cfb', 'College'],
+            ]}
+            onChange={switchSport}
+          />
           <button
             onClick={() => setShowInfo((v) => !v)}
             aria-expanded={showInfo}
@@ -284,14 +261,15 @@ export function BettingPage() {
           <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-faint mb-2" />
           <p className="text-sm text-muted">{viewError}</p>
         </div>
-      ) : !view?.available ? (
-        <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
-          <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-faint mb-2" />
-          <p className="text-sm text-muted">{view?.detail}</p>
-        </div>
-      ) : (
+      ) : !view ? null : (
         <div className="space-y-5">
-          {showInfo && (
+          {!view.available && (
+            <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
+              <ExclamationTriangleIcon className="mx-auto h-8 w-8 text-faint mb-2" />
+              <p className="text-sm text-muted">{view.detail}</p>
+            </div>
+          )}
+          {view.available && showInfo && (
             <div className="rounded-lg border border-hairline bg-surface p-4 text-xs text-muted leading-relaxed space-y-2">
               <p className="stat-nums flex flex-wrap gap-x-4 gap-y-1">
                 <span>{sport === 'cfb' ? 'College' : `Week ${view.week}`}</span>
@@ -323,31 +301,33 @@ export function BettingPage() {
             </div>
           )}
 
-          <ThisWeekCard
-            board={view}
-            renderBet={card}
-            entries={sport === 'nfl' ? entries : undefined}
-            bankroll={bankroll}
-            hideLinks={tab === 'prizepicks'}
-            onOpen={(t) => {
-              setTab(t)
-              // The tabs sit below the card: bring them into view.
-              requestAnimationFrame(() => document.getElementById('bets-tabs')?.scrollIntoView({ behavior: 'smooth' }))
-            }}
-          />
+          {view.available && (
+            <ThisWeekCard
+              board={view}
+              renderBet={card}
+              entries={sport === 'nfl' ? entries : undefined}
+              bankroll={bankroll}
+              hideLinks={activeTab === 'prizepicks'}
+              onOpen={(t) => {
+                setTab(t)
+                // The tabs sit below the card: bring them into view.
+                requestAnimationFrame(() => document.getElementById('bets-tabs')?.scrollIntoView({ behavior: 'smooth' }))
+              }}
+            />
+          )}
 
           <nav
             id="bets-tabs"
-            className={`-mb-px grid sm:flex sm:gap-5 border-b border-hairline scroll-mt-4 ${tabs.length === 5 ? 'grid-cols-5' : 'grid-cols-3'}`}
+            className={`-mb-px grid sm:flex sm:gap-5 border-b border-hairline scroll-mt-4 ${({ 2: 'grid-cols-2', 3: 'grid-cols-3', 5: 'grid-cols-5' } as Record<number, string>)[tabs.length] ?? 'grid-cols-3'}`}
             aria-label="Bets sections"
           >
             {tabs.map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
-                aria-current={tab === t ? 'page' : undefined}
+                aria-current={activeTab === t ? 'page' : undefined}
                 className={`py-2 px-1 border-b-2 text-xs sm:text-sm font-medium whitespace-nowrap text-center ${
-                  tab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
+                  activeTab === t ? 'border-accent-ink text-accent-ink' : 'border-transparent text-muted hover:text-body'
                 }`}
               >
                 <span className="sm:hidden">{TAB_LABELS[t][1]}</span>
@@ -356,20 +336,24 @@ export function BettingPage() {
             ))}
           </nav>
 
-          {tab === 'track' ? (
-            <BettingResults sport={sport} current={currentWeek} />
-          ) : tab === 'shows' ? (
+          {activeTab === 'track' ? (
+            <BettingResults sport={sport} current={currentWeek} picked={pickedWeek} onPick={setPickedWeek} />
+          ) : activeTab === 'shows' ? (
             <ShowPicks
               shows={showPicks.shows}
               error={showPicks.error}
               onRetry={showPicks.reload}
               current={currentWeek}
+              picked={pickedWeek}
+              onPick={setPickedWeek}
               sport={sport}
               rows={sport === 'cfb' ? college?.game_props ?? [] : [...(board?.player_props ?? []), ...(board?.game_props ?? [])]}
             />
-          ) : tab === 'entries' ? (
+          ) : activeTab === 'entries' ? (
             <MyEntries
               current={currentWeek}
+              picked={pickedWeek}
+              onPick={setPickedWeek}
               players={[
                 ...new Set([
                   ...(board?.player_props ?? []).map((r) => r.player ?? ''),
@@ -381,7 +365,7 @@ export function BettingPage() {
                 .filter(Boolean)
                 .sort()}
             />
-          ) : tab === 'prizepicks' ? (
+          ) : activeTab === 'prizepicks' ? (
             <PrizePicksPairs
               data={view.prizepicks}
               onUploaded={() => load(true)}
@@ -421,10 +405,12 @@ export function BettingPage() {
                 count={searching ? shown.length : undefined}
               />
               {sport === 'cfb' && (
-                <p className="text-xs text-muted leading-relaxed">
+                <Explainer>
+                  <p>
                   College lines are market-only: a bet shows only when Hard Rock's price beats the other books' consensus.
                   ESPN's predictor is shown for reference; over the 2025 season it added nothing to the line.
                 </p>
+                </Explainer>
               )}
               {alertError && <p className="text-xs text-warning-700">{alertError}</p>}
               {/* Games: one graded card per game replaces the per-side cards. */}

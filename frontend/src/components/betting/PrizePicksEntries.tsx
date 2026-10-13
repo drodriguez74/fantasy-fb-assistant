@@ -6,8 +6,9 @@ import { useState } from 'react'
 import { type EntriesState, type Entry, type Flex, type Power, rankEntries } from './prizePicksEntriesData'
 import { AddButton } from './TicketTray'
 import type { TicketActions } from './ticketTypes'
+import { chance, signedPct } from './format'
+import { Explainer, SectionHeader } from './ui'
 
-const pct = (p: number) => `${(p * 100).toFixed(1)}%`
 
 function PayoutEditor({ power, flex, onChange }: { power: Power; flex: Flex; onChange: (p: Power, f: Flex) => void }) {
   const num = (v: string) => (v === '' ? 0 : Number(v))
@@ -83,12 +84,14 @@ export function PrizePicksEntries({ state, ticket }: { state: EntriesState; tick
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h3 className="text-sm font-medium text-body">Best entries</h3>
-        <button onClick={() => setEditing((v) => !v)} className="text-xs text-body underline">
-          {editing ? 'Hide payouts' : 'Edit payouts'}
-        </button>
-      </div>
+      <SectionHeader
+        title="Best entries"
+        action={
+          <button onClick={() => setEditing((v) => !v)} className="text-xs text-body underline">
+            {editing ? 'Hide payouts' : 'Edit payouts'}
+          </button>
+        }
+      />
       {sizes.length > 1 && (
         <div className="flex flex-wrap gap-1.5" role="tablist" aria-label="Entry size">
           {(['all', ...sizes] as const).map((s) => (
@@ -106,10 +109,12 @@ export function PrizePicksEntries({ state, ticket }: { state: EntriesState; tick
           ))}
         </div>
       )}
-      <p className="text-xs text-muted leading-relaxed">
-        Ranked by expected value at PrizePicks' standard payouts (edit them if yours differ: a built lineup shows "$1 to
-        pay $X"). Near-duplicates of a better entry are hidden.
-      </p>
+      <Explainer>
+        <p>
+          Ranked by expected value at PrizePicks' standard payouts (edit them if yours differ: a built lineup shows "$1
+          to pay $X"). Near-duplicates of a better entry are hidden.
+        </p>
+      </Explainer>
       {editing && power && flex && (
         <div className="rounded-lg border border-hairline bg-surface p-4 space-y-3">
           <PayoutEditor power={power} flex={flex} onChange={state.setPayouts} />
@@ -149,11 +154,11 @@ export function PrizePicksEntries({ state, ticket }: { state: EntriesState; tick
                 <span className="text-sm font-semibold text-body">{entryName(e)}</span>
                 <span className={e.ev > 0 ? 'text-success-700' : 'text-muted'} title="Expected profit per $1">
                   Edge {e.ev > 0 ? '+' : ''}
-                  {(e.ev * 100).toFixed(1)}%
+                  {signedPct(e.ev)}
                 </span>
-                <span><span className="text-body">{pct(e.p_all)}</span> <span className="text-faint">all hit</span></span>
+                <span><span className="text-body">{chance(e.p_all)}</span> <span className="text-faint">all hit</span></span>
                 {e.type === 'flex' && (
-                  <span><span className="text-body">{pct(e.p_paid)}</span> <span className="text-faint">pays something</span></span>
+                  <span><span className="text-body">{chance(e.p_paid)}</span> <span className="text-faint">pays something</span></span>
                 )}
                 {ticket && (
                   <span className="ml-auto order-last">
@@ -174,7 +179,7 @@ export function PrizePicksEntries({ state, ticket }: { state: EntriesState; tick
                     {l.player} <span className="text-faint text-xs">{l.team}</span>{' '}
                     <span className="text-body font-medium">{l.side}</span>{' '}
                     <span className="stat-nums">{l.line}</span> <span className="text-muted">{l.market_label}</span>{' '}
-                    <span className="stat-nums text-xs text-faint">{pct(l.p_win)}</span>
+                    <span className="stat-nums text-xs text-faint">{chance(l.p_win)}</span>
                   </li>
                 ))}
               </ul>

@@ -4,8 +4,9 @@
 // a price (backend/app/services/analyst_picks.py); their records are tracked
 // so a show can earn trust over a real sample.
 import { type BetWeek, type BoardRow, sameWeek, weeksOf } from './betTypes'
-import { useState } from 'react'
 import { WeekPicker } from './WeekPicker'
+import { chance } from './format'
+import { Explainer } from './ui'
 import {
   type Show,
   type ShowPick,
@@ -62,7 +63,7 @@ function recordLine(r: ShowRecord, what: string) {
   const n = settled(r)
   if (!n) return r.pending ? `${r.pending} ${what} pending.` : null
   const units = `${r.units > 0 ? '+' : ''}${r.units.toFixed(2)}u`
-  const rate = n >= JUDGE_AT && r.hit_rate != null ? ` · ${Math.round(r.hit_rate * 100)}%` : ''
+  const rate = n >= JUDGE_AT && r.hit_rate != null ? ` · ${chance(r.hit_rate)}` : ''
   return `${r.won}-${r.lost}${r.push ? `-${r.push}` : ''} on ${what}${rate} · ${units} at 1u each.`
 }
 
@@ -91,7 +92,7 @@ function PickRow({ p, v }: { p: ShowPick; v: Verdict }) {
       </div>
       {v.ours != null && !graded && (
         <div className="shrink-0 text-right">
-          <div className="stat-nums text-lg font-bold leading-none text-body">{Math.round(v.ours * 100)}%</div>
+          <div className="stat-nums text-lg font-bold leading-none text-body">{chance(v.ours)}</div>
           <div className="text-xs text-faint mt-1">our chance</div>
         </div>
       )}
@@ -195,6 +196,8 @@ export function ShowPicks({
   sport,
   rows,
   current,
+  picked,
+  onPick,
 }: {
   shows: Show[] | null
   error: string
@@ -203,8 +206,10 @@ export function ShowPicks({
   // The live board's lines for this sport: verdicts use today's prices.
   rows: BoardRow[]
   current: BetWeek | null
+  // The page's chosen week (shared with My entries and the Audit); null = this week.
+  picked: BetWeek | null
+  onPick: (w: BetWeek) => void
 }) {
-  const [picked, setPicked] = useState<BetWeek | null>(null)
   const sportPicks = (shows ?? []).flatMap((s) => s.picks.filter((p) => p.sport === sport))
   const weeks = weeksOf(sportPicks, current)
   // The pick lists show one week: the one picked, else this week.
@@ -262,12 +267,16 @@ export function ShowPicks({
                 .filter(Boolean)
                 .join(' · ')}
         </p>
-        <p className="text-xs text-faint mt-2">
+        <div className="mt-2">
+          <Explainer>
+          <p>
           Checked against today's prices. Tail only what's also on our card; a show's record carries no weight until it has
           a real sample.
         </p>
+        </Explainer>
+        </div>
       </div>
-      {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={setPicked} />}
+      {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={onPick} />}
       {sections
         .filter(({ picks }) => picks.length > 0)
         .map(({ show, picks, weekLine }) => (

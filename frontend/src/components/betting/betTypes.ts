@@ -120,9 +120,6 @@ export interface WatchAlert {
 export const watchKey = (kind: string, subject: string, market: string, side: string) =>
   `${kind}|${subject}|${market}|${side}`
 
-export const pct = (p: number | null | undefined) => (p == null ? '—' : `${(p * 100).toFixed(1)}%`)
-export const odds = (p: number) => (p > 0 ? `+${p}` : `${p}`)
-export const signedPct = (x: number) => `${x > 0 ? '+' : ''}${(x * 100).toFixed(1)}%`
 
 // Plain-language bet sizes (backend confidence tiers: 0.5-1u, 1.5-2u, 2.5-3u).
 export const SIZE_LABEL: Record<Confidence, string> = { lean: 'Small', strong: 'Medium', high: 'Max', fill: 'Best avail.', none: '' }

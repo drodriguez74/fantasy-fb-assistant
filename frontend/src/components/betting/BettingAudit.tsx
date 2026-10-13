@@ -5,6 +5,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
 import { ShowMore } from './ShowMore'
+import { WeekPicker } from './WeekPicker'
+import { type BetWeek } from './betTypes'
+import { chance } from './format'
+import { Explainer, StatusBadge } from './ui'
 
 interface AuditRow {
   section: string
@@ -47,7 +51,6 @@ interface Audit {
   rows: AuditRow[]
 }
 
-const pct = (p: number | null | undefined) => (p == null ? '—' : `${Math.round(p * 100)}%`)
 
 // Before kickoff the "close" is just the latest line so far, so say so.
 function closeText(r: AuditRow): string {
@@ -65,14 +68,19 @@ const ROW_TONE: Record<string, string> = {
   lost: 'border-l-danger-600',
   partial: 'border-l-accent-ink',
 }
-const BADGE: Record<string, string> = {
-  won: 'bg-success-100 text-success-800',
-  lost: 'bg-danger-100 text-danger-800',
-  partial: 'bg-highlight text-accent-ink',
-}
-
 /** One week's recommendations, for one sport ('all' = both, plus the PrizePicks tickets and your entries). */
-export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' }) {
+export function BettingAudit({
+  sport = 'all',
+  current = null,
+  picked = null,
+  onPick,
+}: {
+  sport?: 'nfl' | 'cfb' | 'all'
+  current?: BetWeek | null
+  // The page's chosen week; null = the latest mostly-settled week (backend default).
+  picked?: BetWeek | null
+  onPick?: (w: BetWeek) => void
+}) {
   const [data, setData] = useState<Audit | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
@@ -89,8 +97,8 @@ export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' 
   }, [sport])
 
   useEffect(() => {
-    load()
-  }, [load])
+    load(picked?.season, picked?.week)
+  }, [load, picked?.season, picked?.week])
 
   const download = async () => {
     if (!data?.season || !data.week) return
@@ -117,22 +125,13 @@ export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-medium text-body">Audit: every recommendation, hit or miss</h3>
         <div className="flex items-center gap-2">
-          {data && data.weeks.length > 0 && (
-            <select
-              aria-label="Week"
-              value={`${data.season}-${data.week}`}
-              onChange={(e) => {
-                const [s, w] = e.target.value.split('-').map(Number)
-                load(s, w)
-              }}
-              className="rounded border-line bg-surface-2 px-2 py-1 text-xs text-body"
-            >
-              {data.weeks.map((w) => (
-                <option key={`${w.season}-${w.week}`} value={`${w.season}-${w.week}`}>
-                  {w.season} week {w.week}
-                </option>
-              ))}
-            </select>
+          {data && data.weeks.length > 0 && data.season != null && data.week != null && (
+            <WeekPicker
+              weeks={data.weeks}
+              value={{ season: data.season, week: data.week }}
+              current={current}
+              onChange={(w) => (onPick ? onPick(w) : load(w.season, w.week))}
+            />
           )}
           <button
             onClick={download}
@@ -143,10 +142,14 @@ export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' 
           </button>
         </div>
       </div>
-      <p className="text-xs text-muted mt-1">
+      <div className="mt-1">
+        <Explainer>
+        <p>
         What we said when each pick was shown (frozen, never edited), the model version that made it, and the graded
         result. Picks grade a few hours after their game ends.
       </p>
+      </Explainer>
+      </div>
 
       {loading && <p className="text-xs text-faint mt-3">Loading...</p>}
       {error && (
@@ -193,14 +196,12 @@ function auditRow(r: AuditRow, key: string) {
             </span>
           )}
         </p>
-        <span className={`stat-nums shrink-0 text-xs px-1.5 py-0.5 rounded ${BADGE[r.status] ?? 'bg-surface-2 text-muted'}`}>
-          {r.status}
-        </span>
+        <StatusBadge status={r.status} />
       </div>
       <p className="stat-nums text-xs text-faint">
-        We said {pct(r.p_win)}
-        {r.books_prob != null && r.section !== 'My entries' && ` · books ${pct(r.books_prob)}`}
-        {r.engine_prob != null && ` · model ${pct(r.engine_prob)}`}
+        We said {chance(r.p_win)}
+        {r.books_prob != null && r.section !== 'My entries' && ` · books ${chance(r.books_prob)}`}
+        {r.engine_prob != null && ` · model ${chance(r.engine_prob)}`}
         {r.units ? ` · ${r.units}u` : ''}
         {r.book && ` · ${r.book}`}
         {r.actual != null && ` · actual ${r.actual}`}
@@ -230,7 +231,7 @@ function AuditSection({ name, summary: s, rows }: { name: string; summary: Secti
           {name}
         </span>
         <span className="stat-nums text-xs text-muted">
-          {s.decided > 0 ? `${s.hits}/${s.decided} hit (${pct(s.hit_rate)}) vs ${pct(s.predicted)} predicted` : `${s.picks} picks`}
+          {s.decided > 0 ? `${s.hits}/${s.decided} hit (${chance(s.hit_rate)}) vs ${chance(s.predicted)} predicted` : `${s.picks} picks`}
           {s.pending > 0 && ` · ${s.pending} pending`}
         </span>
       </button>

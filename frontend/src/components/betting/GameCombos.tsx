@@ -1,6 +1,7 @@
 // Cover + over/under same-game parlays from GET /betting/board's
 // `game_combos` (backend/app/services/betting_service.py::game_combos).
 import { useState } from 'react'
+import { chance, odds } from './format'
 
 export interface GameCombo {
   label: string
@@ -16,7 +17,6 @@ export interface GameComboSet {
   combos: GameCombo[]
 }
 
-const odds = (o: number | null) => (o == null ? '—' : o > 0 ? `+${o}` : `${o}`)
 
 export function GameCombos({ games }: { games?: GameComboSet[] }) {
   const [open, setOpen] = useState(false)
@@ -35,9 +35,9 @@ export function GameCombos({ games }: { games?: GameComboSet[] }) {
             if the book pays more than the fair odds, it's value. A favorite that covers usually means more points, so
             those combos are priced as related.
           </p>
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="divide-y divide-hairline">
             {games.map((g) => (
-              <div key={g.game} className="rounded-lg border border-hairline p-3">
+              <div key={g.game} className="py-3">
                 <div className="flex items-baseline justify-between">
                   <span className="font-medium text-body">{g.game}</span>
                   <span className="stat-nums text-xs text-faint">{g.favorite} favored</span>
@@ -54,7 +54,7 @@ export function GameCombos({ games }: { games?: GameComboSet[] }) {
                     {g.combos.map((c) => (
                       <tr key={c.label}>
                         <td className="text-body py-0.5">{c.label}</td>
-                        <td className="text-muted text-right">{(c.prob * 100).toFixed(1)}%</td>
+                        <td className="text-muted text-right">{chance(c.prob)}</td>
                         <td className="text-faint text-right">{odds(c.fair_odds)}</td>
                       </tr>
                     ))}

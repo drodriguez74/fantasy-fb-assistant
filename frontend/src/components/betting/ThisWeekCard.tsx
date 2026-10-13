@@ -5,8 +5,9 @@ import { type ReactNode, useState } from 'react'
 import { type Board, type BoardRow, dollars } from './betTypes'
 import { MY_BOOK } from './BetCard'
 import { rankEntries, type EntriesState } from './prizePicksEntriesData'
+import { chance, signedPct } from './format'
+import { Explainer } from './ui'
 
-const whole = (p: number) => `${Math.round(p * 100)}%`
 
 export function BankrollInput({ bankroll, onChange }: { bankroll: number | null; onChange: (v: number | null) => void }) {
   const [draft, setDraft] = useState(bankroll ? String(bankroll) : '')
@@ -98,21 +99,25 @@ export function ThisWeekCard({
         </button>
       )}
       {fills > 0 && (
-        <p className="mt-2 text-xs text-muted">
+        <div className="mt-2">
+          <Explainer>
+          <p>
           "Best available" fills the card to 3 when fewer lines clear the bar: a flat 0.5u, not a measured edge, tracked
           separately.
         </p>
+        </Explainer>
+        </div>
       )}
 
       {bestEntry && !hideLinks && (
         <button
           onClick={() => onOpen('prizepicks')}
-          className="mt-4 w-full text-left rounded-lg border border-hairline px-3 py-2.5 hover:border-line"
+          className="mt-4 w-full text-left border-t border-hairline pt-3 hover:text-body"
         >
           <p className="text-sm text-body">
             <span className="font-medium">Best PrizePicks entry:</span> {bestEntry.size}-pick{' '}
             {bestEntry.type === 'power' ? 'Power' : 'Flex'}{' '}
-            <span className="stat-nums text-success-700">+{(bestEntry.ev * 100).toFixed(1)}% edge</span>
+            <span className="stat-nums text-success-700">{signedPct(bestEntry.ev)} edge</span>
           </p>
           <p className="text-xs text-muted truncate">{bestEntry.legs.map((l) => `${l.player} ${l.side} ${l.line}`).join(' · ')}</p>
         </button>
@@ -121,16 +126,16 @@ export function ThisWeekCard({
       {board.most_likely && board.most_likely.picks.length > 0 && !hideLinks && (
         <button
           onClick={() => onOpen('prizepicks')}
-          className="mt-3 w-full text-left rounded-lg border border-hairline px-3 py-2.5 hover:border-line"
+          className="mt-3 w-full text-left border-t border-hairline pt-3 hover:text-body"
         >
           <p className="text-sm text-body">
             <span className="font-medium">Safest PrizePicks picks:</span> {board.most_likely.picks.length} at{' '}
-            {whole(board.most_likely.min_p_win)}+ to win
+            {chance(board.most_likely.min_p_win)}+ to win
           </p>
           <p className="text-xs text-muted truncate">
             {board.most_likely.picks
               .slice(0, 3)
-              .map((p) => `${p.player} ${p.side} ${p.line} (${whole(p.p_win)})`)
+              .map((p) => `${p.player} ${p.side} ${p.line} (${chance(p.p_win)})`)
               .join(' · ')}
             {board.most_likely.picks.length > 3 && ` · +${board.most_likely.picks.length - 3} more`}
           </p>

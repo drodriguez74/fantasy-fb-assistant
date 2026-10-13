@@ -12,8 +12,10 @@
 // Volt is reserved for real bets (as on BetCard): only A/B chips and a game
 // holding a bet use it. A pass still names the better side, but quietly, so
 // it never reads as a pick.
-import { type BoardRow, type WatchAlert, kickoffLabel, odds, signedPct } from './betTypes'
+import { type BoardRow, type WatchAlert, kickoffLabel } from './betTypes'
 import { MY_BOOK } from './BetCard'
+import { chance, odds, signedPct } from './format'
+import { Explainer } from './ui'
 
 type Grade = 'A' | 'B' | 'C' | 'D' | 'F'
 
@@ -131,10 +133,10 @@ function Market({
           </span>
         </p>
         <p className="stat-nums text-xs text-muted break-words mt-0.5">
-          {Math.round(row.p_win * 100)}% to win · edge {signedPct(row.ev)}
+          {chance(row.p_win)} to win · edge {signedPct(row.ev)}
           {!started && grade === 'F' && ` · poor price at ${MY_BOOK}`}
           {row.watch && row.bet_at != null && ` · bet at ${odds(row.bet_at)}`}
-          {isSpread && row.p_push > 0.005 && ` · ${Math.round(row.p_push * 100)}% push`}
+          {isSpread && row.p_push > 0.005 && ` · ${chance(row.p_push)} push`}
         </p>
         {refs.length > 0 && <p className="stat-nums text-xs text-faint break-words mt-0.5">{refs.join(' · ')}</p>}
         {canAlert && (
@@ -241,10 +243,12 @@ export function GameSlate({
           )}
         </p>
       </div>
-      <p className="text-xs text-muted leading-relaxed">
+      <Explainer>
+        <p>
         Projected score is the books' consensus; Sleeper and ESPN are shown for reference (neither has beaten the
         market). Bet / Watch / Pass is for the better side at {MY_BOOK}.
       </p>
+      </Explainer>
       {games.length === 0 && (
         <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
           {onlyAction ? 'No game line is a bet or on the watch list right now.' : 'No upcoming games.'}
