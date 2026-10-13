@@ -142,3 +142,6 @@ backend/nfl-*.json
 
 # Raw PrizePicks board dumps: uploaded through the app, never committed.
 backend/*-projections.json
+
+# Local PrizePicks fetch script: kept out of the repo (the board comes only from browser uploads).
+scripts/fetch_nfl_prizepicks.mjs
