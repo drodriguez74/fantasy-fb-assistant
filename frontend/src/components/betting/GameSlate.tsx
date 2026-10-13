@@ -12,7 +12,6 @@
 // Volt is reserved for real bets (as on BetCard): only A/B chips and a game
 // holding a bet use it. A pass still names the better side, but quietly, so
 // it never reads as a pick.
-import { useState } from 'react'
 import { type BoardRow, type WatchAlert, kickoffLabel, odds, signedPct } from './betTypes'
 import { MY_BOOK } from './BetCard'
 
@@ -202,14 +201,16 @@ function projectedScore(g: Game): [string, string, string, string] | null {
 
 export function GameSlate({
   rows,
+  onlyAction,
   alertFor,
   onToggleAlert,
 }: {
   rows: BoardRow[]
+  // The Lines tab's "Bets & watch / All" filter (shared with player props).
+  onlyAction: boolean
   alertFor?: (row: BoardRow) => WatchAlert | undefined
   onToggleAlert?: (row: BoardRow) => void
 }) {
-  const [onlyAction, setOnlyAction] = useState(false)
   const now = Date.now()
   // Upcoming games by kickoff; games already under way sink to the bottom (their lines are closed).
   const all = groupGames(rows).sort(
@@ -222,7 +223,9 @@ export function GameSlate({
   const upcoming = all.filter((g) => !hasStarted(g, now))
   const actionGames = upcoming.filter((g) => marketsOf(g).some((r) => isAction(gradeOf(r))))
   const bets = upcoming.flatMap(marketsOf).filter((r) => RANK[gradeOf(r)] <= RANK.B).length
-  const games = onlyAction ? actionGames : all
+  const games = onlyAction ? actionGames : upcoming
+  // Games under way: their lines are closed, so they fold away.
+  const started = all.filter((g) => hasStarted(g, now))
 
   return (
     <div className="space-y-3">
@@ -237,24 +240,6 @@ export function GameSlate({
             </span>
           )}
         </p>
-        <div className="flex rounded-lg border border-hairline p-0.5 text-xs" role="tablist" aria-label="Which games">
-          {(
-            [
-              [false, `All (${all.length})`],
-              [true, `Bets & watch (${actionGames.length})`],
-            ] as const
-          ).map(([v, text]) => (
-            <button
-              key={text}
-              role="tab"
-              aria-selected={onlyAction === v}
-              onClick={() => setOnlyAction(v)}
-              className={`px-2.5 py-1 rounded-md ${onlyAction === v ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-            >
-              {text}
-            </button>
-          ))}
-        </div>
       </div>
       <p className="text-xs text-muted leading-relaxed">
         Projected score is the books' consensus; Sleeper and ESPN are shown for reference (neither has beaten the
@@ -262,10 +247,20 @@ export function GameSlate({
       </p>
       {games.length === 0 && (
         <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
-          No game line is a bet or on the watch list right now.
+          {onlyAction ? 'No game line is a bet or on the watch list right now.' : 'No upcoming games.'}
         </div>
       )}
-      {games.map((g) => {
+      {games.map((g) => gameCard(g))}
+      {started.length > 0 && (
+        <details className="text-xs text-muted">
+          <summary className="cursor-pointer py-1">{started.length} started (lines closed)</summary>
+          <div className="space-y-3 mt-2">{started.map((g) => gameCard(g))}</div>
+        </details>
+      )}
+    </div>
+  )
+
+  function gameCard(g: (typeof all)[number]) {
         const started = hasStarted(g, now)
         const score = projectedScore(g)
         const holdsBet = !started && marketsOf(g).some((r) => RANK[gradeOf(r)] <= RANK.B)
@@ -305,7 +300,5 @@ export function GameSlate({
             </div>
           </div>
         )
-      })}
-    </div>
-  )
+  }
 }

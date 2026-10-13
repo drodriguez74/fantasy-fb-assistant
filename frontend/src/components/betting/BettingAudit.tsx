@@ -4,6 +4,7 @@
 // own entries, with what we said, the engine version and whether it hit.
 import { useCallback, useEffect, useState } from 'react'
 import { betting, getErrorMessage } from '../../services/api'
+import { ShowMore } from './ShowMore'
 
 interface AuditRow {
   section: string
@@ -109,6 +110,8 @@ export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' 
     }
   }
 
+  const isLatest = !!data && data.weeks.length > 0 && data.weeks[0].season === data.season && data.weeks[0].week === data.week
+
   return (
     <div className="bg-surface rounded-lg border border-hairline p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -157,71 +160,103 @@ export function BettingAudit({ sport = 'all' }: { sport?: 'nfl' | 'cfb' | 'all' 
       {!loading && data && data.rows.length === 0 && <p className="text-xs text-faint mt-3">Nothing tracked yet.</p>}
 
       {!loading && data && data.rows.length > 0 && (
-        <div className="mt-3 space-y-4">
-          {Object.entries(data.summary).map(([section, s]) => (
-            <div key={section}>
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h4 className="text-xs font-semibold uppercase tracking-wider text-body">{SECTION_NAME[section] ?? section}</h4>
-                <span className="stat-nums text-xs text-muted">
-                  {s.picks} picks
-                  {s.decided > 0 && ` · hit ${s.hits}/${s.decided} (${pct(s.hit_rate)}) vs ${pct(s.predicted)} predicted`}
-                  {s.pending > 0 && ` · ${s.pending} pending`}
-                </span>
-              </div>
-              {(() => {
-                const rows = data.rows.filter((r) => r.section === section)
-                const tracked = rows.filter((r) => r.engine_version !== 'pre-versioning')
-                const old = rows.filter((r) => r.engine_version === 'pre-versioning')
-                const item = (r: AuditRow, key: string) => (
-                    <li key={key} className={`py-1.5 pl-2 border-l-2 ${ROW_TONE[r.status] ?? 'border-l-hairline'}`}>
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-xs text-body min-w-0 break-words">
-                          {r.pick}
-                          {r.side && (
-                            <span className="text-muted">
-                              {' '}
-                              {r.market} {r.side} {r.line ?? ''}
-                            </span>
-                          )}
-                        </p>
-                        <span
-                          className={`stat-nums shrink-0 text-xs px-1.5 py-0.5 rounded ${
-                            BADGE[r.status] ?? 'bg-surface-2 text-muted'
-                          }`}
-                        >
-                          {r.status}
-                        </span>
-                      </div>
-                      <p className="stat-nums text-xs text-faint">
-                        We said {pct(r.p_win)}
-                        {r.books_prob != null && r.section !== 'My entries' && ` · books ${pct(r.books_prob)}`}
-                        {r.engine_prob != null && ` · model ${pct(r.engine_prob)}`}
-                        {r.units ? ` · ${r.units}u` : ''}
-                        {r.book && ` · ${r.book}`}
-                        {r.actual != null && ` · actual ${r.actual}`}
-                        {r.beat_close != null && closeText(r)}
-                        {r.profit != null && r.status !== 'pending' &&
-                          ` · ${r.profit > 0 ? '+' : ''}${r.profit_unit === '$' ? `$${r.profit}` : `${r.profit}${r.profit_unit === 'u' ? 'u' : 'x'}`}`}
-                        {` · ${r.engine_version === 'pre-versioning' ? 'v0 (before tracking)' : `model ${r.engine_version}`}`}
-                      </p>
-                    </li>
-                )
-                return (
-                  <>
-                    <ul className="mt-1 divide-y divide-hairline">{tracked.map((r, i) => item(r, `t${i}`))}</ul>
-                    {old.length > 0 && (
-                      <details className="mt-1">
-                        <summary className="cursor-pointer text-xs text-muted py-1">
-                          Before tracking began ({old.length}): recorded by the earlier model, kept for the record
-                        </summary>
-                        <ul className="divide-y divide-hairline">{old.map((r, i) => item(r, `o${i}`))}</ul>
-                      </details>
-                    )}
-                  </>
-                )
-              })()}
-            </div>
-          ))}
+        <div className="mt-3 divide-y divide-hairline border-t border-hairline">
+          {Object.entries(data.summary)
+            // The current week's entries are the Entries tab's list; the CSV keeps them.
+            .filter(([section]) => !(section === 'My entries' && isLatest))
+            .map(([section, s]) => (
+              <AuditSection
+                key={`${data.season}-${data.week}-${section}`}
+                name={SECTION_NAME[section] ?? section}
+                summary={s}
+                rows={data.rows.filter((r) => r.section === section)}
+              />
+            ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const SETTLED = ['won', 'lost', 'partial', 'push', 'refunded', 'void']
+
+function auditRow(r: AuditRow, key: string) {
+  return (
+    <li key={key} className={`py-1.5 pl-2 border-l-2 ${ROW_TONE[r.status] ?? 'border-l-hairline'}`}>
+      <div className="flex items-start justify-between gap-2">
+        <p className="text-xs text-body min-w-0 break-words">
+          {r.pick}
+          {r.side && (
+            <span className="text-muted">
+              {' '}
+              {r.market} {r.side} {r.line ?? ''}
+            </span>
+          )}
+        </p>
+        <span className={`stat-nums shrink-0 text-xs px-1.5 py-0.5 rounded ${BADGE[r.status] ?? 'bg-surface-2 text-muted'}`}>
+          {r.status}
+        </span>
+      </div>
+      <p className="stat-nums text-xs text-faint">
+        We said {pct(r.p_win)}
+        {r.books_prob != null && r.section !== 'My entries' && ` · books ${pct(r.books_prob)}`}
+        {r.engine_prob != null && ` · model ${pct(r.engine_prob)}`}
+        {r.units ? ` · ${r.units}u` : ''}
+        {r.book && ` · ${r.book}`}
+        {r.actual != null && ` · actual ${r.actual}`}
+        {r.beat_close != null && closeText(r)}
+        {r.profit != null && r.status !== 'pending' &&
+          ` · ${r.profit > 0 ? '+' : ''}${r.profit_unit === '$' ? `$${r.profit}` : `${r.profit}${r.profit_unit === 'u' ? 'u' : 'x'}`}`}
+        {` · ${r.engine_version === 'pre-versioning' ? 'v0 (before tracking)' : `model ${r.engine_version}`}`}
+      </p>
+    </li>
+  )
+}
+
+/** One audit section: its summary line, opened on tap. Settled picks first
+ * (10 at a time), pending and pre-tracking picks folded. */
+function AuditSection({ name, summary: s, rows }: { name: string; summary: SectionSummary; rows: AuditRow[] }) {
+  const [open, setOpen] = useState(false)
+  const [showPending, setShowPending] = useState(false)
+  const tracked = rows.filter((r) => r.engine_version !== 'pre-versioning')
+  const settled = tracked.filter((r) => SETTLED.includes(r.status))
+  const pending = tracked.filter((r) => !SETTLED.includes(r.status))
+  const old = rows.filter((r) => r.engine_version === 'pre-versioning')
+  return (
+    <div className="py-2">
+      <button onClick={() => setOpen(!open)} aria-expanded={open} className="w-full flex flex-wrap items-baseline justify-between gap-x-2 text-left">
+        <span className="text-xs font-semibold uppercase tracking-wider text-body">
+          <span className="text-faint mr-1">{open ? '▾' : '▸'}</span>
+          {name}
+        </span>
+        <span className="stat-nums text-xs text-muted">
+          {s.decided > 0 ? `${s.hits}/${s.decided} hit (${pct(s.hit_rate)}) vs ${pct(s.predicted)} predicted` : `${s.picks} picks`}
+          {s.pending > 0 && ` · ${s.pending} pending`}
+        </span>
+      </button>
+      {open && (
+        <div className="mt-1">
+          {settled.length > 0 && (
+            <ShowMore items={settled} limit={10} render={(r, i) => auditRow(r, `s${i}`)} className="divide-y divide-hairline" />
+          )}
+          {pending.length > 0 && (
+            <>
+              <button onClick={() => setShowPending(!showPending)} className="block mt-1 text-xs text-muted underline hover:text-body">
+                {showPending ? 'Hide pending' : `${pending.length} pending`}
+              </button>
+              {showPending && (
+                <ShowMore items={pending} limit={10} render={(r, i) => auditRow(r, `p${i}`)} className="divide-y divide-hairline" />
+              )}
+            </>
+          )}
+          {old.length > 0 && (
+            <details className="mt-1">
+              <summary className="cursor-pointer text-xs text-muted py-1">
+                Before tracking began ({old.length}): recorded by the earlier model, kept for the record
+              </summary>
+              <ShowMore items={old} limit={10} render={(r, i) => auditRow(r, `o${i}`)} className="divide-y divide-hairline" />
+            </details>
+          )}
         </div>
       )}
     </div>

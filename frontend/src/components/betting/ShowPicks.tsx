@@ -110,6 +110,11 @@ function ShowSection({
   weekLine: string | null
 }) {
   const upcoming = picks.filter(({ v }) => !['won', 'lost', 'push'].includes(v.key))
+  // Tail / Fade / Lean (and started games) stay open; Pass and Can't check fold.
+  const quiet = upcoming.filter(({ v }) => v.key === 'pass' || v.key === 'unknown')
+  const act = upcoming.filter((x) => !quiet.includes(x))
+  const passes = quiet.filter(({ v }) => v.key === 'pass').length
+  const unknown = quiet.length - passes
   const graded = picks.filter(({ v }) => ['won', 'lost', 'push'].includes(v.key))
   const n = settled(show.record)
   const bets = recordLine(show.record, 'bets')
@@ -150,12 +155,24 @@ function ShowSection({
           </details>
         )}
       </header>
-      {upcoming.length > 0 && (
+      {act.length > 0 && (
         <ul className="border-t border-hairline divide-y divide-hairline px-4">
-          {upcoming.map(({ p, v }) => (
+          {act.map(({ p, v }) => (
             <PickRow key={p.id} p={p} v={v} />
           ))}
         </ul>
+      )}
+      {quiet.length > 0 && (
+        <details className="border-t border-hairline px-4 py-2" open={act.length === 0 && graded.length === 0}>
+          <summary className="cursor-pointer text-xs text-muted py-1">
+            {[passes && `${passes} pass`, unknown && `${unknown} can't check`].filter(Boolean).join(' · ')}
+          </summary>
+          <ul className="divide-y divide-hairline">
+            {quiet.map(({ p, v }) => (
+              <PickRow key={p.id} p={p} v={v} />
+            ))}
+          </ul>
+        </details>
       )}
       {graded.length > 0 && (
         <details className="border-t border-hairline px-4 py-2" open={upcoming.length === 0}>
@@ -208,7 +225,7 @@ export function ShowPicks({
     })
   const open = sections.flatMap((s) => s.picks).filter(({ v }) => !['won', 'lost', 'push', 'started'].includes(v.key))
   const count = (k: VerdictKey) => open.filter(({ v }) => v.key === k).length
-  const tails = open.filter(({ v }) => v.key === 'tail' || v.key === 'fade')
+  const quietShows = sections.filter(({ picks }) => picks.length === 0).map(({ show }) => show.source)
 
   if (error) {
     return (
@@ -245,23 +262,21 @@ export function ShowPicks({
                 .filter(Boolean)
                 .join(' · ')}
         </p>
-        {tails.length > 0 && (
-          <p className="text-xs text-muted mt-1">{tails.map(({ p, v }) => `${v.label}: ${showPickText(p)}`).join(' · ')}</p>
-        )}
         <p className="text-xs text-faint mt-2">
           Checked against today's prices. Tail only what's also on our card; a show's record carries no weight until it has
           a real sample.
         </p>
       </div>
       {weeks.length > 1 && <WeekPicker weeks={weeks} value={shownWeek} current={current} onChange={setPicked} />}
-      {sections.map(({ show, picks, weekLine }) =>
-        picks.length > 0 ? (
+      {sections
+        .filter(({ picks }) => picks.length > 0)
+        .map(({ show, picks, weekLine }) => (
           <ShowSection key={show.source} show={show} picks={picks} weekLine={weekLine} />
-        ) : (
-          <p key={show.source} className="text-xs text-muted">
-            {show.source}: no picks in week {shownWeek?.week}.
-          </p>
-        ),
+        ))}
+      {quietShows.length > 0 && (
+        <p className="text-xs text-muted">
+          No picks in week {shownWeek?.week}: {quietShows.join(', ')}.
+        </p>
       )}
     </div>
   )

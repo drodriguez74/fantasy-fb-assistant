@@ -155,9 +155,8 @@ function SplitTable({ title, rows }: { title: string; rows: [string, RecordSumma
 
 const SPORT_NAME = { nfl: 'NFL', cfb: 'College' } as const
 
-/** Track record for the current sport (each model is judged on its own), with an "All sports" view. */
+/** Track record for the sport picked at the top of the page (each model is judged on its own). */
 export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; current: BetWeek | null }) {
-  const [scope, setScope] = useState<'sport' | 'all'>('sport')
   const [currentOnly, setCurrentOnly] = useState(false)
   const [data, setData] = useState<Results | null>(null)
   const [error, setError] = useState('')
@@ -166,27 +165,14 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
   useEffect(() => {
     setLoading(true)
     setError('')
-    betting.getResults(scope === 'all' ? 'all' : sport, currentOnly ? 'current' : 'all')
+    betting.getResults(sport, currentOnly ? 'current' : 'all')
       .then((r) => setData(r.data))
       .catch((err) => setError(getErrorMessage(err, "Couldn't load the track record.")))
       .finally(() => setLoading(false))
-  }, [sport, scope, currentOnly])
+  }, [sport, currentOnly])
 
   const scopeToggle = (
     <div className="flex flex-wrap items-center gap-3">
-    <div className="flex rounded-lg border border-hairline p-0.5 w-fit" role="tablist" aria-label="Results scope">
-      {(['sport', 'all'] as const).map((s) => (
-        <button
-          key={s}
-          role="tab"
-          aria-selected={scope === s}
-          onClick={() => setScope(s)}
-          className={`px-3 py-1 rounded-md text-xs ${scope === s ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
-        >
-          {s === 'sport' ? `${SPORT_NAME[sport]} only` : 'All sports'}
-        </button>
-      ))}
-    </div>
     <div className="flex rounded-lg border border-hairline p-0.5 w-fit" role="tablist" aria-label="Model version">
       {([false, true] as const).map((v) => (
         <button
@@ -273,7 +259,7 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
         </div>
       )}
 
-      <BettingAudit sport={scope === 'all' ? 'all' : sport} />
+      <BettingAudit sport={sport} />
 
       {graded && (
         <details className="bg-surface rounded-lg border border-hairline p-4 group">
@@ -283,14 +269,11 @@ export function BettingResults({ sport, current }: { sport: 'nfl' | 'cfb'; curre
             <span className="text-xs text-muted hidden group-open:inline">Hide</span>
           </summary>
           <p className="text-xs text-muted mt-2">
-            {scope === 'all' ? 'NFL and college combined. ' : `${SPORT_NAME[sport]} only. `}
+            {`${SPORT_NAME[sport]} only (switch sport at the top). `}
             Every pick is saved at the price shown and graded from real stats; {data.lines_tracked} lines tracked, including
             lines we passed on, which is what the calibration check uses.
           </p>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-3">
-            {scope === 'all' && data.by_sport && Object.keys(data.by_sport).length > 1 && (
-              <SplitTable title="By sport" rows={Object.entries(data.by_sport).map(([k, v]) => [k, v])} />
-            )}
             <SplitTable
               title="By bet size"
               rows={(['high', 'strong', 'lean', 'fill'] as const)

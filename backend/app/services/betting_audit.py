@@ -135,12 +135,37 @@ def weeks(user_id: Optional[int]) -> List[Dict[str, int]]:
     return [{"season": s, "week": w} for s, w in sorted(found, reverse=True)]
 
 
+def default_week(available: List[Dict[str, int]]) -> tuple:
+    """The week the Audit opens on: the latest one with at least half its
+    recommendations settled. The current week is mostly pending and repeats
+    what the card, Lines and My entries already show (2026-10-12 review);
+    one graded Thursday game shouldn't flip it either. Falls back to the
+    latest week with anything settled, then the latest week."""
+    with SessionLocal() as db:
+        counts: Dict[tuple, List[int]] = {}
+        for s, w, status in db.query(BetPick.season, BetPick.week, BetPick.status).filter(
+                (BetPick.recommended.is_(True)) | (BetPick.kind == "pp_leg") | (BetPick.confidence == "watch")):
+            c = counts.setdefault((s, w), [0, 0])
+            c[0] += status in DECIDED or status == "push"
+            c[1] += 1
+    return pick_default_week([(a["season"], a["week"]) for a in available], counts)
+
+
+def pick_default_week(keys: List[tuple], counts: Dict[tuple, List[int]]) -> tuple:
+    """keys newest first; counts {(season, week): [settled, total]}."""
+    for k in keys:
+        settled, total = counts.get(k, [0, 0])
+        if total and settled * 2 >= total:
+            return k
+    return next((k for k in keys if counts.get(k, [0])[0]), keys[0])
+
+
 def audit(season: Optional[int], week: Optional[int], user_id: Optional[int], sport: str = "all") -> Dict[str, Any]:
     """`sport` nfl / cfb / all: college game lines (kind cfb_game) are their own
     sport; the PrizePicks tickets and the user's entries are NFL."""
     available = weeks(user_id)
     if (season is None or week is None) and available:
-        season, week = available[0]["season"], available[0]["week"]
+        season, week = default_week(available)
     rows: List[Dict[str, Any]] = []
     if season is not None and week is not None:
         with SessionLocal() as db:

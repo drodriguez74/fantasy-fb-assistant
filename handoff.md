@@ -12,6 +12,8 @@
 - **Import tracker + session-start hook:** `.claude/settings.json` runs `backend/scripts/transcript_status.py --hook` at every session start; pending transcripts (not in `backend/transcripts/import_log.json`) are listed for import. Picks JSON gets a `"transcript"` field; `--skip FILE --note` for ones with nothing to import. 3 pending at handoff, all for games already played (Bucs-Cowboys props, Week 5 MegaPod, college week 6).
 - 274 backend tests pass.
 
+- **Bets page review (UX + frontend designer), phase 1 built:** Audit opens on the latest mostly-settled week with sections folded to summary lines; no repeated lists (PrizePicks preview links, Shows tails list, Record sport switch); Shows folds Pass/Can't check; one Lines filter, started games folded; `ShowMore` caps long lists; muted one-line disclaimer, bankroll in ⓘ. Phases 2-3 listed in BETTING_GUIDE section 6.
+
 ## Next
 - Re-read weeks 6-7: the Under pattern, the 50-65% snap tier in Most likely, the Hard Rock-only record, CLV (open item 7).
 - Not committed by this session (founder's own work): `backend/app/services/user_entries.py`, `scripts/fetch_nfl_prizepicks.mjs`, `backend/2026-10-12-projections.json`.

@@ -8,7 +8,7 @@ import { rankEntries, type EntriesState } from './prizePicksEntriesData'
 
 const whole = (p: number) => `${Math.round(p * 100)}%`
 
-function BankrollInput({ bankroll, onChange }: { bankroll: number | null; onChange: (v: number | null) => void }) {
+export function BankrollInput({ bankroll, onChange }: { bankroll: number | null; onChange: (v: number | null) => void }) {
   const [draft, setDraft] = useState(bankroll ? String(bankroll) : '')
   return (
     <label className="flex items-center gap-2 text-xs text-muted">
@@ -37,9 +37,9 @@ export function ThisWeekCard({
   board,
   entries,
   bankroll,
-  setBankroll,
   onOpen,
   renderBet,
+  hideLinks = false,
 }: {
   board: Board
   // The page's BetCard: the bets live here only (tap for the evidence and alerts),
@@ -47,8 +47,9 @@ export function ThisWeekCard({
   renderBet: (row: BoardRow, i: number) => ReactNode
   entries?: EntriesState
   bankroll: number | null
-  setBankroll: (v: number | null) => void
   onOpen: (tab: 'prizepicks') => void
+  // The PrizePicks tab is open right below: its own lists, so no preview links.
+  hideLinks?: boolean
 }) {
   const [showAll, setShowAll] = useState(false)
   // Biggest stakes first. This is the only list of the bets.
@@ -88,7 +89,6 @@ export function ThisWeekCard({
             {watchText ? ` · ${watchText} to watch` : ''}
           </p>
         </div>
-        <BankrollInput bankroll={bankroll} onChange={setBankroll} />
       </div>
 
       {shown.length > 0 && <div className="mt-3 space-y-2">{shown.map(renderBet)}</div>}
@@ -104,7 +104,7 @@ export function ThisWeekCard({
         </p>
       )}
 
-      {bestEntry && (
+      {bestEntry && !hideLinks && (
         <button
           onClick={() => onOpen('prizepicks')}
           className="mt-4 w-full text-left rounded-lg border border-hairline px-3 py-2.5 hover:border-line"
@@ -118,7 +118,7 @@ export function ThisWeekCard({
         </button>
       )}
 
-      {board.most_likely && board.most_likely.picks.length > 0 && (
+      {board.most_likely && board.most_likely.picks.length > 0 && !hideLinks && (
         <button
           onClick={() => onOpen('prizepicks')}
           className="mt-3 w-full text-left rounded-lg border border-hairline px-3 py-2.5 hover:border-line"
@@ -138,7 +138,7 @@ export function ThisWeekCard({
       )}
 
       {!bankroll && bets.length > 0 && (
-        <p className="text-xs text-faint mt-3">Enter your bankroll to see each bet in dollars (1u = 1% of bankroll).</p>
+        <p className="text-xs text-faint mt-3">Set your bankroll under ⓘ to see each bet in dollars (1u = 1% of bankroll).</p>
       )}
     </section>
   )

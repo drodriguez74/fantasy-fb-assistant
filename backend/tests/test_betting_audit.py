@@ -96,3 +96,13 @@ def test_watch_list_is_tracked_as_its_own_section():
     assert v["confidence"] == "watch" and not v["recommended"] and v["units"] == 0.0
     assert _row_values(2026, 5, {**row, "watch": False})["confidence"] == "none"
     assert _section(SimpleNamespace(kind="player_prop", confidence="watch")) == "Watch list"
+
+
+def test_audit_opens_on_latest_mostly_settled_week():
+    keys = [(2026, 6), (2026, 5), (2026, 4)]
+    # week 6 has one Thursday game graded: still week 5
+    assert audit.pick_default_week(keys, {(2026, 6): [3, 40], (2026, 5): [80, 90], (2026, 4): [70, 70]}) == (2026, 5)
+    assert audit.pick_default_week(keys, {(2026, 6): [25, 40], (2026, 5): [80, 90]}) == (2026, 6)
+    # nothing at least half settled: the latest with anything settled, else the latest
+    assert audit.pick_default_week(keys, {(2026, 6): [0, 40], (2026, 5): [1, 90]}) == (2026, 5)
+    assert audit.pick_default_week(keys, {}) == (2026, 6)

@@ -2,6 +2,7 @@
 // section -- backend/app/services/betting_service.py (prizepicks_pairs, and
 // price_uploaded_board when the user has uploaded today's board).
 import { useRef, useState, type ReactNode } from 'react'
+import { ShowMore } from './ShowMore'
 import { betting, getErrorMessage } from '../../services/api'
 import { PrizePicksEntries } from './PrizePicksEntries'
 import type { EntriesState } from './prizePicksEntriesData'
@@ -187,8 +188,12 @@ function AltLines({ rows, note, ticket }: { rows?: PrizePicksAltLine[]; note: st
   return (
     <>
       <p className="text-xs text-faint">{note}</p>
-      <ul className="divide-y divide-hairline">
-        {rows.slice(0, 12).map((r) => (
+      <ShowMore
+        items={rows}
+        limit={12}
+        className="divide-y divide-hairline"
+        noun="more lines"
+        render={(r) => (
           <li key={`${r.player}-${r.market}-${r.line}`} className="py-2 flex items-baseline gap-3">
             <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
             <span className="min-w-0 text-sm text-body">
@@ -202,8 +207,8 @@ function AltLines({ rows, note, ticket }: { rows?: PrizePicksAltLine[]; note: st
             </span>
             {ticket && <AddButton active={ticket.has(r)} onClick={() => ticket.toggle(r)} />}
           </li>
-        ))}
-      </ul>
+        )}
+      />
     </>
   )
 }
@@ -220,8 +225,12 @@ function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; q
     )
   }
   return (
-    <ul className="rounded-lg border border-hairline bg-surface divide-y divide-hairline px-4">
-      {rows.map((r) => (
+    <ShowMore
+      items={rows}
+      limit={20}
+      className="rounded-lg border border-hairline bg-surface divide-y divide-hairline px-4"
+      noun="more matches"
+      render={(r) => (
         <li key={`${r.player}-${r.market}-${r.line}-${r.odds_type}`} className="py-2.5 flex items-baseline gap-3">
           <span className="stat-nums text-sm font-semibold text-body w-14 shrink-0">{pct(r.p_win)}</span>
           <span className="min-w-0 flex-1">
@@ -241,8 +250,8 @@ function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; q
           </span>
           <AddButton active={ticket.has(r)} onClick={() => ticket.toggle(r)} />
         </li>
-      ))}
-    </ul>
+      )}
+    />
   )
 }
 

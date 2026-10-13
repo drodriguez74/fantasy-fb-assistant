@@ -7,7 +7,8 @@ import { usePrizePicksEntries } from '../components/betting/prizePicksEntriesDat
 import { GameCombos } from '../components/betting/GameCombos'
 import { GameSlate } from '../components/betting/GameSlate'
 import { BetCard } from '../components/betting/BetCard'
-import { ThisWeekCard } from '../components/betting/ThisWeekCard'
+import { BankrollInput, ThisWeekCard } from '../components/betting/ThisWeekCard'
+import { ShowMore } from '../components/betting/ShowMore'
 import { MyEntries } from '../components/betting/MyEntries'
 import { PlayerSearch } from '../components/betting/PlayerSearch'
 import { ShowPicks } from '../components/betting/ShowPicks'
@@ -38,19 +39,17 @@ const TAB_LABELS: Record<Tab, [string, string]> = {
 // Render's free tier sleeps when idle; the first request can take ~30s.
 const SLOW_LOAD_MS = 8000
 
+// One muted line (2026-10-12 review): the routine notice, not a warning box.
 function Disclaimer({ text }: { text: string }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="flex gap-2 items-start rounded-lg border border-warning-200 bg-warning-50 px-3 py-2 text-xs text-warning-800">
-      <ExclamationTriangleIcon className="h-4 w-4 text-warning-700 shrink-0 mt-px" />
-      <p className="leading-relaxed">
-        21+ only · model estimates, not guarantees · gambling problem? Call 1-800-GAMBLER.{' '}
-        {open ? <span>{text} </span> : null}
-        <button onClick={() => setOpen((v) => !v)} className="underline">
-          {open ? 'Less' : 'More'}
-        </button>
-      </p>
-    </div>
+    <p className="text-xs text-faint leading-relaxed">
+      21+ only · model estimates, not guarantees · gambling problem? Call 1-800-GAMBLER.{' '}
+      {open ? <span>{text} </span> : null}
+      <button onClick={() => setOpen((v) => !v)} className="underline hover:text-muted">
+        {open ? 'Less' : 'More'}
+      </button>
+    </p>
   )
 }
 
@@ -213,7 +212,7 @@ export function BettingPage() {
     ? rows.filter((r) => matchesQuery(query, r.player, r.game, r.home, r.away))
     : playView === 'watch'
       ? watchRows
-      : rows.filter((r) => r.units === 0).slice(0, 60)
+      : rows.filter((r) => r.units === 0)
   const kind = showingGames ? 'game line' : 'player prop'
   const card = (row: BoardRow, i: number) => (
     <BetCard
@@ -231,7 +230,6 @@ export function BettingPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
           <h1 className="font-display font-bold uppercase tracking-tight text-3xl text-body">Bets</h1>
-          <p className="text-muted text-sm mt-1">Priced by simulation against the market. More units = more confidence.</p>
         </div>
         <div className="flex items-center gap-3">
           <div className="flex rounded-lg border border-hairline p-0.5" role="tablist" aria-label="Sport">
@@ -266,7 +264,7 @@ export function BettingPage() {
       </div>
 
       {view?.disclaimer && (
-        <div className="mb-5">
+        <div className="mb-3">
           <Disclaimer text={view.disclaimer} />
         </div>
       )}
@@ -308,6 +306,7 @@ export function BettingPage() {
                 {view.evaluated?.player_props ? <span>Props refresh Wed &amp; Sun</span> : null}
                 <DataConfidenceBadge level="computed" label="Simulated" />
               </p>
+              <BankrollInput bankroll={bankroll} onChange={setBankroll} />
               <p>{view.method}</p>
               <p>
                 "To win" is our blended chance; "Books" is the sportsbooks' chance with their cut removed. Edge is expected
@@ -329,7 +328,7 @@ export function BettingPage() {
             renderBet={card}
             entries={sport === 'nfl' ? entries : undefined}
             bankroll={bankroll}
-            setBankroll={setBankroll}
+            hideLinks={tab === 'prizepicks'}
             onOpen={(t) => {
               setTab(t)
               // The tabs sit below the card: bring them into view.
@@ -405,17 +404,15 @@ export function BettingPage() {
                 ) : (
                   <p className="text-sm text-body font-medium">College games</p>
                 )}
-                {!showingGames && (
-                  <Segmented
-                    label="Which lines"
-                    value={playView}
-                    options={[
-                      ['watch', `Close to a bet (${watchRows.length})`],
-                      ['all', 'All lines'],
-                    ]}
-                    onChange={setPlayView}
-                  />
-                )}
+                <Segmented
+                  label="Which lines"
+                  value={playView}
+                  options={[
+                    ['watch', 'Bets & watch'],
+                    ['all', 'All'],
+                  ]}
+                  onChange={setPlayView}
+                />
               </div>
               <PlayerSearch
                 value={query}
@@ -434,6 +431,7 @@ export function BettingPage() {
               {showingGames ? (
                 <GameSlate
                   rows={rows.filter((r) => matchesQuery(query, r.game, r.home, r.away))}
+                  onlyAction={playView === 'watch' && !searching}
                   alertFor={alertFor}
                   onToggleAlert={toggleAlert}
                 />
@@ -454,7 +452,7 @@ export function BettingPage() {
                       : `No other ${kind}s priced right now.`}
                 </div>
               ) : (
-                shown.map(card)
+                <ShowMore items={shown} limit={20} render={card} as="div" className="space-y-3" noun="more lines" />
               )}
               {showingGames && <GameCombos games={view.game_combos} />}
             </div>
