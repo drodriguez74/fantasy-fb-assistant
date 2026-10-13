@@ -3,7 +3,7 @@
 // price, book and kickoff -- with the win chance as the one big number; a tap
 // opens the evidence (edge, price floor, books vs projections) and the alert.
 // Volt is reserved for real bets, so a bet never looks like a no-bet.
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { ChevronDownIcon } from '@heroicons/react/24/outline'
 import { type BoardRow, type WatchAlert, dollars, kickoffLabel, sideSpread } from './betTypes'
 import { type ShowPick, showPickText } from './showTypes'
@@ -72,7 +72,8 @@ function sources(row: BoardRow): string[] {
   return parts
 }
 
-export function BetCard({
+// Memoized: a search keystroke redraws only the cards whose props changed.
+export const BetCard = memo(function BetCard({
   row,
   bankroll,
   alert,
@@ -106,11 +107,12 @@ export function BetCard({
   const canAlert = (row.watch || row.card_fill) && onToggleAlert
 
   return (
-    <div className={`rounded-lg bg-surface border border-hairline ${row.projection_outlier ? 'opacity-60' : ''}`}>
+    <div className="rounded-lg bg-surface border border-hairline">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="w-full flex items-center gap-3 p-3 text-left"
+        // Only the pick dims on a "Don't play" line; the warning under it stays full strength.
+        className={`w-full flex items-center gap-3 p-3 text-left ${row.projection_outlier ? 'opacity-70' : ''}`}
       >
         <SizeChip row={row} bankroll={bankroll} />
         <div className="min-w-0 flex-1">
@@ -183,4 +185,4 @@ export function BetCard({
       )}
     </div>
   )
-}
+})

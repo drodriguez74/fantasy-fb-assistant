@@ -111,20 +111,49 @@ export function showPickText(p: ShowPick): string {
   return p.price != null ? `${text} (${odds(p.price)})` : text
 }
 
-const sameTime = (a?: string | null, b?: string | null) => Boolean(a && b) && new Date(a!).getTime() === new Date(b!).getTime()
 const nameKey = (s?: string | null) => (s ?? '').toLowerCase().replace(/[^a-z]/g, '')
+const kickoffMs = (iso?: string | null) => (iso ? new Date(iso).getTime() : NaN)
 
-/** Show picks on the same game and line as a board row (for the "On air" note). */
+// Grouped by kickoff once per list (2026-10-12 review: every card scanned
+// every pick, parsing two dates per comparison, on each search keystroke).
+function byKickoff<T>(cache: WeakMap<object, Map<number, T[]>>, key: object, items: () => T[], kickoff: (t: T) => string | null | undefined) {
+  let index = cache.get(key)
+  if (!index) {
+    index = new Map()
+    for (const t of items()) {
+      const ms = kickoffMs(kickoff(t))
+      if (Number.isNaN(ms)) continue
+      index.set(ms, [...(index.get(ms) ?? []), t])
+    }
+    cache.set(key, index)
+  }
+  return index
+}
+const picksByKickoff = new WeakMap<object, Map<number, ShowPick[]>>()
+const rowsByKickoff = new WeakMap<object, Map<number, BoardRow[]>>()
+
+const onAirCache = new WeakMap<object, WeakMap<BoardRow, ShowPick[]>>()
+
+/** Show picks on the same game and line as a board row (for the "On air" note).
+ * The same array comes back for the same row, so a memoized card doesn't redraw. */
 export function onAirFor(row: BoardRow, shows: Show[] | null): ShowPick[] {
   if (!shows) return []
-  return shows.flatMap((s) =>
-    s.picks.filter((p) => {
-      if (!sameTime(p.kickoff, row.kickoff)) return false
+  let rows = onAirCache.get(shows)
+  if (!rows) onAirCache.set(shows, (rows = new WeakMap()))
+  let found = rows.get(row)
+  if (!found) rows.set(row, (found = findOnAir(row, shows)))
+  return found
+}
+
+function findOnAir(row: BoardRow, shows: Show[]): ShowPick[] {
+  const index = byKickoff(picksByKickoff, shows, () => shows.flatMap((s) => s.picks), (p) => p.kickoff)
+  return (
+    (index.get(kickoffMs(row.kickoff)) ?? []).filter((p) => {
       if (row.type === 'player_prop') return p.market === row.market && nameKey(p.player) === nameKey(row.player)
       const teams = [row.home, row.away]
       if (row.market === 'spread') return p.market === 'team_spread' && teams.includes(p.player)
       return row.market === 'total' && p.market === 'game_total' && teams.includes(p.team ?? '')
-    }),
+    })
   )
 }
 
@@ -158,8 +187,8 @@ function signed(n: number) {
 
 /** The board row for a show pick: same game (kickoff) and the same market. */
 export function liveRowFor(p: ShowPick, rows: BoardRow[]): BoardRow | undefined {
-  return rows.find((r) => {
-    if (!sameTime(p.kickoff, r.kickoff)) return false
+  const index = byKickoff(rowsByKickoff, rows, () => rows, (r) => r.kickoff)
+  return (index.get(kickoffMs(p.kickoff)) ?? []).find((r) => {
     if (p.market === 'team_spread') return r.market === 'spread' && [r.home, r.away].includes(p.player)
     if (p.market === 'game_total') return r.market === 'total' && [r.home, r.away].includes(p.team ?? '')
     return r.type === 'player_prop' && r.market === p.market && nameKey(r.player) === nameKey(p.player)

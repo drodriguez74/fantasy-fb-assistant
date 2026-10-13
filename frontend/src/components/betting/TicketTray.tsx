@@ -40,7 +40,8 @@ export function TicketTray({
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState('')
-  const [open, setOpen] = useState(true)
+  // A one-line bar until tapped: open, it covered most of a phone screen (2026-10-12 review).
+  const [open, setOpen] = useState(false)
   const size = legs.length
   const specials = legs.some((l) => l.odds_type && l.odds_type !== 'standard')
 

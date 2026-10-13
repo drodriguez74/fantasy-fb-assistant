@@ -1,7 +1,7 @@
 // PrizePicks 2-pick Power Plays from GET /betting/board's `prizepicks`
 // section -- backend/app/services/betting_service.py (prizepicks_pairs, and
 // price_uploaded_board when the user has uploaded today's board).
-import { useRef, useState, type ReactNode } from 'react'
+import { useDeferredValue, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ShowMore } from './ShowMore'
 import { betting, getErrorMessage } from '../../services/api'
 import { PrizePicksEntries } from './PrizePicksEntries'
@@ -9,7 +9,8 @@ import type { EntriesState } from './prizePicksEntriesData'
 import { SafestPicks } from './SafestPicks'
 import { CorrelatedStacks, type Stack } from './CorrelatedStacks'
 import { AddButton, TicketTray } from './TicketTray'
-import { legKey, type TicketActions, type TicketLeg } from './ticketTypes'
+import type { TicketActions } from './ticketTypes'
+import type { Ticket } from './useTicket'
 import { matchesQuery, type MostLikely } from './betTypes'
 import { PlayerSearch } from './PlayerSearch'
 import { chance, signedPct } from './format'
@@ -258,7 +259,7 @@ function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; q
 
 function PairCard({ pair }: { pair: PrizePicksPair }) {
   return (
-    <div className={`border rounded-lg p-4 bg-surface ${pair.ev > 0 ? 'border-line' : 'border-hairline opacity-80'}`}>
+    <div className={`border rounded-lg p-4 bg-surface ${pair.ev > 0 ? 'border-line' : 'border-hairline opacity-70'}`}>
       <div className="grid gap-3 sm:grid-cols-2">
         <Leg leg={pair.legs[0]} />
         <Leg leg={pair.legs[1]} />
@@ -285,47 +286,43 @@ export function PrizePicksPairs({
   onUploaded,
   entries,
   mostLikely,
+  ticket,
 }: {
   data?: PrizePicksBoard
   onUploaded: () => void
   entries: EntriesState
   mostLikely?: MostLikely
+  // Held by the page, so it survives a tab switch.
+  ticket: Ticket
 }) {
   const positive = data?.pairs.filter((p) => p.ev > 0) ?? []
   const [query, setQuery] = useState('')
-  const searching = query.trim() !== ''
+  // The box updates at once; a board of 1,000+ lines is filtered when typing pauses.
+  const search = useDeferredValue(query)
+  const searching = search.trim() !== ''
   // Every priced line of an uploaded board; without an upload, the lines we have.
-  const searchable: PrizePicksBoardLine[] =
-    data?.board_lines ?? [
-      ...(data?.legs ?? []).map((l) => ({ ...l, odds_type: 'standard' as const })),
-      ...(data?.goblins ?? []),
-      ...(data?.demons ?? []),
-    ]
-  const results = searching ? searchable.filter((l) => matchesQuery(query, l.player, l.team, l.game)) : []
-  // The entry-builder tray: one pick per player (a new pick replaces that player's old one).
-  const [picks, setPicks] = useState<TicketLeg[]>([])
-  const ticket: TicketActions = {
-    has: (l) => picks.some((p) => legKey(p) === legKey(l) && p.side === l.side && p.line === l.line),
-    toggle: (l) =>
-      setPicks((ps) =>
-        ps.some((p) => legKey(p) === legKey(l) && p.side === l.side && p.line === l.line)
-          ? ps.filter((p) => legKey(p) !== legKey(l))
-          : [...ps.filter((p) => p.player !== l.player), l].slice(0, 6),
-      ),
-    addAll: (ls) =>
-      setPicks((ps) => {
-        const names = new Set(ls.map((l) => l.player))
-        return [...ps.filter((p) => !names.has(p.player)), ...ls].slice(-6)
-      }),
-  }
+  const searchable: PrizePicksBoardLine[] = useMemo(
+    () =>
+      data?.board_lines ?? [
+        ...(data?.legs ?? []).map((l) => ({ ...l, odds_type: 'standard' as const })),
+        ...(data?.goblins ?? []),
+        ...(data?.demons ?? []),
+      ],
+    [data],
+  )
+  const results = useMemo(
+    () => (searching ? searchable.filter((l) => matchesQuery(search, l.player, l.team, l.game)) : []),
+    [searching, search, searchable],
+  )
   return (
-    <div className={`space-y-5 ${picks.length ? 'pb-40' : ''}`}>
+    // Room under the page for the collapsed tray bar.
+    <div className={`space-y-5 ${ticket.picks.length ? 'pb-16' : ''}`}>
       <UploadPanel data={data} onUploaded={onUploaded} />
       {searchable.length > 0 && (
         <PlayerSearch value={query} onChange={setQuery} count={searching ? results.length : undefined} />
       )}
       {searching ? (
-        <SearchResults rows={results} query={query} ticket={ticket} />
+        <SearchResults rows={results} query={search} ticket={ticket} />
       ) : (
         <>
           <CorrelatedStacks stacks={data?.stacks} power={entries.power} ticket={ticket} />
@@ -368,9 +365,9 @@ export function PrizePicksPairs({
         </>
       )}
       <TicketTray
-        legs={picks}
-        onRemove={(l) => setPicks((ps) => ps.filter((p) => legKey(p) !== legKey(l)))}
-        onClear={() => setPicks([])}
+        legs={ticket.picks}
+        onRemove={ticket.remove}
+        onClear={ticket.clear}
         power={entries.power}
         flex={entries.flex}
       />

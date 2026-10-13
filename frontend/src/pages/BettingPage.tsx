@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react'
 import { betting, getErrorMessage } from '../services/api'
 import { DataConfidenceBadge } from '../components/common/DataConfidenceBadge'
 import { BettingResults } from '../components/betting/BettingResults'
 import { PrizePicksPairs } from '../components/betting/PrizePicksPairs'
 import { usePrizePicksEntries } from '../components/betting/prizePicksEntriesData'
+import { useTicket } from '../components/betting/useTicket'
 import { GameCombos } from '../components/betting/GameCombos'
 import { GameSlate } from '../components/betting/GameSlate'
 import { BetCard } from '../components/betting/BetCard'
@@ -81,6 +82,8 @@ export function BettingPage() {
   const [alerts, setAlerts] = useState<WatchAlert[]>([])
   const [alertError, setAlertError] = useState('')
   const entries = usePrizePicksEntries()
+  // The PrizePicks ticket lives here so switching tabs doesn't empty it.
+  const ticket = useTicket()
 
   const load = useCallback(async (refresh = false) => {
     setLoading(true)
@@ -127,14 +130,17 @@ export function BettingPage() {
     loadAlerts()
   }, [loadAlerts])
 
-  const alertFor = (row: BoardRow) =>
-    alerts.find(
-      (a) =>
-        watchKey(a.kind, a.subject, a.market, a.side) ===
+  // Looked up once per card, so a Map instead of a scan of every alert (2026-10-12 review).
+  const alertsByKey = useMemo(() => new Map(alerts.map((a) => [watchKey(a.kind, a.subject, a.market, a.side), a])), [alerts])
+  const alertFor = useCallback(
+    (row: BoardRow) =>
+      alertsByKey.get(
         watchKey(sport === 'cfb' ? 'cfb_game' : row.type, row.type === 'player_prop' ? row.player ?? '' : row.game, row.market, row.side),
-    )
+      ),
+    [alertsByKey, sport],
+  )
 
-  const toggleAlert = async (row: BoardRow) => {
+  const toggleAlert = useCallback(async (row: BoardRow) => {
     setAlertError('')
     const existing = alertFor(row)
     try {
@@ -151,7 +157,7 @@ export function BettingPage() {
     } catch (err) {
       setAlertError(getErrorMessage(err, "Couldn't update that alert."))
     }
-  }
+  }, [alertFor, sport, loadAlerts])
 
   useEffect(() => {
     if (sport === 'cfb' && !college && !collegeLoading && !collegeError) loadCollege()
@@ -187,16 +193,19 @@ export function BettingPage() {
   const betRows = rows.filter((r) => r.units > 0)
   const watchRows = rows.filter((r) => r.units === 0 && r.watch)
   // A search looks through every priced line, bets included, not just the first 60.
-  const searching = query.trim() !== ''
+  // The box updates at once; the list catches up when typing pauses.
+  const search = useDeferredValue(query)
+  const searching = search.trim() !== ''
   const shown = searching
-    ? rows.filter((r) => matchesQuery(query, r.player, r.game, r.home, r.away))
+    ? rows.filter((r) => matchesQuery(search, r.player, r.game, r.home, r.away))
     : playView === 'watch'
       ? watchRows
       : rows.filter((r) => r.units === 0)
   const kind = showingGames ? 'game line' : 'player prop'
-  const card = (row: BoardRow, i: number) => (
+  // Keyed by the line itself (not its place in the list) so a memoized card survives filtering.
+  const card = (row: BoardRow) => (
     <BetCard
-      key={`${row.game}-${row.player ?? ''}-${row.market}-${i}`}
+      key={`${row.game}-${row.player ?? ''}-${row.market}-${row.side}-${row.line}`}
       row={row}
       bankroll={bankroll}
       alert={alertFor(row)}
@@ -371,6 +380,7 @@ export function BettingPage() {
               onUploaded={() => load(true)}
               entries={entries}
               mostLikely={view.most_likely}
+              ticket={ticket}
             />
           ) : (
             <div className="space-y-3">
@@ -416,7 +426,7 @@ export function BettingPage() {
               {/* Games: one graded card per game replaces the per-side cards. */}
               {showingGames ? (
                 <GameSlate
-                  rows={rows.filter((r) => matchesQuery(query, r.game, r.home, r.away))}
+                  rows={rows.filter((r) => matchesQuery(search, r.game, r.home, r.away))}
                   onlyAction={playView === 'watch' && !searching}
                   alertFor={alertFor}
                   onToggleAlert={toggleAlert}
@@ -432,7 +442,7 @@ export function BettingPage() {
               {showingGames ? null : shown.length === 0 ? (
                 <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">
                   {searching
-                    ? `No ${kind} matches "${query.trim()}" on this board.`
+                    ? `No ${kind} matches "${search.trim()}" on this board.`
                     : playView === 'watch'
                       ? `Nothing on the ${kind} watch list right now.`
                       : `No other ${kind}s priced right now.`}

@@ -272,7 +272,7 @@ export function GameSlate({
           <div
             key={g.game}
             className={`rounded-lg bg-surface border px-3 pt-3 pb-1 ${holdsBet ? 'border-volt' : 'border-hairline'} ${
-              started ? 'opacity-60' : ''
+              started ? 'opacity-70' : ''
             }`}
           >
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">

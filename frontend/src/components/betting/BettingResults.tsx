@@ -197,7 +197,7 @@ export function BettingResults({
     return (
       <div className="space-y-4">
         {scopeToggle}
-        <div className="bg-surface rounded-lg shadow p-6 text-center">
+        <div className="bg-surface rounded-lg border border-hairline p-6 text-center">
           <ClockIcon className="animate-spin h-8 w-8 text-accent-ink mx-auto mb-2" />
           <p className="text-sm text-muted">Grading finished games...</p>
         </div>

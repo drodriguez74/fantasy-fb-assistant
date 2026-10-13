@@ -9,14 +9,16 @@
 - **Week 5 read** (closes open item 6): BETTING_GUIDE section 9, "Week 5 results". Bets 21-15 +11.7u, 69% beat the close; passing 1-4; Unders beat predictions in every market (watch weeks 6-7, don't tune); Hard Rock-only 6-6 +1.3u.
 - **VSiN YouTube transcripts:** `backend/scripts/fetch_show_transcripts.py` (deps in `backend/requirements-scripts.txt`, local only) saves new NFL/college picks shows to `backend/transcripts/`. Founder installed the launchd job 2026-10-12 (plist copy + install/remove steps in `backend/scripts/launchd/`). Imports stay by hand, before kickoff.
 - **Shows:** VSiN Prop Points 10/12 (Bills @ Rams MNF, 6 picks) imported.
-- **Import tracker + session-start hook:** `.claude/settings.json` runs `backend/scripts/transcript_status.py --hook` at every session start; pending transcripts (not in `backend/transcripts/import_log.json`) are listed for import. Picks JSON gets a `"transcript"` field; `--skip FILE --note` for ones with nothing to import. 3 pending at handoff, all for games already played (Bucs-Cowboys props, Week 5 MegaPod, college week 6).
+- **Import tracker + session-start hook:** `.claude/settings.json` runs `backend/scripts/transcript_status.py --hook` at every session start; pending transcripts (not in `backend/transcripts/import_log.json`) are listed for import. Picks JSON gets a `"transcript"` field; `--skip FILE --note` for ones with nothing to import. All handled 2026-10-12 (see Shows below).
 - 274 backend tests pass.
 
-- **Bets page review (UX + frontend designer), phase 1 built:** Audit opens on the latest mostly-settled week with sections folded to summary lines; no repeated lists (PrizePicks preview links, Shows tails list, Record sport switch); Shows folds Pass/Can't check; one Lines filter, started games folded; `ShowMore` caps long lists; muted one-line disclaimer, bankroll in ⓘ. Phases 2-3 listed in BETTING_GUIDE section 6.
+- **Bets page review (UX + frontend designer), phase 1 built:** Audit opens on the latest mostly-settled week with sections folded to summary lines; no repeated lists (PrizePicks preview links, Shows tails list, Record sport switch); Shows folds Pass/Can't check; one Lines filter, started games folded; `ShowMore` caps long lists; muted one-line disclaimer, bankroll in ⓘ. Phases 2 and 3 also built (2026-10-12): ticket survives tab switches, tray collapsed, theme and search-speed fixes; shared format/pieces and one week stepper. See BETTING_GUIDE section 6.
+- **Sportsbook bets in My entries:** `user_entries.py` committed (straight + parlay, Hard Rock Bet). The founder's three Week 5 Hard Rock bets are logged (ids 11-13).
+- **Shows:** Week 5 MegaPod imported (Gil Alexander, Rams -3 MNF); Bucs-Cowboys props and college week 6 skipped (games played). 0 pending.
 
 ## Next
 - Re-read weeks 6-7: the Under pattern, the 50-65% snap tier in Most likely, the Hard Rock-only record, CLV (open item 7).
-- Not committed by this session (founder's own work): `backend/app/services/user_entries.py`, `scripts/fetch_nfl_prizepicks.mjs`, `backend/2026-10-12-projections.json`.
+- Not committed by this session (founder's own work): `scripts/fetch_nfl_prizepicks.mjs`, `backend/2026-10-12-projections.json`.
 
 # START HERE — Session 21 wrap (2026-10-08 → 10-09): player search, Shows, Bets review pass, weekly tracking
 
