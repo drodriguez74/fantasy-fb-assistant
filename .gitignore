@@ -139,3 +139,6 @@ backend/transcripts/
 # Saved PrizePicks boards (Cmd+S of api.prizepicks.com/projections) -- upload them, never commit
 backend/projections*.json
 backend/nfl-*.json
+
+# Raw PrizePicks board dumps: uploaded through the app, never committed.
+backend/*-projections.json
