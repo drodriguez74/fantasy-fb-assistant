@@ -1,4 +1,5 @@
-"""The user's own PrizePicks entries ("My entries" on the Bets page).
+"""The user's own PrizePicks entries and sportsbook bets ("My entries" on
+the Bets page).
 
 The founder places entries on PrizePicks themselves; this logs them, keeps a
 snapshot of what our engine said about each pick when it was logged, and
@@ -14,6 +15,12 @@ Grading rules (PrizePicks):
 - Power: any loss loses the entry. Flex: pays by number of hits.
 Payouts after a drop-out use the standard tables (betting_model), so they
 are approximate if the user's state pays differently.
+
+Sportsbook bets (platform "sportsbook", e.g. Hard Rock Bet) share the table,
+the legs and the grading: a "straight" bet is one leg, a "parlay" 2-12, each
+leg with its American price. A straight push or void is refunded; a parlay
+loses on any lost leg, and pushed or void legs drop out (it pays the product
+of the winning legs' prices, the full stated payout when every leg wins).
 """
 import logging
 from datetime import datetime, timezone
@@ -55,30 +62,67 @@ MARKETS: Dict[str, tuple] = {
 GAME_MARKETS = ("team_win", "team_spread", "game_total")
 
 
+PLATFORMS = ("prizepicks", "sportsbook")
+DEFAULT_BOOK = "Hard Rock Bet"  # the only book the founder can bet at (Florida)
+MAX_PARLAY_LEGS = 12
+
+
 class EntryError(ValueError):
     pass
 
 
+def decimal_odds(price: int) -> float:
+    return 1 + (price / 100 if price > 0 else 100 / -price)
+
+
+def _price(value: Any) -> int:
+    try:
+        price = int(value)
+    except (TypeError, ValueError):
+        raise EntryError("Each bet needs its American odds (e.g. -110 or +150).")
+    if -100 < price < 100:
+        raise EntryError("American odds are -100 or lower, or +100 or higher.")
+    return price
+
+
 def validate(body: Dict[str, Any]) -> Dict[str, Any]:
+    platform = body.get("platform") or "prizepicks"
+    if platform not in PLATFORMS:
+        raise EntryError("platform must be prizepicks or sportsbook")
+    book = platform == "sportsbook"
     entry_type = body.get("entry_type")
-    if entry_type not in ("power", "flex"):
-        raise EntryError("entry_type must be power or flex")
-    stake, to_win = float(body.get("stake") or 0), float(body.get("to_win") or 0)
-    if stake <= 0 or to_win <= stake:
-        raise EntryError("Stake must be positive and the full payout larger than the stake.")
+    if entry_type not in (("straight", "parlay") if book else ("power", "flex")):
+        raise EntryError("A sportsbook bet is straight or parlay." if book else "entry_type must be power or flex")
+    stake = float(body.get("stake") or 0)
     legs = body.get("legs") or []
-    if not 2 <= len(legs) <= 6:
-        raise EntryError("An entry has 2 to 6 picks.")
+    lo, hi = ((1, 1) if entry_type == "straight" else (2, MAX_PARLAY_LEGS)) if book else (2, 6)
+    if not lo <= len(legs) <= hi:
+        raise EntryError({(1, 1): "A straight bet has one pick.", (2, MAX_PARLAY_LEGS): f"A parlay has 2 to {MAX_PARLAY_LEGS} picks.",
+                          (2, 6): "An entry has 2 to 6 picks."}[(lo, hi)])
     clean = []
     for leg in legs:
         player = (leg.get("player") or "").strip()
         if not player or leg.get("market") not in MARKETS or leg.get("side") not in ("More", "Less"):
             raise EntryError("Each pick needs a player, a stat and More or Less.")
-        clean.append({"player": player, "team": normalize_team(leg.get("team")) if leg.get("team") else None,
-                      "market": leg["market"], "side": leg["side"], "line": float(leg["line"])})
-    if len({normalize_name(l["player"]) for l in clean}) < len(clean):
-        raise EntryError("PrizePicks allows one pick per player.")
-    return {"entry_type": entry_type, "stake": stake, "to_win": to_win, "legs": clean,
+        row = {"player": player, "team": normalize_team(leg.get("team")) if leg.get("team") else None,
+               "market": leg["market"], "side": leg["side"], "line": float(leg["line"])}
+        if book:
+            row["price"] = _price(leg.get("price"))
+        clean.append(row)
+    if book:
+        # The book's own payout when given (it rounds); else the legs' prices.
+        full = stake
+        for leg in clean:
+            full *= decimal_odds(leg["price"])
+        to_win = float(body.get("to_win") or 0) or round(full, 2)
+    else:
+        to_win = float(body.get("to_win") or 0)
+        if len({normalize_name(l["player"]) for l in clean}) < len(clean):
+            raise EntryError("PrizePicks allows one pick per player.")
+    if stake <= 0 or to_win <= stake:
+        raise EntryError("Stake must be positive and the full payout larger than the stake.")
+    return {"platform": platform, "book": (body.get("book") or DEFAULT_BOOK).strip() if book else None,
+            "entry_type": entry_type, "stake": stake, "to_win": to_win, "legs": clean,
             "notes": (body.get("notes") or "").strip() or None, "week": body.get("week")}
 
 
@@ -90,8 +134,11 @@ def leg_outcome(side: str, line: float, actual: Optional[float]) -> str:
     return "won" if (actual > line) == (side == "More") else "lost"
 
 
-def entry_payout(entry_type: str, stake: float, to_win: float, statuses: List[str]) -> tuple:
+def entry_payout(entry_type: str, stake: float, to_win: float, statuses: List[str],
+                 prices: Optional[List[int]] = None) -> tuple:
     """(status, payout) once every leg is decided."""
+    if entry_type in ("straight", "parlay"):
+        return _book_payout(stake, to_win, statuses, prices or [])
     n = len(statuses)
     active = [s for s in statuses if s in ("won", "lost")]
     k, hits = len(active), sum(s == "won" for s in active)
@@ -110,9 +157,34 @@ def entry_payout(entry_type: str, stake: float, to_win: float, statuses: List[st
     return status, payout
 
 
+def _book_payout(stake: float, to_win: float, statuses: List[str], prices: List[int]) -> tuple:
+    """A sportsbook straight bet or parlay: any lost leg loses it; pushed and
+    void legs drop out (all of them dropping out refunds the stake)."""
+    if "lost" in statuses:
+        return "lost", 0.0
+    won = [p for s, p in zip(statuses, prices) if s == "won"]
+    if not won:
+        return "refunded", stake
+    if len(won) == len(statuses):
+        return "won", round(to_win, 2)
+    payout = stake
+    for p in won:
+        payout *= decimal_odds(p)
+    return "won", round(payout, 2)
+
+
+def _book_ev(e: UserEntry) -> Optional[float]:
+    """Expected return per $1 when logged, at the books' consensus chance
+    (sportsbook bets only; None unless every leg was priced)."""
+    if e.platform != "sportsbook" or e.est_hit_prob is None:
+        return None
+    return round(e.est_hit_prob * e.to_win / e.stake - 1, 4)
+
+
 def _out(e: UserEntry) -> Dict[str, Any]:
     return {
-        "id": e.id, "entry_type": e.entry_type, "stake": e.stake, "to_win": e.to_win, "season": e.season,
+        "id": e.id, "platform": e.platform or "prizepicks", "book": (e.legs[0].get("book") if e.legs else None),
+        "est_ev": _book_ev(e), "entry_type": e.entry_type, "stake": e.stake, "to_win": e.to_win, "season": e.season,
         "week": e.week, "legs": e.legs, "est_hit_prob": e.est_hit_prob, "status": e.status, "payout": e.payout,
         "profit": None if e.payout is None else round(e.payout - e.stake, 2), "notes": e.notes,
         "engine_version": e.engine_version,
@@ -121,7 +193,8 @@ def _out(e: UserEntry) -> Dict[str, Any]:
 
 
 def create(user_id: int, data: Dict[str, Any], season: int, week: int, snapshots: List[Optional[Dict[str, Any]]]) -> Dict[str, Any]:
-    legs = [{**leg, "snapshot": snap, "status": "pending", "actual": None} for leg, snap in zip(data["legs"], snapshots)]
+    book = {"book": data["book"]} if data.get("book") else {}
+    legs = [{**leg, **book, "snapshot": snap, "status": "pending", "actual": None} for leg, snap in zip(data["legs"], snapshots)]
     probs = [(s or {}).get("books_prob") for s in snapshots]
     est = None
     if all(p is not None for p in probs):
@@ -129,7 +202,7 @@ def create(user_id: int, data: Dict[str, Any], season: int, week: int, snapshots
         for p in probs:
             est *= p
     with SessionLocal() as db:
-        e = UserEntry(user_id=user_id, entry_type=data["entry_type"], stake=data["stake"], to_win=data["to_win"],
+        e = UserEntry(user_id=user_id, platform=data.get("platform") or "prizepicks", entry_type=data["entry_type"], stake=data["stake"], to_win=data["to_win"],
                       season=season, week=int(data.get("week") or week), legs=legs,
                       est_hit_prob=round(est, 4) if est is not None else None, notes=data.get("notes"),
                       engine_version=bm.ENGINE_VERSION)
@@ -217,7 +290,8 @@ async def grade_pending(user_id: int, current_season: int, current_week: Optiona
             legs = grade_legs(e.legs, stats, finals, week_over)
             e.legs = legs
             if all(leg["status"] != "pending" for leg in legs):
-                e.status, e.payout = entry_payout(e.entry_type, e.stake, e.to_win, [leg["status"] for leg in legs])
+                e.status, e.payout = entry_payout(e.entry_type, e.stake, e.to_win, [leg["status"] for leg in legs],
+                                                  [leg.get("price") for leg in legs])
                 e.graded_at = datetime.now(timezone.utc)
                 graded += 1
         db.commit()
@@ -228,11 +302,13 @@ def summary(user_id: int) -> Dict[str, Any]:
     with SessionLocal() as db:
         entries = db.query(UserEntry).filter(UserEntry.user_id == user_id).order_by(UserEntry.created_at.desc()).all()
         rows = [_out(e) for e in entries]
-    settled = [r for r in rows if r["status"] != "pending"]
+    pp = [r for r in rows if r["platform"] == "prizepicks"]
+    settled = [r for r in pp if r["status"] != "pending"]
     staked = sum(r["stake"] for r in settled)
     returned = sum(r["payout"] or 0.0 for r in settled)
-    # Pick-level check: what the books said vs what the full model said vs what happened.
-    legs = [l for r in rows for l in r["legs"] if l.get("status") in ("won", "lost") and l.get("snapshot")]
+    # Pick-level check (PrizePicks picks): what the books said vs what the
+    # full model said vs what happened.
+    legs = [l for r in pp for l in r["legs"] if l.get("status") in ("won", "lost") and l.get("snapshot")]
 
     def check(subset):
         if not subset:
@@ -246,10 +322,12 @@ def summary(user_id: int) -> Dict[str, Any]:
     disagree = [l for l in legs if l["snapshot"].get("projections_disagree")]
     return {
         "entries": rows,
-        "record": {"entries": len(rows), "settled": len(settled), "pending": len(rows) - len(settled),
+        # PrizePicks only: the page tallies sportsbook bets apart, never mixed.
+        "record": {"entries": len(pp), "settled": len(settled), "pending": len(pp) - len(settled),
                    "won": sum(r["status"] == "won" for r in settled), "lost": sum(r["status"] == "lost" for r in settled),
                    "staked": round(staked, 2), "returned": round(returned, 2), "profit": round(returned - staked, 2),
                    "roi": round((returned - staked) / staked, 4) if staked else None},
         "pick_check": {"all": check(legs), "projections_disagreed_with_books": check(disagree)},
         "markets": {k: v[0] for k, v in MARKETS.items()},
+        "default_book": DEFAULT_BOOK,
     }

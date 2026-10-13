@@ -37,6 +37,22 @@ def test_power_and_flex_payouts():
     assert ue.entry_payout("flex", 10, 30, ["won", "lost", "lost"]) == ("lost", 0.0)
 
 
+def test_sportsbook_bets():
+    legs = [{**l, "price": -110} for l in _body()["legs"]]
+    d = ue.validate(_body(platform="sportsbook", entry_type="parlay", stake=10, to_win=None, legs=legs))
+    assert (d["book"], d["to_win"]) == ("Hard Rock Bet", 36.45)   # 10 x 1.909^2, from the legs' prices
+    assert ue.validate(_body(platform="sportsbook", entry_type="straight", stake=5, to_win=9.17, legs=legs[:1]))["to_win"] == 9.17
+    for bad in (_body(platform="sportsbook", entry_type="power", legs=legs),
+                _body(platform="sportsbook", entry_type="straight", legs=legs),
+                _body(platform="sportsbook", entry_type="parlay", legs=[{**legs[0], "price": -50}, legs[1]])):
+        with pytest.raises(ue.EntryError):
+            ue.validate(bad)
+    assert ue.entry_payout("parlay", 10, 36.45, ["won", "won"], [-110, -110]) == ("won", 36.45)
+    assert ue.entry_payout("parlay", 10, 36.45, ["won", "lost"], [-110, -110]) == ("lost", 0.0)
+    assert ue.entry_payout("parlay", 10, 36.45, ["won", "void"], [-110, -110]) == ("won", 19.09)  # void leg drops out
+    assert ue.entry_payout("straight", 5, 9.17, ["push"], [-120]) == ("refunded", 5)
+
+
 def test_snapshot_uses_the_engine_view():
     offers = {"books": {"draftkings": {60.5: {"Over": -110, "Under": -110}}}, "prizepicks": None}
     game = {"id": "g1", "commence_time": "2026-10-11T17:00:00Z"}
