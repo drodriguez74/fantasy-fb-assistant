@@ -1,3 +1,18 @@
+# START HERE — Session 23 (2026-10-13): Odds credits schedule, Fantasy Alarm transcripts
+
+> Session 22's notes below still hold for everything not mentioned here.
+
+## State right now
+- **Odds API credits: 7 left (2026-10-13), below the 60 reserve**, so no props until the monthly reset (date on the founder's the-odds-api.com account page). Game lines have ~3 fetches left.
+- **New fetch schedule (`00d7e0f`, founder's call):** each game's props are fetched once, in the 36h before its kickoff (`odds_service.PROP_FETCH_LEAD`); game lines cache 12h; college lines refetch only Thu-Sat (`CFB_LINE_WEEKDAYS`). ~75 prop credits/week + ~170 lines/month ≈ the 500 limit. Founder chose 36h over 72h (same cost) for fresher prices; Sunday props appear Saturday. Measured: a prop market costs 1 credit/game with or without the PrizePicks book. Engine version unchanged (timing only). 278 backend tests pass.
+- **Fantasy Alarm YouTube streams added to the transcript fetch (`9d8d4ed`):** `CHANNELS` in `fetch_show_transcripts.py`. Its Week 6 picks stream (`CPF3xJC9wqQ`, aired 10/13) had no captions yet (`post_live`); the fetcher retries every run. YouTube was IP-blocking transcript requests after a 40-video backfill; should clear.
+- **Transcripts:** 13 old VSiN shows (weeks 2-5) backfilled and marked skipped (games played). 0 pending.
+
+## Next
+- Import the Fantasy Alarm Week 6 picks stream (and VSiN's Week 6 shows) once captioned, before Thursday's kickoff.
+- If credits are still tight next month: NFL game lines once a day saves ~60/month.
+- Offered, not built: a yt-dlp caption fallback when youtube_transcript_api is IP-blocked; Whisper transcription of uncaptioned streams (needs founder's OK to download audio).
+
 # START HERE — Session 22 (2026-10-12): Week 5 read, two engine guards, VSiN transcript fetcher
 
 > Session 21's wrap below still holds for everything not mentioned here.
