@@ -1,7 +1,7 @@
 """Which show transcripts still need their picks imported (the Shows tab).
 
     python scripts/transcript_status.py              # list pending transcripts
-    python scripts/transcript_status.py --fetch      # fetch new VSiN shows first
+    python scripts/transcript_status.py --fetch      # fetch new YouTube shows (VSiN, Fantasy Alarm) first
     python scripts/transcript_status.py --skip FILE --note "duplicate of ..."
     python scripts/transcript_status.py --hook       # SessionStart hook output
 
@@ -12,7 +12,7 @@ import_analyst_picks.py when the picks JSON names its "transcript") or
 Any transcripts/*.txt without an entry is pending.
 
 --hook is what .claude/settings.json runs at the start of every Claude Code
-session: it fetches new VSiN shows, then, if anything is pending, hands the
+session: it fetches new YouTube shows (VSiN, Fantasy Alarm), then, if anything is pending, hands the
 session the list and the steps to import it.
 """
 import argparse
@@ -89,7 +89,7 @@ def hook_output() -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--fetch", action="store_true", help="fetch new VSiN shows first")
+    parser.add_argument("--fetch", action="store_true", help="fetch new YouTube shows (VSiN, Fantasy Alarm) first")
     parser.add_argument("--hook", action="store_true", help="SessionStart hook JSON (fetches first)")
     parser.add_argument("--skip", metavar="FILE", help="mark a transcript as not needing an import")
     parser.add_argument("--note", help="why it was skipped")

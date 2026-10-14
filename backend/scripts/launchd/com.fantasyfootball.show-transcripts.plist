@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Fantasy Football Assistant (this repo): runs backend/scripts/fetch_show_transcripts.py
-     at 9:00, 14:00 and 19:00 to save new VSiN YouTube picks-show transcripts into
+     at 9:00, 14:00 and 19:00 to save new VSiN and Fantasy Alarm YouTube picks-show transcripts into
      backend/transcripts/. Paths are the founder's Mac; edit them for another machine.
      Install:   cp this file ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasyfootball.show-transcripts.plist
      Remove:    launchctl bootout gui/$(id -u)/com.fantasyfootball.show-transcripts && rm ~/Library/LaunchAgents/com.fantasyfootball.show-transcripts.plist

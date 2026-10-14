@@ -1,13 +1,17 @@
-"""Save new NFL and college picks-show transcripts from VSiN's YouTube channel.
+"""Save new NFL and college picks-show transcripts from YouTube (VSiN, Fantasy Alarm).
 
-    python scripts/fetch_show_transcripts.py             # newest 10 uploads
+    python scripts/fetch_show_transcripts.py             # newest 10 uploads per channel tab
     python scripts/fetch_show_transcripts.py --limit 80  # look further back
 
 Run from backend/ with requirements-scripts.txt installed. Only titles that
-look like an NFL or college picks show are kept (Prop Points, Beating the
-Book, Fezzik's best bets, the college picks compilation); tennis, UFC, MLB,
-survivor and opening-line videos are skipped. Each transcript is written to
-transcripts/ (gitignored) as <upload date>-vsin-<nfl|cfb>-<slug>-<video id>.txt;
+look like an NFL or college picks show are kept. VSiN: Prop Points, Beating
+the Book, Fezzik's best bets, the college picks compilation (tennis, UFC, MLB,
+survivor and opening-line videos are skipped). Fantasy Alarm: its live
+streams with spreads/totals, best bets or props (the daily "NFL Week N Picks,
+Spreads, Over/Unders & Pick'em Plays", Sunday "Start/Sit, Best Bets", "DFS
+Picks, Props"); waiver, trade, start/sit-only, MLB and DraftKings lineup
+videos are skipped. Each transcript is written to transcripts/ (gitignored) as
+<upload date>-<channel>-<nfl|cfb>-<slug>-<video id>.txt;
 a video already saved is skipped, and one whose captions aren't up yet is
 retried on the next run. Picks are still extracted by hand into JSON and
 loaded with import_analyst_picks.py.
@@ -27,13 +31,26 @@ from pathlib import Path
 from yt_dlp import YoutubeDL
 from youtube_transcript_api import YouTubeTranscriptApi
 
-CHANNEL = "https://www.youtube.com/@VSiNLive/videos"
 OUT_DIR = Path(__file__).resolve().parents[1] / "transcripts"
-# A picks show names its sport (Prop Points titles only say "Prop Betting
-# Expert") and says it has picks.
-SPORT = re.compile(r"\b(NFL|College Football|CFB)\b|Prop Betting Expert", re.I)
 COLLEGE = re.compile(r"\b(College Football|CFB)\b", re.I)
-PICKS = re.compile(r"Best Bets|Expert Picks|Props That|Bets for Week|Fezzik", re.I)
+# A picks show names its sport and says it has picks. Each channel titles its
+# shows differently, so each has its own pair of patterns.
+CHANNELS = [
+    {
+        "tag": "vsin", "name": "VSiN",
+        "urls": ["https://www.youtube.com/@VSiNLive/videos"],
+        # Prop Points titles only say "Prop Betting Expert".
+        "sport": re.compile(r"\b(NFL|College Football|CFB)\b|Prop Betting Expert", re.I),
+        "picks": re.compile(r"Best Bets|Expert Picks|Props That|Bets for Week|Fezzik", re.I),
+    },
+    {
+        "tag": "fantasyalarm", "name": "Fantasy Alarm",
+        # Its betting shows are live streams; /videos is mostly MLB DFS and radio clips.
+        "urls": ["https://www.youtube.com/@FantasyAlarm/streams"],
+        "sport": re.compile(r"\bNFL\b", re.I),
+        "picks": re.compile(r"Spreads|Best Bets|Props", re.I),
+    },
+]
 PAUSE = 3  # seconds between videos; YouTube answers bursts with 429s
 
 
@@ -41,8 +58,8 @@ def log(msg: str) -> None:
     print(f"{datetime.now():%Y-%m-%d %H:%M} {msg}", flush=True)
 
 
-def is_picks_show(title: str) -> bool:
-    return bool(SPORT.search(title) and PICKS.search(title))
+def is_picks_show(channel: dict, title: str) -> bool:
+    return bool(channel["sport"].search(title) and channel["picks"].search(title))
 
 
 def slug(title: str) -> str:
@@ -57,11 +74,13 @@ def saved_ids() -> set:
     return ids
 
 
-def recent_uploads(limit: int) -> list:
+def recent_uploads(url: str, limit: int) -> list:
     opts = {"extract_flat": True, "playlistend": limit, "quiet": True, "no_warnings": True}
     with YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(CHANNEL, download=False)
-    return [(e["id"], e.get("title") or "") for e in info.get("entries") or []]
+        info = ydl.extract_info(url, download=False)
+    # A stream that hasn't aired yet has no captions; it's picked up once it has.
+    return [(e["id"], e.get("title") or "") for e in info.get("entries") or []
+            if e.get("live_status") not in ("is_upcoming", "is_live")]
 
 
 def upload_date(video_id: str) -> str:
@@ -71,31 +90,39 @@ def upload_date(video_id: str) -> str:
     return f"{d[:4]}-{d[4:6]}-{d[6:]}"
 
 
-def save(video_id: str, title: str) -> Path:
+def save(channel: dict, video_id: str, title: str) -> Path:
     lines = YouTubeTranscriptApi().fetch(video_id, languages=["en"])
     day = upload_date(video_id)
     sport = "cfb" if COLLEGE.search(title) else "nfl"
-    path = OUT_DIR / f"{day}-vsin-{sport}-{slug(title)}-{video_id}.txt"
+    path = OUT_DIR / f"{day}-{channel['tag']}-{sport}-{slug(title)}-{video_id}.txt"
     body = "\n".join(f"[{int(s.start) // 60}:{int(s.start) % 60:02d}] {s.text}" for s in lines)
     path.write_text(
-        f"# {title}\n# VSiN | {day} | {sport}\n# https://www.youtube.com/watch?v={video_id}\n\n{body}\n"
+        f"# {title}\n# {channel['name']} | {day} | {sport}\n# https://www.youtube.com/watch?v={video_id}\n\n{body}\n"
     )
     return path
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--limit", type=int, default=10, help="how many of the newest uploads to check")
+    parser.add_argument("--limit", type=int, default=10, help="how many of the newest uploads to check per channel tab")
     args = parser.parse_args()
 
     OUT_DIR.mkdir(exist_ok=True)
     have = saved_ids()
-    new = [(vid, t) for vid, t in recent_uploads(args.limit) if is_picks_show(t) and vid not in have]
+    new = []
+    for channel in CHANNELS:
+        for url in channel["urls"]:
+            try:
+                uploads = recent_uploads(url, args.limit)
+            except Exception as e:  # one channel down shouldn't stop the others
+                log(f"couldn't list {url}: {type(e).__name__}: {str(e).splitlines()[0][:160]}")
+                continue
+            new += [(channel, vid, t) for vid, t in uploads if is_picks_show(channel, t) and vid not in have]
     log(f"{len(new)} new picks show(s) to fetch")
     failed = 0
-    for vid, title in new:
+    for channel, vid, title in new:
         try:
-            log(f"saved {save(vid, title).name}")
+            log(f"saved {save(channel, vid, title).name}")
         except Exception as e:  # captions not up yet, rate limit, ...: retry next run
             failed += 1
             log(f"skipped {vid} ({title}): {type(e).__name__}: {str(e).splitlines()[0][:160]}")
