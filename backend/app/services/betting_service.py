@@ -1195,7 +1195,7 @@ async def _build_board_now() -> Dict[str, Any]:
 
     async def props_for(g):
         async with sem:
-            return g, await odds_service.get_event_props(g["id"])
+            return g, await odds_service.get_event_props(g["id"], g.get("commence_time"))
 
     fetched = await asyncio.gather(*(props_for(g) for g in games))
 
@@ -1417,7 +1417,7 @@ async def price_cfb_prizepicks(uploaded: Dict[str, Any], games: List[Dict[str, A
 
     async def props_for(g):
         async with sem:
-            return g, await odds_service.get_event_props(g["id"], odds_service.NCAAF)
+            return g, await odds_service.get_event_props(g["id"], g.get("commence_time"), odds_service.NCAAF)
 
     index: Dict[Tuple[str, str], Tuple[Dict[str, Any], Dict[str, Any]]] = {}
     for g, event in await asyncio.gather(*(props_for(g) for g in picked)):

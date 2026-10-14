@@ -171,7 +171,7 @@ export function BettingPage() {
   const view = sport === 'cfb' ? college : board
   const viewLoading = sport === 'cfb' ? collegeLoading || (!college && !collegeError) : loading
   const viewError = sport === 'cfb' ? collegeError : error
-  // Without lines (Monday night until Wednesday's props, or no key) the record, shows and
+  // Without lines (Monday night until the first game's props, or no key) the record, shows and
   // entries still show: only PrizePicks and Lines need a priced board.
   const linesUp = !!view?.available
   const allTabs: readonly Tab[] = sport === 'cfb' ? ['shows', 'watch', 'track'] : ['prizepicks', 'shows', 'watch', 'entries', 'track']
@@ -289,8 +289,8 @@ export function BettingPage() {
                     : `${view.evaluated?.player_props} props · ${view.evaluated?.games} games priced`}
                 </span>
                 {view.credits_remaining != null && <span>{view.credits_remaining} odds credits left</span>}
-                {/* Free-tier credits: odds_service.PROP_REFRESH_WEEKDAYS */}
-                {view.evaluated?.player_props ? <span>Props refresh Wed &amp; Sun</span> : null}
+                {/* Free-tier credits: odds_service.PROP_FETCH_LEAD */}
+                <span>Each game's props load once, 36h before kickoff</span>
                 <DataConfidenceBadge level="computed" label="Simulated" />
               </p>
               <BankrollInput bankroll={bankroll} onChange={setBankroll} />

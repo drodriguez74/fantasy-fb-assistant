@@ -34,7 +34,12 @@ logger = logging.getLogger(__name__)
 # Caesars ("williamhill_us") and Fanatics returned nothing for NFL then.
 BOOKMAKERS = ("draftkings", "fanduel", "hardrockbet", "betmgm", "espnbet", "betrivers", "ballybet")
 SOURCE = "Vegas consensus (DraftKings, FanDuel, Hard Rock Bet)"
-_CACHE_TTL_SECONDS = 6 * 3600
+# Free tier (500 credits/month): game lines are refetched at most every 12h
+# (2 credits a call), and college lines only Thursday to Saturday (Eastern),
+# when its games are near; other days serve the last fetch. Founder's call
+# 2026-10-13.
+_CACHE_TTL_SECONDS = 12 * 3600
+CFB_LINE_WEEKDAYS = frozenset({3, 4, 5})
 _cache: Dict[str, Any] = {}
 
 # The Odds API's full team names -> the abbreviations ESPN uses.
@@ -115,20 +120,28 @@ def implied_totals(games: List[Dict[str, Any]], now: datetime) -> Dict[str, Dict
 PROP_MARKETS = ("player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions", "player_anytime_td")
 # PrizePicks lines come back with the props for comparison (pick'em, not odds).
 PROP_BOOKMAKERS = BOOKMAKERS + ("prizepicks",)
-_PROPS_TTL_SECONDS = 24 * 3600  # a full slate measured 148 credits (15 games); at most once a day
-# Free tier (500 credits/month): props are refetched only on these weekdays
-# (Eastern; Monday = 0): Wednesday for the week's first lines (Thursday
-# game included), Sunday for the main slate. Other days serve the last
-# fetched props whatever their age. Founder's call 2026-10-07, until the
-# $30 tier; then set it to all seven days.
-PROP_REFRESH_WEEKDAYS = frozenset({2, 6})
+# Free tier (500 credits/month): each game's props are fetched once, in the
+# PROP_FETCH_LEAD before its kickoff (Thursday's game on Wed/Thu, Sunday's
+# from Saturday, Monday's from Sunday), never earlier and never again. A
+# game costs 5 credits (one per market; PrizePicks rides free, measured
+# 2026-10-13), so a week is ~75. The old Wednesday + Sunday refetch of the
+# whole slate cost ~140 a week and didn't fit. Founder's call 2026-10-13,
+# until the $30 tier.
+PROP_FETCH_LEAD = timedelta(hours=36)
 _EASTERN = ZoneInfo("America/New_York")
 
 
-def prop_refresh_day(now: Optional[datetime] = None) -> bool:
-    """True on a day props may be refetched (PROP_REFRESH_WEEKDAYS, Eastern)."""
+def cfb_line_day(now: Optional[datetime] = None) -> bool:
+    """True on a day college lines may be refetched (CFB_LINE_WEEKDAYS, Eastern)."""
     now = now or datetime.now(timezone.utc)
-    return now.astimezone(_EASTERN).weekday() in PROP_REFRESH_WEEKDAYS
+    return now.astimezone(_EASTERN).weekday() in CFB_LINE_WEEKDAYS
+
+
+def _kickoff(commence_time: Optional[str]) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(commence_time.replace("Z", "+00:00"))
+    except (AttributeError, ValueError):
+        return None
 # Never spend the last credits on props: game lines (implied totals) need
 # them too. Prop fetches stop once the account is at or below this.
 CREDIT_RESERVE = 60
@@ -138,7 +151,7 @@ _credits: Dict[str, Optional[int]] = {"remaining": None}
 
 # ---------------------------------------------------------------------------
 # Cache: memory, then the odds_cache table (survives restarts -- Render's
-# free tier sleeps when idle, and refetching a slate of props costs ~70
+# free tier sleeps when idle, and refetching a slate of props costs ~75
 # credits), then the API.
 # ---------------------------------------------------------------------------
 
@@ -171,17 +184,22 @@ def _db_write(key: str, data: Any) -> None:
         logger.warning("odds_cache write failed for %s: %s", key, type(e).__name__)
 
 
-async def _cache_get(key: str, ttl_seconds: float) -> Optional[Any]:
+async def _cache_entry(key: str) -> Optional[Tuple[float, Any]]:
+    """(age in seconds, data) of the last fetch, from memory or the table."""
     cached = _cache.get(key)
-    if cached and time.monotonic() - cached[0] < ttl_seconds:
-        return cached[1]
+    if cached:
+        return time.monotonic() - cached[0], cached[1]
     stored = await asyncio.to_thread(_db_read, key)
     if stored:
         age = (datetime.now(timezone.utc) - stored[0]).total_seconds()
-        if age < ttl_seconds:
-            _cache[key] = (time.monotonic() - age, stored[1])
-            return stored[1]
+        _cache[key] = (time.monotonic() - age, stored[1])
+        return age, stored[1]
     return None
+
+
+async def _cache_get(key: str, ttl_seconds: float) -> Optional[Any]:
+    entry = await _cache_entry(key)
+    return entry[1] if entry and entry[0] < ttl_seconds else None
 
 
 async def _cache_put(key: str, data: Any) -> None:
@@ -232,11 +250,13 @@ async def _get(path: str, params: Dict[str, Any], sport: str = NFL) -> Optional[
 
 async def get_game_lines(sport: str = NFL) -> List[Dict[str, Any]]:
     """Every upcoming game's spreads + totals across BOOKMAKERS (raw API
-    shape), cached 6h. [] without a key or on failure."""
+    shape), cached 12h; college refetched only on CFB_LINE_WEEKDAYS. [] without
+    a key or on failure."""
     if not settings.ODDS_API_KEY:
         return []
     key = "games" if sport == NFL else f"games:{sport}"
-    cached = await _cache_get(key, _CACHE_TTL_SECONDS)
+    ttl = _CACHE_TTL_SECONDS if sport == NFL or cfb_line_day() else float("inf")
+    cached = await _cache_get(key, ttl)
     if cached is not None:
         return cached
     games = await _get("/odds", {"bookmakers": ",".join(BOOKMAKERS), "markets": "spreads,totals", "oddsFormat": "american"}, sport)
@@ -259,31 +279,34 @@ def this_week(games: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]
     return out
 
 
-async def get_event_props(event_id: str, sport: str = NFL) -> Optional[Dict[str, Any]]:
-    """One game's player props (PROP_MARKETS across PROP_BOOKMAKERS), cached
-    24h per game and refetched only on PROP_REFRESH_WEEKDAYS (other days
-    serve the last fetch). None when unavailable or when spending would dip
-    below CREDIT_RESERVE -- the caller reports that rather than guessing."""
+async def get_event_props(event_id: str, commence_time: Optional[str], sport: str = NFL,
+                          now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
+    """One game's player props (PROP_MARKETS across PROP_BOOKMAKERS), fetched
+    once per game, in the PROP_FETCH_LEAD before kickoff; before that window
+    (or once fetched in it) the last fetch is served, if any. None when
+    unavailable or when spending would dip below CREDIT_RESERVE -- the caller
+    reports that rather than guessing."""
     if not settings.ODDS_API_KEY:
         return None
     key = f"props:{event_id}"
-    cached = await _cache_get(key, _PROPS_TTL_SECONDS)
-    if cached is not None:
-        return cached
-    if not prop_refresh_day():
-        # Not a refresh day: the last fetch, however old, or nothing.
-        return await _cache_get(key, float("inf"))
+    now = now or datetime.now(timezone.utc)
+    kickoff = _kickoff(commence_time)
+    window = kickoff - PROP_FETCH_LEAD if kickoff else now
+    entry = await _cache_entry(key)
+    last = entry[1] if entry else None
+    if now < window or (entry and now - timedelta(seconds=entry[0]) >= window):
+        return last  # too early to spend, or already fetched near kickoff
     remaining = await credits_remaining_async()
     if remaining is not None and remaining - len(PROP_MARKETS) < CREDIT_RESERVE:
         logger.warning("Odds API: skipping props for %s, %s credits left (reserve %s)", event_id, remaining, CREDIT_RESERVE)
-        return await _cache_get(key, float("inf"))  # the last fetch beats no props
+        return last  # the last fetch beats no props
     data = await _get(f"/events/{event_id}/odds", {
         "bookmakers": ",".join(PROP_BOOKMAKERS),
         "markets": ",".join(PROP_MARKETS),
         "oddsFormat": "american",
     }, sport)
     if not isinstance(data, dict):
-        return await _cache_get(key, float("inf"))
+        return last
     await _cache_put(key, data)
     return data
 
