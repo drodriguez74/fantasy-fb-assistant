@@ -8,8 +8,11 @@
 - **Fantasy Alarm YouTube streams added to the transcript fetch (`9d8d4ed`):** `CHANNELS` in `fetch_show_transcripts.py`. Its Week 6 picks stream (`CPF3xJC9wqQ`, aired 10/13) had no captions yet (`post_live`); the fetcher retries every run. YouTube was IP-blocking transcript requests after a 40-video backfill; should clear.
 - **Transcripts:** 13 old VSiN shows (weeks 2-5) backfilled and marked skipped (games played). 0 pending.
 
+- **2026-10-15 update:** new Odds API key on the $30 tier (API reports 20,000 credits/month; founder said "200k", the API says 20K). Saved balance in `odds_cache` reset to 20000. Founder: keep the 36h/12h schedule (conservative, may unsubscribe later); spend the extra credits on analysis. Render's `ODDS_API_KEY` must be updated in the dashboard (founder to confirm).
+- **Shows imported 2026-10-15:** Fantasy Alarm Betting Playbook 10/13 (2) + 10/14 (4), VSiN college week 7 compilation (13, analysts unnamed), Beating the Book MegaPod week 6 (13). Teasers, team totals, NHL/MLB skipped. 0 pending.
+
 ## Next
-- Import the Fantasy Alarm Week 6 picks stream (and VSiN's Week 6 shows) once captioned, before Thursday's kickoff.
+- **Proposed, awaiting founder's go-ahead:** 2025 historical props backtest via the Odds API historical endpoint (~13.7K credits): pilot one week (~250) first, cache every response locally, stop at a 2,000-credit reserve; tests the 70/30 blend, the 3% EV bar, the ESPN check and calibration out of sample (BETTING_GUIDE section 9, "Not testable yet"). Must finish within this billing month.
 - If credits are still tight next month: NFL game lines once a day saves ~60/month.
 - Offered, not built: a yt-dlp caption fallback when youtube_transcript_api is IP-blocked; Whisper transcription of uncaptioned streams (needs founder's OK to download audio).
 
