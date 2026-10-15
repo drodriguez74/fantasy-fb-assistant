@@ -95,10 +95,11 @@ def validate(body: Dict[str, Any]) -> Dict[str, Any]:
         raise EntryError("A sportsbook bet is straight or parlay." if book else "entry_type must be power or flex")
     stake = float(body.get("stake") or 0)
     legs = body.get("legs") or []
-    lo, hi = ((1, 1) if entry_type == "straight" else (2, MAX_PARLAY_LEGS)) if book else (2, 6)
+    # PrizePicks added 1-pick Power Plays (seen 2026-10-15: Broncos +2.5, $9.36 to win $18); Flex still needs 2.
+    lo, hi = ((1, 1) if entry_type == "straight" else (2, MAX_PARLAY_LEGS)) if book else (1 if entry_type == "power" else 2, 6)
     if not lo <= len(legs) <= hi:
         raise EntryError({(1, 1): "A straight bet has one pick.", (2, MAX_PARLAY_LEGS): f"A parlay has 2 to {MAX_PARLAY_LEGS} picks.",
-                          (2, 6): "An entry has 2 to 6 picks."}[(lo, hi)])
+                          (1, 6): "A Power Play has 1 to 6 picks.", (2, 6): "A Flex Play has 2 to 6 picks."}[(lo, hi)])
     clean = []
     for leg in legs:
         player = (leg.get("player") or "").strip()
@@ -142,7 +143,7 @@ def entry_payout(entry_type: str, stake: float, to_win: float, statuses: List[st
     n = len(statuses)
     active = [s for s in statuses if s in ("won", "lost")]
     k, hits = len(active), sum(s == "won" for s in active)
-    if k <= 1:
+    if k == 0 or (k == 1 and n > 1):  # a multi-pick entry down to one pick is refunded
         return "refunded", stake
     if entry_type == "power":
         if hits < k:

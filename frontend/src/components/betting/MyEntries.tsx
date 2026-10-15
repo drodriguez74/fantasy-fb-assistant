@@ -137,7 +137,9 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
         side: p.side,
         line: String(p.line),
       }))
-      setLegs(read.length >= 2 ? read : [...read, ...Array.from({ length: 2 - read.length }, blankLeg)])
+      // A 1-pick Power Play is a real entry; anything else starts with 2 rows.
+      const min = r.entry_type === 'power' && read.length === 1 ? 1 : 2
+      setLegs(read.length >= min ? read : [...read, ...Array.from({ length: min - read.length }, blankLeg)])
       setWarnings(['Read from your screenshot: check every pick before saving.', ...r.warnings])
     } catch (err) {
       setError(getErrorMessage(err, "Couldn't read that screenshot."))
@@ -268,7 +270,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
               className="w-20 rounded border-line bg-surface-2 px-2 py-1 text-body stat-nums"
               aria-label={`Pick ${i + 1} line`}
             />
-            {legs.length > 2 && (
+            {legs.length > (entryType === 'power' ? 1 : 2) && (
               <button onClick={() => setLegs((ls) => ls.filter((_, j) => j !== i))} className="text-xs text-faint underline">
                 Remove
               </button>

@@ -14,7 +14,7 @@ def _body(**kw):
 
 def test_validate():
     assert ue.validate(_body())["legs"][1]["side"] == "More"
-    for bad in (_body(entry_type="parlay"), _body(to_win=5), _body(legs=_body()["legs"][:1]),
+    for bad in (_body(entry_type="parlay"), _body(to_win=5), _body(entry_type="flex", legs=_body()["legs"][:1]),
                 _body(legs=[_body()["legs"][0], {**_body()["legs"][0], "market": "player_receptions"}])):
         with pytest.raises(ue.EntryError):
             ue.validate(bad)
@@ -87,3 +87,14 @@ def test_spread_pick_grades_on_the_team_margin():
     dog = {"player": "TB", "team": "TB", "market": "team_spread", "side": "More", "line": -7.5, "status": "pending"}
     out = ue.grade_legs([fav, dog], {}, {("DAL", "TB"): (31.0, 21.0)}, week_over=False)
     assert [l["status"] for l in out] == ["won", "lost"] and out[0]["actual"] == 10.0
+
+
+def test_one_pick_power_play():
+    leg = {"player": "DEN", "team": "DEN", "market": "team_spread", "side": "More", "line": 2.5}
+    data = ue.validate({"entry_type": "power", "stake": 9.36, "to_win": 18, "legs": [leg]})
+    assert len(data["legs"]) == 1
+    with pytest.raises(ue.EntryError):
+        ue.validate({"entry_type": "flex", "stake": 9.36, "to_win": 18, "legs": [leg]})
+    assert ue.entry_payout("power", 9.36, 18, ["won"]) == ("won", 18.0)
+    assert ue.entry_payout("power", 9.36, 18, ["lost"]) == ("lost", 0.0)
+    assert ue.entry_payout("power", 9.36, 18, ["push"]) == ("refunded", 9.36)
