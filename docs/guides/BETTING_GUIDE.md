@@ -344,7 +344,34 @@ The prop correlations were measured against projection-centered lines, not real 
 
 **2026 weeks 1–4, engine calibration** (`experiments/engine_2026.py`; no prop lines exist for those weeks, so lines were set where PrizePicks puts them relative to a projection: goblin 50–70%, standard 95–100%, demon 125–140%). 19,096 priced picks from 1,736 player-weeks, current engine: said 50–60% → hit 56%, 60–70% → 64%, 70–80% → 76%, 80–90% → 84%, 90%+ → 94%; steady by week (said 54–55%, hit 54–55%). "Most likely"-style picks (goblin lines at 70%+): said 78%, hit 81% (n=1,800). This shows the engine's chances are honest; it can't show an edge over the books. It also matches the founder's PrizePicks screenshots: goblins the engine puts near 80% really hit ~80%, while PrizePicks' two-goblin 1.2x and goblin+standard 1.9x payouts price them like ~91%, so those tickets were overpriced. Excludes the lowest-volume players (under 15 projected yards / 1.5 catches), where the zero-catch and zero-rush fixes were validated separately.
 
-**Not testable yet:** player props against real lines. No free archive of 2025 prop lines exists; The Odds API's historical endpoint (paid, ~13.7K credits for one pre-kickoff snapshot of 5 markets for every 2025 game, about one month of the $30 tier) is the cheapest legitimate source.
+### Player props on real 2025 lines (2026-10-15, `scripts/backtest_props.py`)
+
+All 272 regular-season games, one Odds API historical snapshot 3h before each kickoff (all seven books + PrizePicks), 13,309 credits (50 a game). Each prop went through the shipped engine (`evaluate_player_prop`, slate centering, TD de-vig, zero-game chances, ESPN check) and was graded on Sleeper stats; 14,686 props from players who played. Responses are cached in `backend/.cache/backtest/odds_hist/`, so `python scripts/backtest_props.py run` reruns free.
+
+**The projections add nothing over the books, the same finding as game lines.**
+
+| Brier at the books' line (lower is better) | Books | Sleeper alone | ESPN alone | Blend w=0.3 |
+|---|---|---|---|---|
+| All markets | 0.2035 | 0.2075 | 0.2123 | 0.2033 |
+
+The blend weight fitted on weeks 1-9 (0.20) scored the same as 0.30 on weeks 10-18 (diff −0.00006 [−0.0003, +0.0002]), in every market. Bets hit 50.1% where the engine predicted 52.7%; its 55-70% calls hit 52.9%.
+
+| Bets (shipped engine) | Record | Units | Flat 1u each |
+|---|---|---|---|
+| Any book | 274-273 | +31.5u on 724u (+4.4%) | +9.6u (+1.8%) |
+| Hard Rock only | 134-125 | −6.4u on 382.5u (−1.7%) | +9.9u |
+| ESPN check off, any book | 655-654 | +96.5u on 1,700u (+5.7%) | +29.1u |
+| Bets the ESPN check vetoed, any book | 381-381 | +46.4u (+5.4%) | +19.4u |
+| Watch list, any book | 751-681 | | +66.2u (+4.6%) |
+
+- The small any-book profit comes from taking the best of seven prices, not from the model: no-units watch lines did as well per bet as real bets, and at Hard Rock alone the bets lost.
+- **ESPN check:** vetoed bets did as well as kept ones; it cuts volume without improving hit rate.
+- **EV bar:** on held-out weeks ROI doesn't rise with the engine's EV (every bucket's CI spans zero), so 3% vs 8% can't be told apart.
+- **Unders:** books' fair P(over) ~50%, but yardage/receptions went over 46-47% (8,415 lines). After vig, a flat Under at the best of seven prices: receptions +3.8% [+0.2, +7.1], other markets ~0 or negative; at Hard Rock alone receptions +0.6% (no edge).
+- **Anytime TD de-vig over-corrects** in the middle: raw implied 25-35% hit 25.6% (scaled to ~21%), 35-50% hit 37.2%, 50%+ hit 50.5%; the low end (raw 7.7%, hit 4.9%) matches the scale. Only 1 TD bet resulted, so the effect is on display and PrizePicks TD legs.
+- **Limit:** the snapshot is 3h before kickoff, sharper than the 36h-ahead lines the live board fetches. Week 5's 69% closing-line value says the engine may still read early lines; one snapshot can't test that (a second snapshot 36h out costs 50 credits a game).
+
+No engine change made; decisions are the founder's (open items).
 
 ### Week 5 results (2026-10-12, read before Monday night was graded)
 
