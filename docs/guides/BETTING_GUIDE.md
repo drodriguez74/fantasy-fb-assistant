@@ -373,6 +373,17 @@ The blend weight fitted on weeks 1-9 (0.20) scored the same as 0.30 on weeks 10-
 
 No engine change made; decisions are the founder's (open items).
 
+**Follow-ups on the same data (free; `scripts/experiments/props_hist_market_checks.py`, `props_hist_stacks.py`):**
+
+| Question | Result | Verdict |
+|---|---|---|
+| Line shopping: one book's price vs the other six books' fair chance, no model | Any book, EV 2-4%: +0.3% [−13, +13] (n=233), halves −16% / +27%. Hard Rock, EV 2-6%: n=105, CIs span ±30% | No reliable edge 3h before kickoff |
+| PrizePicks standard line vs the books (side the books favor at PrizePicks' number) | Books 57.7-62%: hit 53.9% [48, 60]; 62-70%: 61.4% [52, 70] (n=127). Receptions (377 of the 402 at 57.7%+): said 61.2%, hit 56.5% | `_books_chance` overstates by ~4-5 points; not enough for a 3x 2-pick (57.7%) |
+| Anytime TD: fit `0.95 × raw^1.06` on weeks 1-9 vs the shipped `td_rate_scale` | Brier wk 10-18 −0.00104 [−0.0023, +0.0003]; raw 35-50%: hit 38.9%, shipped 29.6%, fit 36.9% | Shipped de-vig too aggressive above ~15% raw; gain not yet significant |
+| QB + own WR/TE stacks at PrizePicks lines (both legs same way) | Both More: 29.4% vs books' independent 24.9% (+4.4 [+1.6, +7.4]); both Less: 31.8% vs 25.1% (+6.7 [+3.5, +9.9]); same lift both halves; leg correlation +0.22. QB + opposing WR/TE: no lift | **Confirmed on real lines.** As a 3-pick (6x) with a third leg hitting ~55%: Less/Less ≈ +6%, More/More ≈ −2% |
+
+A QB + own receiver 2-pick alone still loses at 3x (More −12%, Less −5%), and PrizePicks needs 2 teams in a 2-pick anyway.
+
 ### Week 5 results (2026-10-12, read before Monday night was graded)
 
 First real graded week. One week of correlated games: read it as a direction to watch, not a fit (36 bets at a 52% prediction have a standard deviation of about 8 points).

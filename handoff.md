@@ -15,6 +15,7 @@
 
 ## Next
 - **Full 2025 props backtest DONE 2026-10-15** (founder approved; 272 games, account now 6,442). Results in BETTING_GUIDE section 9, "Player props on real 2025 lines": projections add nothing over the books (Brier 0.2033 blend vs 0.2035 books); shipped bets +4.4% at any book via line shopping, −1.7% at Hard Rock only; ESPN check and EV bar show no value; Unders lean real but only beats vig on receptions at best-of-7; TD de-vig over-corrects mid-range. **No engine change made: founder to decide** (options: shrink/stop sportsbook prop units at Hard Rock, test 36h-ahead snapshots for the early-line question, recalibrate TD scale).
+- **Follow-ups (same data, free, 2026-10-15):** line shopping alone and PrizePicks-vs-books discrepancies show no reliable edge 3h out; `_books_chance` overstates far-line chances by ~4-5 pts; TD fit `0.95×raw^1.06` beats the shipped scale above 15% raw but not significantly; **QB + own receiver stacks confirmed on real PrizePicks lines (+4.4 pts both More, +6.7 both Less)**, so Less/Less 3-pick stacks look ~+6%. Scripts: `scripts/experiments/props_hist_market_checks.py`, `props_hist_stacks.py`.
 - If credits are still tight next month: NFL game lines once a day saves ~60/month.
 - Offered, not built: a yt-dlp caption fallback when youtube_transcript_api is IP-blocked; Whisper transcription of uncaptioned streams (needs founder's OK to download audio).
 
