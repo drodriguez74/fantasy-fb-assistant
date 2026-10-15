@@ -74,6 +74,13 @@ const MARKET_LABELS: Record<string, string> = {
   player_reception_yds: 'Receiving yards',
   player_receptions: 'Receptions',
   player_anytime_td: 'Anytime TD',
+  player_pass_tds: 'Passing TDs',
+  player_pass_attempts: 'Pass attempts',
+  player_pass_completions: 'Pass completions',
+  player_pass_interceptions: 'Interceptions',
+  player_rush_attempts: 'Rush attempts',
+  player_rush_rec_yds: 'Rush + rec yards',
+  player_pass_rush_yds: 'Pass + rush yards',
   spread: 'Spread',
   total: 'Total',
 }

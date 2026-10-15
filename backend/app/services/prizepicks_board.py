@@ -25,6 +25,14 @@ STAT_MARKETS = {
     "Receptions": "player_receptions",
     "Pass Yards": "player_pass_yds",
     "Anytime TDs": "player_anytime_td",
+    # Added 2026-10-15 with the matching Odds API markets.
+    "Pass TDs": "player_pass_tds",
+    "Pass Attempts": "player_pass_attempts",
+    "Pass Completions": "player_pass_completions",
+    "INT": "player_pass_interceptions",
+    "Rush Attempts": "player_rush_attempts",
+    "Rush+Rec Yds": "player_rush_rec_yds",
+    "Pass+Rush Yds": "player_pass_rush_yds",
 }
 CACHE_KEY = "prizepicks_board"  # NFL; other leagues append ":<league>"
 # Leagues the board prices, by PrizePicks' own league_ppid (college football

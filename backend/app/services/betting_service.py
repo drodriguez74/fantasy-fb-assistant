@@ -9,6 +9,7 @@ projection is skipped, never guessed at.
 """
 import asyncio
 import logging
+import math
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -32,6 +33,13 @@ MARKET_LABELS = {
     "player_reception_yds": "Receiving yards",
     "player_receptions": "Receptions",
     "player_anytime_td": "Anytime TD",
+    "player_pass_tds": "Passing TDs",
+    "player_pass_attempts": "Pass attempts",
+    "player_pass_completions": "Pass completions",
+    "player_pass_interceptions": "Interceptions",
+    "player_rush_attempts": "Rush attempts",
+    "player_rush_rec_yds": "Rush + rec yards",
+    "player_pass_rush_yds": "Pass + rush yards",
 }
 # Sleeper projected-stat key(s) behind each market's mean.
 MARKET_STATS = {
@@ -40,7 +48,16 @@ MARKET_STATS = {
     "player_reception_yds": ("rec_yd",),
     "player_receptions": ("rec",),
     "player_anytime_td": ("rush_td", "rec_td"),
+    "player_pass_tds": ("pass_td",),
+    "player_pass_attempts": ("pass_att",),
+    "player_pass_completions": ("pass_cmp",),
+    "player_pass_interceptions": ("pass_int",),
+    "player_rush_attempts": ("rush_att",),
+    "player_rush_rec_yds": ("rush_yd", "rec_yd"),
+    "player_pass_rush_yds": ("pass_yd", "rush_yd"),
 }
+# The Odds API's key -> ours, where they differ (ours match user_entries.MARKETS).
+ODDS_MARKET_KEYS = {"player_rush_reception_yds": "player_rush_rec_yds"}
 BOOK_LABELS = {"draftkings": "DraftKings", "fanduel": "FanDuel", "hardrockbet": "Hard Rock Bet", "prizepicks": "PrizePicks",
                "betmgm": "BetMGM", "espnbet": "ESPN BET", "betrivers": "BetRivers", "ballybet": "Bally Bet"}
 
@@ -226,25 +243,29 @@ def _projected_mean(stats: Dict[str, Any], market: str) -> Optional[float]:
 # ---------------------------------------------------------------------------
 
 def _group_offers(event: Dict[str, Any]) -> Dict[Tuple[str, str], Dict[str, Any]]:
-    """{(player, market): {"books": {book: {point: {side: price}}}, "prizepicks": point}}"""
+    """{(player, market): {"books": {book: {point: {side: price}}}, "alt": the
+    same for the books' alternate lines, "prizepicks": point}}"""
     grouped: Dict[Tuple[str, str], Dict[str, Any]] = {}
     for book in event.get("bookmakers") or []:
         bkey = book.get("key")
         for market in book.get("markets") or []:
-            mkey = market.get("key")
+            mkey = market.get("key") or ""
+            alt = mkey.endswith(odds_service.ALT_SUFFIX)
+            mkey = mkey[:-len(odds_service.ALT_SUFFIX)] if alt else mkey
+            mkey = ODDS_MARKET_KEYS.get(mkey, mkey)
             if mkey not in MARKET_STATS:
                 continue
             for o in market.get("outcomes") or []:
                 player = o.get("description")
                 if not player or o.get("price") is None:
                     continue
-                g = grouped.setdefault((player, mkey), {"books": {}, "prizepicks": None})
+                g = grouped.setdefault((player, mkey), {"books": {}, "alt": {}, "prizepicks": None})
                 if bkey == "prizepicks":
-                    if o.get("point") is not None:
+                    if o.get("point") is not None and not alt:
                         g["prizepicks"] = float(o["point"])
                     continue
                 point = float(o["point"]) if o.get("point") is not None else None
-                g["books"].setdefault(bkey, {}).setdefault(point, {})[o.get("name")] = float(o["price"])
+                g["alt" if alt else "books"].setdefault(bkey, {}).setdefault(point, {})[o.get("name")] = float(o["price"])
     return grouped
 
 
@@ -256,6 +277,60 @@ def _fair_over(books: Dict[str, Any]) -> Dict[float, float]:
         if pairs:
             fair[point] = bm.median(bm.devig_pair(s["Over"], s["Under"])[0] for s in pairs)
     return fair
+
+
+def _overround(pts: Dict[Any, Dict[str, float]]) -> Optional[float]:
+    """A book's typical two-way overround on its main lines for one prop."""
+    sums = [bm.implied_prob(s["Over"]) + bm.implied_prob(s["Under"]) for s in pts.values()
+            if {"Over", "Under"} <= set(s)]
+    return bm.median(sums)
+
+
+def _alt_fair_over(offers: Dict[str, Any]) -> Dict[float, float]:
+    """The books' fair P(over) at each alternate line (2026-10-15). Two-sided
+    quotes are de-vigged like main lines. Most alternate lines are Over only
+    ("60+ yards"), so the Over's implied chance is divided by that book's
+    main-line overround for the player (or the prop's median when the book
+    has no main line). That likely leaves a little vig on long shots, where
+    books charge more; graded PrizePicks legs are the check."""
+    books, alt = offers.get("books") or {}, offers.get("alt") or {}
+    fallback = bm.median(v for v in (_overround(pts) for pts in books.values()) if v) or 1.0
+    by_point: Dict[float, List[float]] = {}
+    for bkey, pts in alt.items():
+        hold = _overround(books.get(bkey) or {}) or fallback
+        for point, sides in pts.items():
+            if point is None or "Over" not in sides:
+                continue
+            if "Under" in sides:
+                p = bm.devig_pair(sides["Over"], sides["Under"])[0]
+            else:
+                p = bm.implied_prob(sides["Over"]) / max(hold, 1.0)
+            by_point.setdefault(point, []).append(p)
+    return {pt: min(0.99, max(0.01, bm.median(ps))) for pt, ps in by_point.items()}
+
+
+def _pp_fair_over(offers: Dict[str, Any]) -> Dict[float, float]:
+    """Fair P(over) for pricing PrizePicks lines: the main lines, plus the
+    alternate lines where no main line sits."""
+    return {**_alt_fair_over(offers), **_fair_over(offers["books"])}
+
+
+def _poisson_mean(line: float, p_over: float) -> float:
+    """lambda with P(Poisson(lambda) > line) = p_over (bisection)."""
+    k = int(np.floor(line))
+    lo, hi = 1e-4, 20.0
+    for _ in range(40):
+        mid = (lo + hi) / 2
+        cdf = sum(np.exp(-mid) * mid ** i / math.factorial(i) for i in range(k + 1))
+        lo, hi = (mid, hi) if 1 - cdf < p_over else (lo, mid)
+    return (lo + hi) / 2
+
+
+def _outlier_center(market: str, offers: Dict[str, Any], line: float) -> float:
+    """What a projection is compared with in the stale-projection check: the
+    market's line, or for POISSON_CENTER_MARKETS the rate it implies (an INT
+    projection of 0.9 against Over 0.5 at 57% -- a 0.84 rate -- is in line)."""
+    return market_center(market, offers) if market in bm.POISSON_CENTER_MARKETS else line
 
 
 def _td_yes_prices(books: Dict[str, Any]) -> Dict[str, float]:
@@ -276,7 +351,10 @@ def market_center(market: str, offers: Dict[str, Any], td_scale: Optional[float]
     if market == "player_anytime_td":
         return _td_market_prob(_td_yes_prices(offers["books"]), td_scale)
     fair = _fair_over(offers["books"])
-    return min(fair, key=lambda pt: abs(fair[pt] - 0.5)) if fair else None
+    if not fair:
+        return None
+    line = min(fair, key=lambda pt: abs(fair[pt] - 0.5))
+    return _poisson_mean(line, fair[line]) if market in bm.POISSON_CENTER_MARKETS else line
 
 
 def evaluate_player_prop(
@@ -335,7 +413,7 @@ def evaluate_player_prop(
     else:
         # The market's center: the quoted line whose fair P(over) is closest to 50%.
         market_line = min(fair_over, key=lambda pt: abs(fair_over[pt] - 0.5))
-        outlier = bm.projection_outlier(market, mean, market_line=market_line)
+        outlier = bm.projection_outlier(market, mean, market_line=_outlier_center(market, offers, market_line))
     if outlier:
         candidates = [{**c, "units": 0.0, "confidence": "none"} for c in candidates]
     candidates = [_playable(c) for c in candidates]
@@ -346,7 +424,7 @@ def evaluate_player_prop(
     # Watch: the worst price at which this side would clear the bar (alerts).
     best["bet_at"] = bm.worst_price(best["p_win"], best["p_push"]) if best["watch"] else None
     pp_line = offers.get("prizepicks")
-    pp_leg = (_prizepicks_leg(pp_line, samples, fair_over, espn_samples, market=market, player=player)
+    pp_leg = (_prizepicks_leg(pp_line, samples, _pp_fair_over(offers), espn_samples, market=market, player=player)
               if pp_line is not None and market != "player_anytime_td" and not outlier else None)
     return {
         "market_line": market_line,
@@ -380,7 +458,8 @@ def _side_prob(samples, side: str, line: Optional[float]) -> float:
 # for rushing, receiving yards and receptions (two held-out seasons), but
 # 37-45% for passing yards -- there the check only filtered noise
 # (scripts/experiments/props_mean_analyze.py extras).
-ESPN_CHECK_EXEMPT = frozenset({"player_pass_yds"})
+# Pass + rush yards (added 2026-10-15) is mostly passing yards, so it follows them.
+ESPN_CHECK_EXEMPT = frozenset({"player_pass_yds", "player_pass_rush_yds"})
 # An exempt bet rests on Sleeper alone, so it's capped at this many units
 # when ESPN projects the other side of the line (its own P(side) < 50%).
 # Week 5 2026: passing bets went 1-4 with Sleeper at 65-72% vs the books'
@@ -614,10 +693,12 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
             fair = _fair_over(offers["books"])
             if not fair:
                 continue
-            leg = _prizepicks_leg(line["line"], samples, fair, esamp, sides=allowed, market=market, player=player)
+            leg = _prizepicks_leg(line["line"], samples, _pp_fair_over(offers), esamp, sides=allowed, market=market,
+                                  player=player)
             if leg is None:
                 continue
-            outlier = bm.projection_outlier(market, model_mean, market_line=min(fair, key=lambda pt: abs(fair[pt] - 0.5)))
+            outlier = bm.projection_outlier(market, model_mean, market_line=_outlier_center(
+                market, offers, min(fair, key=lambda pt: abs(fair[pt] - 0.5))))
         if outlier:
             continue  # stale projection: don't rank it
         priced.append({"player": player, "team": team, "game": label, "kickoff": g.get("commence_time"),

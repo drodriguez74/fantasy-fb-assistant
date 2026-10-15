@@ -47,7 +47,7 @@ import numpy as np
 # Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
 # with key-number spreads, measured correlations, zero-catch and zero-rush
 # games. Rows from before versioning have NULL ("pre-versioning").
-ENGINE_VERSION = "2026-10-12.2"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution; 2026-10-12.1: passing bets capped at 1u when ESPN projects the other side; .2: part-time players out of most_likely
+ENGINE_VERSION = "2026-10-15.1"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution; 2026-10-12.1: passing bets capped at 1u when ESPN projects the other side; .2: part-time players out of most_likely; 2026-10-15.1: 7 more prop markets + the books' alternate lines for PrizePicks goblins/demons
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
@@ -106,7 +106,10 @@ ONE_SIDED_HOLD = 0.35        # fallback overround on the scoring rate
 # (lines below the floor use the floor, so a 3-yard vs 11.5-yard gap isn't
 # read as 280%). Touchdowns: ratio of projected to market-implied TD rate.
 MAX_LINE_GAP = 0.35
-LINE_GAP_FLOOR = {"player_pass_yds": 100.0, "player_rush_yds": 20.0, "player_reception_yds": 20.0, "player_receptions": 2.0}
+LINE_GAP_FLOOR = {"player_pass_yds": 100.0, "player_rush_yds": 20.0, "player_reception_yds": 20.0, "player_receptions": 2.0,
+                  "player_pass_tds": 1.5, "player_pass_interceptions": 1.0, "player_pass_attempts": 20.0,
+                  "player_pass_completions": 12.0, "player_rush_attempts": 8.0, "player_rush_rec_yds": 30.0,
+                  "player_pass_rush_yds": 120.0}
 MAX_TD_RATIO = 1.6
 
 # Outcome spread for gamma-distributed yardage, as coefficient of variation
@@ -136,7 +139,18 @@ MAX_YARDS_CV = 1.5
 # them on the 2025 season (4,755 player-weeks) and found no out-of-sample gain
 # over the current settings (validation pinball within +/-0.8%, mixed sign),
 # and duds made the goblin-relevant tail worse. Rerun it each season.
-PROJECTION_ERROR_BY_MARKET: Dict[str, float] = {}
+# The markets added 2026-10-15 were fitted the same way (2025 wk 4-10, scored
+# on 11-17 by pinball; scripts/experiments/new_markets_dist.py): Poisson
+# counts with a tighter projection error for passing TDs (0.10) and pass
+# attempts/completions (0.20); interceptions and rush attempts keep 0.30.
+PROJECTION_ERROR_BY_MARKET: Dict[str, float] = {
+    "player_pass_tds": 0.10, "player_pass_attempts": 0.20, "player_pass_completions": 0.20,
+}
+# Combined-yardage markets (same fit): pass + rush yards as a symmetric normal
+# like passing yards (CV 0.28 beat Poisson and gamma); rush + receiving yards
+# as a gamma with a flat CV 0.64 (held-out pinball 9.31 vs 9.49 normal).
+NORMAL_CV = {"player_pass_rush_yds": 0.28}
+GAMMA_CV = {"player_rush_rec_yds": 0.64}
 
 # "Dud" games for yardage: an early exit, a benching or a blowout script
 # leaves a player far below any normal-game spread. With probability
@@ -260,6 +274,11 @@ def simulate_stat(market: str, mean: float, seed_text: str, n: int = N_SIMS,
         # Symmetric normal, floored at 0 (PASS_YDS_NORMAL_CV): the gamma + projection
         # error was too right-skewed and too wide for passing.
         return np.maximum(rng.normal(mean, PASS_YDS_NORMAL_CV * mean, n), 0.0)
+    if market in NORMAL_CV:
+        return np.maximum(rng.normal(mean, NORMAL_CV[market] * mean, n), 0.0)
+    if market in GAMMA_CV:
+        shape = 1 / GAMMA_CV[market] ** 2
+        return rng.gamma(shape, mean / shape, n)
     if p_zero and market in ZERO_MASS_MARKETS:
         if market == "player_receptions":
             pi = _zero_inflation(true_mean, p_zero)
@@ -467,6 +486,14 @@ PROJECTION_SCALE_BOUNDS = (0.6, 1.6)
 CENTERING_SIMS = 4000
 
 
+# Low-count markets quoted at 0.5/1.5 (interceptions, passing TDs): the line
+# nearest 50% can be far from 50% (an INT Over 0.5 is often ~58%), so their
+# market center is the Poisson mean implied by the fair chance there
+# (betting_service.market_center), matched to projections by ratio as anytime
+# TD is, rather than assuming the line is the median.
+POISSON_CENTER_MARKETS = frozenset({"player_pass_interceptions", "player_pass_tds"})
+
+
 def fit_projection_scale(market: str, pairs: List[Tuple]) -> float:
     """Multiplier for this slate's projections in `market`. `pairs` are
     (projection, market center[, p_zero]): the market's 50% line for yards
@@ -478,6 +505,9 @@ def fit_projection_scale(market: str, pairs: List[Tuple]) -> float:
         return 1.0
     if market == "player_anytime_td":
         ratios = [-np.log(1 - p) / proj for proj, p, _ in pairs if 0 < p < 1]
+        return round(float(np.clip(np.median(ratios), lo, hi)), 3) if ratios else 1.0
+    if market in POISSON_CENTER_MARKETS:
+        ratios = [mean / proj for proj, mean, _ in pairs if mean > 0]
         return round(float(np.clip(np.median(ratios), lo, hi)), 3) if ratios else 1.0
 
     def median_p_over(k: float) -> float:
@@ -661,12 +691,22 @@ LEG_CORRELATION = {
 }
 
 
+# Markets added 2026-10-15 borrow the measured value of the core market they
+# move with (not measured themselves): a QB's attempts, completions, TDs and
+# pass + rush yards track his passing yards; rush attempts track rushing
+# yards; rush + receiving yards track receiving yards. Interceptions get 0.
+CORRELATION_PROXY = {
+    "player_pass_attempts": _PASS, "player_pass_completions": _PASS, "player_pass_tds": _PASS,
+    "player_pass_rush_yds": _PASS, "player_rush_attempts": _RUSH, "player_rush_rec_yds": _REC_YDS,
+}
+
+
 def leg_correlation(market_a: str, market_b: str, same_game: bool, same_team: bool) -> float:
     """Latent correlation between two Over legs (see LEG_CORRELATION)."""
     if not same_game:
         return 0.0
-    return LEG_CORRELATION.get((market_a, market_b, same_team),
-                               LEG_CORRELATION.get((market_b, market_a, same_team), 0.0))
+    a, b = CORRELATION_PROXY.get(market_a, market_a), CORRELATION_PROXY.get(market_b, market_b)
+    return LEG_CORRELATION.get((a, b, same_team), LEG_CORRELATION.get((b, a, same_team), 0.0))
 
 
 def joint_prob(p_a: float, p_b: float, rho: float) -> float:

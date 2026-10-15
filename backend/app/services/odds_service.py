@@ -117,16 +117,25 @@ def implied_totals(games: List[Dict[str, Any]], now: datetime) -> Dict[str, Dict
 
 
 # Player prop markets fetched per game (each market costs 1 credit per game).
-PROP_MARKETS = ("player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions", "player_anytime_td")
+CORE_PROP_MARKETS = ("player_pass_yds", "player_rush_yds", "player_reception_yds", "player_receptions")
+# Added 2026-10-15 on the $30 tier (founder's call): the PrizePicks stats the
+# books also quote, plus the books' alternate lines for the core yardage and
+# receptions markets, which price PrizePicks' goblin/demon numbers directly
+# (the shift from the main line overstated them by 4-5 points on 2025 lines).
+# 16 markets = 16 credits a game, ~1,000 a month at one fetch per game.
+EXTRA_PROP_MARKETS = ("player_pass_tds", "player_pass_attempts", "player_pass_completions",
+                      "player_pass_interceptions", "player_rush_attempts", "player_rush_reception_yds",
+                      "player_pass_rush_yds")
+ALT_SUFFIX = "_alternate"
+PROP_MARKETS = (CORE_PROP_MARKETS + ("player_anytime_td",) + EXTRA_PROP_MARKETS
+                + tuple(m + ALT_SUFFIX for m in CORE_PROP_MARKETS))
 # PrizePicks lines come back with the props for comparison (pick'em, not odds).
 PROP_BOOKMAKERS = BOOKMAKERS + ("prizepicks",)
-# Free tier (500 credits/month): each game's props are fetched once, in the
-# PROP_FETCH_LEAD before its kickoff (Thursday's game on Wed/Thu, Sunday's
-# from Saturday, Monday's from Sunday), never earlier and never again. A
-# game costs 5 credits (one per market; PrizePicks rides free, measured
-# 2026-10-13), so a week is ~75. The old Wednesday + Sunday refetch of the
-# whole slate cost ~140 a week and didn't fit. Founder's call 2026-10-13,
-# until the $30 tier.
+# Each game's props are fetched once, in the PROP_FETCH_LEAD before its
+# kickoff (Thursday's game on Wed/Thu, Sunday's from Saturday, Monday's from
+# Sunday), never earlier and never again (founder's call 2026-10-13, kept on
+# the $30 tier). A game costs one credit per market (PrizePicks rides free,
+# measured 2026-10-13): 16 markets since 2026-10-15, so a week is ~240.
 PROP_FETCH_LEAD = timedelta(hours=36)
 _EASTERN = ZoneInfo("America/New_York")
 

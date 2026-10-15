@@ -46,6 +46,13 @@ _STAT_KEYS = {
     "player_reception_yds": ("rec_yd",),
     "player_receptions": ("rec",),
     "player_anytime_td": ("rush_td", "rec_td"),
+    "player_pass_tds": ("pass_td",),
+    "player_pass_attempts": ("pass_att",),
+    "player_pass_completions": ("pass_cmp",),
+    "player_pass_interceptions": ("pass_int",),
+    "player_rush_attempts": ("rush_att",),
+    "player_rush_rec_yds": ("rush_yd", "rec_yd"),
+    "player_pass_rush_yds": ("pass_yd", "rush_yd"),
 }
 
 

@@ -1,7 +1,7 @@
 """Backtest the player-prop engine on real 2025 sportsbook lines.
 
 The Odds API's historical endpoint (paid: 10 credits per market returned per
-game, so ~50 a game for the five PROP_MARKETS) gives one pre-kickoff
+game, so ~50 a game for the five HIST_MARKETS) gives one pre-kickoff
 snapshot of every book's prop lines. Those lines go through the shipped
 pricing code -- betting_service.evaluate_player_prop with slate centering,
 the anytime-TD de-vig, the zero-game chances and the ESPN check -- and every
@@ -57,6 +57,8 @@ API = "https://api.the-odds-api.com/v4/historical/sports/americanfootball_nfl"
 RESERVE = 2000
 SNAPSHOT_LEAD = timedelta(hours=3)
 COST_PER_MARKET = 10
+# The five markets the 2025 run fetched (live now fetches more; see odds_service).
+HIST_MARKETS = odds_service.CORE_PROP_MARKETS + ("player_anytime_td",)
 
 
 # ---------------------------------------------------------------------------
@@ -140,7 +142,7 @@ def fetch(season: int, week: int, max_games: int, max_credits: int):
         if os.path.exists(path):
             done += 1
             continue
-        cost = COST_PER_MARKET * len(odds_service.PROP_MARKETS)
+        cost = COST_PER_MARKET * len(HIST_MARKETS)
         if not budget.allows(cost):
             print(f"  Stopping: next game could cost {cost} (spent {budget.spent}/{budget.max}, account {budget.remaining})")
             break
@@ -148,7 +150,7 @@ def fetch(season: int, week: int, max_games: int, max_credits: int):
         data = _hist_get(f"/events/{ev['id']}/odds", {
             "date": _iso(snap),
             "bookmakers": ",".join(odds_service.PROP_BOOKMAKERS),
-            "markets": ",".join(odds_service.PROP_MARKETS),
+            "markets": ",".join(HIST_MARKETS),
             "oddsFormat": "american",
         }, budget)
         if not data or not data.get("data"):
@@ -316,7 +318,7 @@ def heldout(rows):
         return
     print(f"\n=== Held-out: fit on weeks {TRAIN_WEEKS.start}-{TRAIN_WEEKS.stop - 1} ({len(train)} props), "
           f"scored on the rest ({len(test)}) ===")
-    for m in odds_service.PROP_MARKETS + (None,):
+    for m in HIST_MARKETS + (None,):
         tr = [r for r in train if m is None or r["market"] == m]
         te = [r for r in test if m is None or r["market"] == m]
         if not tr or not te:
@@ -352,7 +354,7 @@ def heldout(rows):
             print(f"    {label:20} {name:9} n={len(vals):5d} ROI {np.mean(vals):+.1%} [{ci[0]:+.1%}, {ci[1]:+.1%}]")
 
     print("\n  Over/Under lean, all weeks (books' fair P(over) at their line vs how often it went over):")
-    for m in odds_service.PROP_MARKETS[:4]:
+    for m in HIST_MARKETS[:4]:
         sel = [r["calib"] for r in cal if r["market"] == m]
         if sel:
             print(f"    {m.replace('player_', ''):14} n={len(sel):5d} books said {np.mean([c['p_book'] for c in sel]):.1%} "
@@ -388,7 +390,7 @@ def run(season: int):
         print(_fmt("Without the ESPN check", _record(rows, "no_espn")))
         vetoed = [r for r in rows if r["no_espn"] and r["no_espn"]["units"] > 0 and r["rec"]["units"] == 0]
         print(_fmt("Vetoed by the ESPN check", _record(vetoed, "no_espn")))
-        for m in odds_service.PROP_MARKETS:
+        for m in HIST_MARKETS:
             print(_fmt(m, _record([r for r in rows if r["market"] == m])))
         for side in ("Over", "Under", "Yes"):
             print(_fmt(f"side {side}", _record([r for r in rows if r["rec"]["side"] == side])))
@@ -402,7 +404,7 @@ def run(season: int):
                   f"flat 1u {sum(p for _, p in ws):+.2f}u")
 
     print("\n=== Calibration at the books' line (Over / Yes), Brier, lower is better ===")
-    for m in odds_service.PROP_MARKETS + (None,):
+    for m in HIST_MARKETS + (None,):
         sel = [r for r in rows if m is None or r["market"] == m]
         b, n = _brier(sel, "p_book")
         cells = [f"books {b:.4f}", f"Sleeper {_brier(sel, 'p_sleeper')[0]:.4f}",

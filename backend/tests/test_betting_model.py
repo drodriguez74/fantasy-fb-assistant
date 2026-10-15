@@ -496,3 +496,66 @@ def test_far_prizepicks_lines_follow_the_books_distribution():
     assert leg["market_prob"] > 0.95          # a lead back almost never finishes at 0 (was ~0.78 by additive shift)
     near = _prizepicks_leg(54.5, ours, fair, sides={"over"}, market="player_rush_yds")
     assert 0.42 < near["market_prob"] < 0.50  # near lines still shift a little from the books' 50%
+
+
+def test_new_markets_group_and_alternate_lines_price_prizepicks():
+    """2026-10-15: the Odds API's rush+rec key maps to ours, alternates go to
+    "alt", and an Over-only alternate is de-vigged by the book's main hold."""
+    from app.services.betting_service import _alt_fair_over, _group_offers, _pp_fair_over
+    event = {"bookmakers": [
+        {"key": "draftkings", "markets": [
+            {"key": "player_rush_reception_yds", "outcomes": [
+                {"name": "Over", "description": "A", "point": 70.5, "price": -110},
+                {"name": "Under", "description": "A", "point": 70.5, "price": -110}]},
+            {"key": "player_reception_yds", "outcomes": [
+                {"name": "Over", "description": "B", "point": 50.5, "price": -110},
+                {"name": "Under", "description": "B", "point": 50.5, "price": -110}]},
+            {"key": "player_reception_yds_alternate", "outcomes": [
+                {"name": "Over", "description": "B", "point": 29.5, "price": -400}]},
+        ]},
+        {"key": "prizepicks", "markets": [{"key": "player_reception_yds", "outcomes": [
+            {"name": "Over", "description": "B", "point": 29.5, "price": 100}]}]},
+    ]}
+    g = _group_offers(event)
+    assert ("A", "player_rush_rec_yds") in g
+    b = g[("B", "player_reception_yds")]
+    assert b["prizepicks"] == 29.5 and 29.5 in b["alt"]["draftkings"]
+    alt = _alt_fair_over(b)
+    assert math.isclose(alt[29.5], bm.implied_prob(-400) / (2 * bm.implied_prob(-110)), rel_tol=1e-6)
+    fair = _pp_fair_over(b)
+    assert math.isclose(fair[50.5], 0.5) and 29.5 in fair  # main line kept, alternate added
+
+
+def test_poisson_center_for_interceptions():
+    """An INT Over 0.5 at ~58% means a ~0.87 rate, not a 0.5 median."""
+    from app.services.betting_service import _poisson_mean, market_center
+    lam = _poisson_mean(0.5, 0.58)
+    assert math.isclose(1 - math.exp(-lam), 0.58, rel_tol=1e-4)
+    over, under = -150, 120
+    offers = {"books": {"dk": {0.5: {"Over": over, "Under": under}}}}
+    assert math.isclose(market_center("player_pass_interceptions", offers),
+                        _poisson_mean(0.5, bm.devig_pair(over, under)[0]), rel_tol=1e-6)
+    # Centering matches projections to the implied rate by ratio.
+    pairs = [(0.6, 0.9, None)] * 10
+    assert math.isclose(bm.fit_projection_scale("player_pass_interceptions", pairs), 1.5, rel_tol=1e-3)
+
+
+def test_new_market_distributions_and_correlation_proxies():
+    s = bm.simulate_stat("player_pass_rush_yds", 250, "t")
+    assert abs(s.std() / 250 - bm.NORMAL_CV["player_pass_rush_yds"]) < 0.01
+    s = bm.simulate_stat("player_rush_rec_yds", 80, "t")
+    assert abs(s.std() / 80 - bm.GAMMA_CV["player_rush_rec_yds"]) < 0.02
+    s = bm.simulate_stat("player_pass_interceptions", 0.8, "t")
+    assert set(np.unique(s)) <= set(range(10)) and abs(s.mean() - 0.8) < 0.03
+    # A QB's completions move with his receiver's yards; interceptions borrow nothing.
+    assert bm.leg_correlation("player_pass_completions", "player_reception_yds", True, True) == 0.38
+    assert bm.leg_correlation("player_pass_interceptions", "player_reception_yds", True, True) == 0.0
+
+
+def test_interception_projection_compared_with_implied_rate():
+    from app.services.betting_service import _outlier_center
+    offers = {"books": {"dk": {0.5: {"Over": -135, "Under": 105}}}}
+    center = _outlier_center("player_pass_interceptions", offers, 0.5)
+    assert 0.7 < center < 0.85  # -135/+105 de-vigs to 54% over 0.5, a 0.78 rate
+    assert not bm.projection_outlier("player_pass_interceptions", 0.9, market_line=center)
+    assert bm.projection_outlier("player_pass_interceptions", 2.0, market_line=center)

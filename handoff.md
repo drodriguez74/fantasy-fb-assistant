@@ -1,3 +1,17 @@
+# START HERE — Session 24 (2026-10-15): props backtest, Render key, 7 new prop markets + alternates
+
+> Session 23's notes below still hold for everything not mentioned here.
+
+- **2025 props backtest done** (13,309 credits; BETTING_GUIDE section 9): projections add nothing over the books; only QB + own-receiver stacks hold up on real PrizePicks lines (Less/Less ~+6% as a 3-pick). No engine change from it; founder still to decide on Hard Rock prop units, a 36h-snapshot test, TD de-vig recalibration.
+- **Render's `ODDS_API_KEY` updated** by the founder (~22:50 UTC). The old key had kept writing `credits = 5` to the shared `odds_cache`, which blocked every prop fetch this week. Confirm the stored `credits` stays ~6,400 after Render's next game-lines fetch.
+- **Engine 2026-10-15.1: 16 prop markets** (7 more PrizePicks stats + alternate lines for the core 4), 16 credits a game. Details in BETTING_GUIDE section 4. PrizePicks uploads now keep those stats; the founder's 10/15 upload was re-parsed from `backend/2026-10-15-projections.json` (upload time kept). 282 backend tests pass; frontend builds.
+- **Shows:** Fantasy Alarm TNF week 6 (6 picks) imported before kickoff.
+- **Account ~6,420 credits** until the monthly reset.
+
+## Next
+- After Sunday: read graded `pp_leg` rows for alternate-line goblins/demons (does the Over-only de-vig hold?) and the new markets' calibration.
+- Founder decisions listed in the first bullet.
+
 # START HERE — Session 23 (2026-10-13): Odds credits schedule, Fantasy Alarm transcripts
 
 > Session 22's notes below still hold for everything not mentioned here.
@@ -8,7 +22,7 @@
 - **Fantasy Alarm YouTube streams added to the transcript fetch (`9d8d4ed`):** `CHANNELS` in `fetch_show_transcripts.py`. Its Week 6 picks stream (`CPF3xJC9wqQ`, aired 10/13) had no captions yet (`post_live`); the fetcher retries every run. YouTube was IP-blocking transcript requests after a 40-video backfill; should clear.
 - **Transcripts:** 13 old VSiN shows (weeks 2-5) backfilled and marked skipped (games played). 0 pending.
 
-- **2026-10-15 update:** new Odds API key on the $30 tier (API reports 20,000 credits/month; founder said "200k", the API says 20K). Saved balance in `odds_cache` reset to 20000. Founder: keep the 36h/12h schedule (conservative, may unsubscribe later); spend the extra credits on analysis. Render's `ODDS_API_KEY` must be updated in the dashboard (founder to confirm).
+- **2026-10-15 update:** new Odds API key on the $30 tier (API reports 20,000 credits/month; founder said "200k", the API says 20K). Saved balance in `odds_cache` reset to 20000. Founder: keep the 36h/12h schedule (conservative, may unsubscribe later); spend the extra credits on analysis. Render's `ODDS_API_KEY` updated by the founder 2026-10-15 ~22:50 UTC. Until then Render's old key kept writing `credits = 5` to the shared `odds_cache`, which blocked every prop fetch (reserve 60) -- that's why week 6 had no props until the local rebuild at 22:43 UTC.
 - **Shows imported 2026-10-15:** Fantasy Alarm Betting Playbook 10/13 (2) + 10/14 (4), VSiN college week 7 compilation (13, analysts unnamed), Beating the Book MegaPod week 6 (13). Teasers, team totals, NHL/MLB skipped. 0 pending.
 
 - **Props backtest pilot done 2026-10-15 (251 credits; account 19,749):** `backend/scripts/backtest_props.py` (`fetch` spends credits, hard `--max-credits` cap + 2,000 reserve, every response cached in gitignored `backend/.cache/backtest/odds_hist/`; `run` is free and prices the cache with the shipped `evaluate_player_prop`, grades vs Sleeper stats, reports any-book and Hard Rock-only). Measured cost: **50 credits/game** (10/market), 1 per week's event list; all 7 books + Hard Rock + PrizePicks present in 2025 snapshots. Snapshot = kickoff - 3h. Pilot = 2025 week 11, first 5 games (a full week is ~15 games, ~750 credits; the "~250/week" figure in the proposal was really 5 games). 274 graded props. Too small to read: shipped bets 5-4 +6.0u; ESPN-vetoed bets 12-6; Brier books 0.1884 / Sleeper 0.1821 / blend 0.1855.

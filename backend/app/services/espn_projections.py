@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 _URL = "https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/{season}/segments/0/leaguedefaults/3"
 _TTL_SECONDS = 3 * 3600
 # ESPN stat id -> Sleeper stat key.
-ESPN_STAT_KEYS = {"3": "pass_yd", "24": "rush_yd", "25": "rush_td", "42": "rec_yd", "43": "rec_td", "53": "rec"}
+ESPN_STAT_KEYS = {"0": "pass_att", "1": "pass_cmp", "3": "pass_yd", "4": "pass_td", "20": "pass_int",
+                  "23": "rush_att", "24": "rush_yd", "25": "rush_td", "42": "rec_yd", "43": "rec_td", "53": "rec"}
 _SLOTS = [0, 2, 4, 6]  # QB, RB, WR, TE
 
 _cache: Dict[Tuple[int, int], Tuple[float, Dict[str, Dict[str, Any]]]] = {}

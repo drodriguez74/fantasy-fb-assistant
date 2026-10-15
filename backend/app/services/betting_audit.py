@@ -32,6 +32,9 @@ DECIDED = ("won", "lost", "partial")
 MARKET_LABELS = {
     "player_pass_yds": "Pass yds", "player_rush_yds": "Rush yds", "player_reception_yds": "Rec yds",
     "player_receptions": "Receptions", "player_anytime_td": "Anytime TD", "spread": "Spread", "total": "Total",
+    "player_pass_tds": "Pass TDs", "player_pass_attempts": "Pass att", "player_pass_completions": "Completions",
+    "player_pass_interceptions": "INT", "player_rush_attempts": "Rush att", "player_rush_rec_yds": "Rush+rec yds",
+    "player_pass_rush_yds": "Pass+rush yds",
 }
 
 
