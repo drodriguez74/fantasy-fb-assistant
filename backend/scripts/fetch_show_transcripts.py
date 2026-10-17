@@ -1,4 +1,4 @@
-"""Save new NFL and college picks-show transcripts from YouTube (VSiN, Fantasy Alarm).
+"""Save new NFL and college picks-show transcripts from YouTube (VSiN, Fantasy Alarm, Action Network).
 
     python scripts/fetch_show_transcripts.py             # newest 10 uploads per channel tab
     python scripts/fetch_show_transcripts.py --limit 80  # look further back
@@ -10,7 +10,10 @@ survivor and opening-line videos are skipped). Fantasy Alarm: its live
 streams with spreads/totals, best bets or props (the daily "NFL Week N Picks,
 Spreads, Over/Unders & Pick'em Plays", Sunday "Start/Sit, Best Bets", "DFS
 Picks, Props"); waiver, trade, start/sit-only, MLB and DraftKings lineup
-videos are skipped. Each transcript is written to transcripts/ (gitignored) as
+videos are skipped. Action Network: college football only, its Big Bets On
+Campus podcast (Stuckey and Collin Wilson's weekly preview, the Group of Six
+episode, the live show); added 2026-10-17 as the one extra college source,
+NFL videos deliberately left out (VSiN and Fantasy Alarm cover it). Each transcript is written to transcripts/ (gitignored) as
 <upload date>-<channel>-<nfl|cfb>-<slug>-<video id>.txt;
 a video already saved is skipped, and one whose captions aren't up yet is
 retried on the next run. Picks are still extracted by hand into JSON and
@@ -49,6 +52,13 @@ CHANNELS = [
         "urls": ["https://www.youtube.com/@FantasyAlarm/streams"],
         "sport": re.compile(r"\bNFL\b", re.I),
         "picks": re.compile(r"Spreads|Best Bets|Props", re.I),
+    },
+    {
+        "tag": "actionnetwork", "name": "Action Network",
+        "urls": ["https://www.youtube.com/channel/UCLbe62TJjEM1a7gnvTIsxkw/videos",
+                 "https://www.youtube.com/channel/UCLbe62TJjEM1a7gnvTIsxkw/streams"],
+        "sport": re.compile(r"\bCollege Football\b", re.I),
+        "picks": re.compile(r"Best Bets|Picks|Betting Guide", re.I),
     },
 ]
 PAUSE = 3  # seconds between videos; YouTube answers bursts with 429s
