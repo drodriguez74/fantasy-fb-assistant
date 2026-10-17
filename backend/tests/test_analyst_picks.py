@@ -118,3 +118,19 @@ def test_college_grading_keys():
     leg = ap._leg(r)
     finals = {(cfb_team_key("Oregon Ducks"), cfb_team_key("UCLA Bruins")): (31, 24)}
     assert ue.grade_legs([leg], {}, finals, week_over=False)[0]["status"] == "won"  # lost by 7 < 11.5
+
+
+def test_a_stale_college_board_never_matches_last_weeks_game():
+    # Shows air midweek, before college lines are refetched (Thu-Sat): the
+    # board can still hold the team's previous game, which must not match.
+    pick = ap.validate({"analyst": "VSiN analyst", "player": "UCLA Bruins", "market": "team_spread",
+                        "side": "More", "line": -11.5}, "cfb")
+    from datetime import date
+    assert ap.board_snapshot(pick, CFB_BOARD, "cfb", aired_on=date(2026, 10, 14)) is None
+    assert ap.board_snapshot(pick, CFB_BOARD, "cfb", aired_on=date(2026, 10, 8))["board_line"] == "UCLA Bruins +12.5"
+
+
+def test_unmatched_college_picks_search_the_week_after_airing():
+    from datetime import date
+    days = ap._week_after(date(2026, 10, 14))
+    assert len(days) == 7 and days[0].date() == date(2026, 10, 15) and days[-1].date() == date(2026, 10, 21)

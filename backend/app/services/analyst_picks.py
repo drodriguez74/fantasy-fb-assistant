@@ -90,15 +90,21 @@ def _other(p: Optional[float], push: float = 0.0) -> Optional[float]:
     return None if p is None else round(max(0.0, 1.0 - p - push), 4)
 
 
-def board_snapshot(pick: Dict[str, Any], board: Dict[str, Any], sport: str = "nfl") -> Optional[Dict[str, Any]]:
+def board_snapshot(pick: Dict[str, Any], board: Dict[str, Any], sport: str = "nfl",
+                   aired_on: Optional[date] = None) -> Optional[Dict[str, Any]]:
     """What our board said about the pick: the line and price we priced
     (the board shows each line on the side it prefers), our chance and the
     books' chance for the pick's side at that line, whether our engine leans
     that way (our chance above the books'; None on a market-only line), and
     `line_value`: the board's line minus the pick's, in the pick's favor
     (positive = the pick got a better number than the board has now). None
-    when the board has no such line."""
+    when the board has no such line, or only one for a game that kicked off
+    before the show aired (the college board has no week: a stale one still
+    holds last week's game for the same team)."""
     market, side = pick["market"], pick["side"]
+    if aired_on is not None:
+        board = {**board, "game_props": [r for r in board.get("game_props") or [] if _after(r, aired_on)],
+                 "player_props": [r for r in board.get("player_props") or [] if _after(r, aired_on)]}
     key = _team_key(sport)
     row, same, equiv = None, None, None
     if market in ("team_spread", "game_total", "team_win"):
@@ -148,6 +154,11 @@ def board_snapshot(pick: Dict[str, Any], board: Dict[str, Any], sport: str = "nf
     }
 
 
+def _after(row: Dict[str, Any], aired_on: date) -> bool:
+    kickoff = row.get("kickoff")
+    return not kickoff or datetime.fromisoformat(kickoff.replace("Z", "+00:00")).date() >= aired_on
+
+
 def _load_board(sport: str, season: int, week: int) -> Optional[Dict[str, Any]]:
     """The saved board (odds_cache "board:nfl" / "board:cfb"); the NFL one
     only when it's for the pick's week (the college board has no week)."""
@@ -185,7 +196,7 @@ def import_show(data: Dict[str, Any], board: Optional[Dict[str, Any]] = None) ->
             if exists:
                 skipped += 1
                 continue
-            snap = board_snapshot(p, board, sport) if board else None
+            snap = board_snapshot(p, board, sport, aired_on) if board else None
             kickoff = datetime.fromisoformat(snap["kickoff"].replace("Z", "+00:00")) if snap and snap.get("kickoff") else None
             db.add(AnalystPick(source=source, network=data.get("network"), sport=sport, aired_on=aired_on,
                                season=season, week=week, kickoff=kickoff, snapshot=snap, **p))
@@ -194,11 +205,41 @@ def import_show(data: Dict[str, Any], board: Optional[Dict[str, Any]] = None) ->
     return {"added": added, "skipped": skipped}
 
 
+def fill_missing_snapshots() -> int:
+    """Snapshot pending picks imported before their game was on our board
+    (a Wednesday college show: college lines are only fetched Thu-Sat). A
+    college pick needs the snapshot's kickoff to be graded at all."""
+    filled = 0
+    boards: Dict[tuple, Optional[Dict[str, Any]]] = {}
+    with SessionLocal() as db:
+        # Python-side check: an empty snapshot is stored as JSON null, not SQL NULL.
+        for r in [r for r in db.query(AnalystPick).filter(AnalystPick.status == "pending").all() if not r.snapshot]:
+            key = (r.sport, r.season, r.week)
+            if key not in boards:
+                boards[key] = _load_board(*key)
+            pick = {"player": r.player, "team": r.team, "game": r.game, "market": r.market, "side": r.side, "line": r.line}
+            snap = board_snapshot(pick, boards[key], r.sport, r.aired_on) if boards[key] else None
+            if snap:
+                r.snapshot = snap
+                if snap.get("kickoff"):
+                    r.kickoff = datetime.fromisoformat(snap["kickoff"].replace("Z", "+00:00"))
+                filled += 1
+        db.commit()
+    return filled
+
+
 def _leg(r: AnalystPick) -> Dict[str, Any]:
     key = _team_key(r.sport) if r.sport == "cfb" else (lambda t: t)
     player = key(r.player) if r.market in ("team_win", "team_spread") else r.player
     return {"player": player, "team": key(r.team) if r.team else None, "market": r.market, "side": r.side,
             "line": r.line, "status": r.status, "actual": r.actual}
+
+
+def _week_after(aired_on: date) -> List[datetime]:
+    """Days 1-7 after airing (the scoreboard lookup also takes each day before,
+    so the show's own day is covered but not the game it reacted to)."""
+    start = datetime(aired_on.year, aired_on.month, aired_on.day, 12, tzinfo=timezone.utc)
+    return [start + timedelta(days=d) for d in range(1, 8)]
 
 
 async def grade_pending(current_season: int, current_week: Optional[int]) -> int:
@@ -209,6 +250,7 @@ async def grade_pending(current_season: int, current_week: Optional[int]) -> int
     picks pending."""
     from app.services.betting_tracking import _espn_cfb_finals, _espn_finals, _sleeper_stats
 
+    fill_missing_snapshots()
     graded = 0
     now = datetime.now(timezone.utc)
     with SessionLocal() as db:
@@ -219,11 +261,10 @@ async def grade_pending(current_season: int, current_week: Optional[int]) -> int
         for (sport, season, week), rows in groups.items():
             try:
                 if sport == "cfb":
-                    rows = [r for r in rows if r.kickoff]  # no kickoff: no board match, can't be graded
-                    if not rows:
-                        continue
-                    finals, stats = await _espn_cfb_finals(r.kickoff for r in rows), {}
-                    week_over = all(r.kickoff < now - timedelta(days=4) for r in rows)
+                    # No kickoff (the game was never on our board): search the week after the show aired.
+                    days = [d for r in rows for d in ([r.kickoff] if r.kickoff else _week_after(r.aired_on))]
+                    finals, stats = await _espn_cfb_finals(days), {}
+                    week_over = all((r.kickoff or _week_after(r.aired_on)[-1]) < now - timedelta(days=4) for r in rows)
                 else:
                     finals, stats = await _espn_finals(season, week), await _sleeper_stats(season, week)
                     week_over = season < current_season or (current_week is not None and week < current_week)
