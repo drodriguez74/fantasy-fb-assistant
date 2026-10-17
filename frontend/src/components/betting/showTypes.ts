@@ -76,6 +76,8 @@ export function useShowPicks() {
   const [shows, setShows] = useState<Show[] | null>(null)
   const [error, setError] = useState('')
   const load = useCallback(async () => {
+    // Clear the error first so a retry shows "Loading..." instead of looking dead.
+    setError('')
     try {
       const res = await betting.getAnalystPicks()
       setShows(res.data.shows)
