@@ -1,5 +1,6 @@
-"""Each game's props are fetched once, in the 36h before kickoff (free-tier
-credits); college lines refetch only Thursday to Saturday."""
+"""Each game's props are fetched once in the 36h before kickoff and once more
+in the last 2h (the closing line); college lines refetch only Thursday to
+Saturday."""
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -14,7 +15,7 @@ K = datetime(2026, 10, 18, 17, tzinfo=timezone.utc)
 @pytest.fixture
 def api(monkeypatch):
     """A fake cache holding one entry (age in seconds, data) and a counting _get."""
-    state = {"entry": None, "calls": 0}
+    state = {"entry": None, "calls": 0, "db": None}
 
     async def entry(key):
         return state["entry"]
@@ -33,6 +34,7 @@ def api(monkeypatch):
     monkeypatch.setattr(osvc, "_cache_put", put)
     monkeypatch.setattr(osvc, "credits_remaining_async", credits)
     monkeypatch.setattr(osvc, "_get", fake_get)
+    monkeypatch.setattr(osvc, "_db_read", lambda key: state["db"])
     return state
 
 
@@ -55,6 +57,27 @@ def test_fetched_once_inside_the_window(api):
 def test_fetch_from_before_the_window_is_refreshed_once(api):
     api["entry"] = (3 * 86400.0, {"old": True})  # fetched on Wednesday for a Sunday game
     assert props(K - timedelta(hours=12)) == {"fresh": True} and api["calls"] == 1
+
+
+def test_one_more_fetch_in_the_closing_window(api):
+    api["entry"] = (29 * 3600.0, {"early": True})  # fetched at kickoff - 30h
+    now = K - timedelta(hours=1)
+    assert props(now) == {"fresh": True} and api["calls"] == 1
+    assert props(now + timedelta(minutes=30)) == {"fresh": True} and api["calls"] == 1  # only once
+
+
+def test_closing_fetch_taken_by_another_process_is_read_not_repaid(api):
+    now = K - timedelta(hours=1)
+    api["entry"] = (29 * 3600.0, {"early": True})  # this process's memory: the early fetch
+    api["db"] = (now - timedelta(minutes=20), {"close": True})  # the Mac's build took the close
+    assert props(now) == {"close": True} and api["calls"] == 0
+
+
+def test_no_closing_fetch_after_kickoff_or_when_first_fetch_was_late(api):
+    api["entry"] = (29 * 3600.0, {"early": True})
+    assert props(K + timedelta(minutes=5)) == {"early": True} and api["calls"] == 0
+    api["entry"] = (600.0, {"late": True})  # first fetched 10 minutes ago, inside the closing window
+    assert props(K - timedelta(hours=1)) == {"late": True} and api["calls"] == 0
 
 
 def test_reserve_falls_back_to_last_fetch(api, monkeypatch):

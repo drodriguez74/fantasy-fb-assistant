@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Fantasy Football Assistant (this repo): runs backend/scripts/build_board.py at 12:00, 15:30
+     and 19:30 so each NFL game's props get their closing fetch in the 2h before kickoff
+     (1pm, 4pm and night games). Builds outside a closing window spend no prop credits.
+     Paths are the founder's Mac; edit them for another machine.
+     Install:   cp this file ~/Library/LaunchAgents/ && launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.fantasyfootball.board-close.plist
+     Remove:    launchctl bootout gui/$(id -u)/com.fantasyfootball.board-close && rm ~/Library/LaunchAgents/com.fantasyfootball.board-close.plist
+     Log:       ~/Library/Logs/board-close.log -->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.fantasyfootball.board-close</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/venv/bin/python</string>
+    <string>/Users/darwinrodriguez/projects/fantasy-football-assistant/backend/scripts/build_board.py</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/darwinrodriguez/projects/fantasy-football-assistant/backend</string>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict><key>Hour</key><integer>12</integer><key>Minute</key><integer>0</integer></dict>
+    <dict><key>Hour</key><integer>15</integer><key>Minute</key><integer>30</integer></dict>
+    <dict><key>Hour</key><integer>19</integer><key>Minute</key><integer>30</integer></dict>
+  </array>
+  <key>StandardOutPath</key><string>/Users/darwinrodriguez/Library/Logs/board-close.log</string>
+  <key>StandardErrorPath</key><string>/Users/darwinrodriguez/Library/Logs/board-close.log</string>
+</dict>
+</plist>

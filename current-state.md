@@ -1,6 +1,6 @@
 # Current State
 
-_High-level project status (last updated 2026-10-12, session 22; the START HERE entry in `handoff.md` has the session summary). Read this (with `memory.md`) via `/orient` after `/clear`. Not a task queue — see `handoff.md` for the active task._
+_High-level project status (last updated 2026-10-20, session 25; the START HERE entry in `handoff.md` has the session summary). Read this (with `memory.md`) via `/orient` after `/clear`. Not a task queue — see `handoff.md` for the active task._
 
 ## What this project is
 
@@ -41,6 +41,7 @@ FastAPI + React/TS fantasy football assistant. PPR-scoped (keeper/dynasty explic
 - [x] **Bets: Shows, review pass, weekly tracking (session 21, 2026-10-08/09)** — player search; a Shows tab for radio/podcast picks (founder-supplied transcripts, extracted by hand, tracked and graded, never priced) with a per-pick "should I tail it?" verdict against the live board; a creative-director + UX review pass (tab order act → monitor → review, Play renamed Watch list, phone tab grid, Audit sport filter, faster grading); This week next to Season everywhere, hit/miss lists one week at a time. See `handoff.md` and BETTING_GUIDE section 6.
 - [x] **Bets: every game graded (session 22, 2026-10-10)**: the Watch list tab is now Lines and opens on Games, one card per game showing the books' projected score, spread, total and Bet / Watch / Pass at Hard Rock. Reviewed through creative director, UX and frontend lenses. See `handoff.md`.
 - [x] **Odds credits + Fantasy Alarm (session 23, 2026-10-13)**: props fetched once per game in the 36h before kickoff, lines every 12h (college Thu-Sat), to fit the 500/month free tier (it ran dry at 7 left); Fantasy Alarm's YouTube picks streams added to the transcript fetch. See `handoff.md`.
+- [x] **Weeks 5-6 review (session 25, 2026-10-20)**: bets 42-26 +33.8u (Hard Rock 34-19), Most likely 81% as predicted; engine weight stays 0.30. Every live pattern re-tested on 2025 real lines; no pricing change cleared a held-out test (PrizePicks Less correction rejected). Built: a closing prop fetch 2h before kickoff (real CLV from week 7, `build_board.py` + launchd job on the Mac) and tracked tickets = the page's distinct entries. BETTING_GUIDE section 9, "Weeks 5-6".
 
 Ranked in-season backlog after the Yahoo parity `/goal` resolves: weekly recap + shareable card (new feature, needs a design decision on what "shareable" means), consolidate the 3 analysis pages (`AdvancedAnalysisPage`/`AnalyticsPage`/`HistoricalPage` — audit real-vs-fabricated first, `AnalyticsPage`'s ML predictions depend on per-player historical stats noted elsewhere as sparse). Also holding Vercel free tier ([[project_vercel_free_tier]]) — bundle diet.
 - [ ] **Decommission audit findings** (`DECOMMISSION_TASK_LIST.md`) — large backlog of real, evidence-based bugs/dead-code, not yet started as a dedicated pass. See open items below.

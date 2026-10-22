@@ -1,3 +1,17 @@
+# START HERE — Session 25 (2026-10-20): weeks 5-6 review, closing prop fetch, tracked tickets
+
+> Session 24's notes below still hold for everything not mentioned here.
+
+- **Week 6 fully graded** (MNF included). Read: BETTING_GUIDE section 9, "Weeks 5-6 results and tests". Bets 42-26 +33.8u (Hard Rock 34-19 +25.4u), likely mostly variance (same rules ~0 at Hard Rock on 2025 lines). `tune_from_results.py`: keep 0.30.
+- **Closing prop fetch (not yet deployed):** `odds_service.PROP_CLOSE_LEAD` = 2h, one extra fetch per game (~240 credits/week); in the window `get_event_props` reads `odds_cache` before memory so Render and the Mac don't double-pay or write the older price over the close. `backend/scripts/build_board.py` + `backend/scripts/launchd/com.fantasyfootball.board-close.plist` (12:00, 15:30, 19:30). Run once 2026-10-20: works (6,193 credits left).
+- **Tracked tickets:** `tracked_entries.tickets_from_entries` now saves the page's default distinct list (positive EV, max 6, < half shared picks), mirroring `PrizePicksEntries.tsx`.
+- **Rejected after held-out tests:** PrizePicks Less correction (I'd told the founder 3-5 pts; on all near lines it's 1.4 and no shift beat noise in both directions), stake caps on EV 12%+, loosening the stale guard, requiring ESPN for passing.
+- 289 backend tests pass.
+
+## Next
+- Commit + push (Render deploys the odds change), then the founder installs the launchd job (BETTING_GUIDE founder action 0). Until Render runs the new code, its own rebuilds could write the early price over a closing price.
+- After week 7: first real CLV read (open item 7), passing-yards watch, Hard Rock-only record.
+
 # START HERE — Session 24 (2026-10-15): props backtest, Render key, 7 new prop markets + alternates
 
 > Session 23's notes below still hold for everything not mentioned here.

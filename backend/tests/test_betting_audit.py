@@ -44,11 +44,20 @@ def test_tickets_from_board_and_entries():
     tickets = te.tickets_from_board(pp, ml)
     assert [t["source"] for t in tickets].count("pair") == te.TOP_PAIRS
     assert tickets[-1]["source"] == "safest_pair" and tickets[-1]["has_specials"]
-    entries = [{"type": "power", "size": 3, "ev": 0.1, "p_all": 0.2, "payouts": {3: 6.0}, "legs": [_leg("A", "KC")] * 3},
-               {"type": "power", "size": 3, "ev": 0.05, "p_all": 0.2, "payouts": {3: 6.0}, "legs": [_leg("B", "KC")] * 3},
-               {"type": "flex", "size": 3, "ev": 0.02, "p_all": 0.2, "payouts": {3: 3.0, 2: 1.0}, "legs": [_leg("C", "KC")] * 3}]
+
+
+def test_tracked_entries_are_the_distinct_ones_the_page_shows():
+    def entry(kind, ev, *names):
+        return {"type": kind, "size": len(names), "ev": ev, "p_all": 0.2, "payouts": {len(names): 6.0},
+                "legs": [_leg(n, "KC" if i % 2 else "BUF") for i, n in enumerate(names)]}
+    entries = [entry("power", 0.10, "A", "B", "C"),
+               entry("flex", 0.08, "A", "B", "D"),         # shares 2 of 3 with the best: hidden
+               entry("power", 0.06, "A", "E", "F", "G"),   # shares 1 of 4: shown
+               entry("flex", -0.01, "H", "I", "J")]        # loses money: hidden
     kept = te.tickets_from_entries(entries)
-    assert len(kept) == 2 and kept[0]["ev"] == 0.1  # best per (type, size)
+    assert [t["ev"] for t in kept] == [0.10, 0.06]
+    many = [entry("flex", 0.2 - i / 100, f"X{i}", f"Y{i}") for i in range(10)]
+    assert len(te.tickets_from_entries(many)) == te.DISTINCT_ENTRIES
 
 
 def test_ticket_grading_rules():

@@ -133,10 +133,15 @@ PROP_MARKETS = (CORE_PROP_MARKETS + ("player_anytime_td",) + EXTRA_PROP_MARKETS
 PROP_BOOKMAKERS = BOOKMAKERS + ("prizepicks",)
 # Each game's props are fetched once, in the PROP_FETCH_LEAD before its
 # kickoff (Thursday's game on Wed/Thu, Sunday's from Saturday, Monday's from
-# Sunday), never earlier and never again (founder's call 2026-10-13, kept on
-# the $30 tier). A game costs one credit per market (PrizePicks rides free,
+# Sunday), never earlier (founder's call 2026-10-13, kept on the $30 tier). A game costs one credit per market (PrizePicks rides free,
 # measured 2026-10-13): 16 markets since 2026-10-15, so a week is ~240.
 PROP_FETCH_LEAD = timedelta(hours=36)
+# ...plus one more fetch in the last PROP_CLOSE_LEAD before kickoff, so each
+# pick has a real closing line (CLV) instead of the 36h-ahead price (founder's
+# call 2026-10-20: ~240 more credits a week). On the founder's Mac,
+# scripts/build_board.py builds the board at 12:00, 15:30 and 19:30 to hit
+# the 1pm, 4pm and night windows; any page visit in the window works too.
+PROP_CLOSE_LEAD = timedelta(hours=2)
 _EASTERN = ZoneInfo("America/New_York")
 
 
@@ -291,20 +296,36 @@ def this_week(games: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]
 async def get_event_props(event_id: str, commence_time: Optional[str], sport: str = NFL,
                           now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
     """One game's player props (PROP_MARKETS across PROP_BOOKMAKERS), fetched
-    once per game, in the PROP_FETCH_LEAD before kickoff; before that window
-    (or once fetched in it) the last fetch is served, if any. None when
-    unavailable or when spending would dip below CREDIT_RESERVE -- the caller
-    reports that rather than guessing."""
+    once in the PROP_FETCH_LEAD before kickoff and once more in the last
+    PROP_CLOSE_LEAD (the closing line); otherwise the last fetch is served, if
+    any. None when unavailable or when spending would dip below
+    CREDIT_RESERVE -- the caller reports that rather than guessing."""
     if not settings.ODDS_API_KEY:
         return None
     key = f"props:{event_id}"
     now = now or datetime.now(timezone.utc)
     kickoff = _kickoff(commence_time)
     window = kickoff - PROP_FETCH_LEAD if kickoff else now
+    close_window = kickoff - PROP_CLOSE_LEAD if kickoff else now
     entry = await _cache_entry(key)
+
+    def fetched_at(e) -> datetime:
+        return now - timedelta(seconds=e[0])
+
+    in_close = kickoff is not None and close_window <= now < kickoff
+    if entry and in_close and fetched_at(entry) < close_window:
+        # Another process (the Mac's build_board.py, or Render) may have
+        # taken the closing fetch already: check the table before memory.
+        stored = await asyncio.to_thread(_db_read, key)
+        if stored and stored[0] >= close_window:
+            age = (now - stored[0]).total_seconds()
+            _cache[key] = (time.monotonic() - age, stored[1])
+            entry = (age, stored[1])
     last = entry[1] if entry else None
-    if now < window or (entry and now - timedelta(seconds=entry[0]) >= window):
-        return last  # too early to spend, or already fetched near kickoff
+    if now < window:
+        return last  # too early to spend
+    if entry and fetched_at(entry) >= window and not (in_close and fetched_at(entry) < close_window):
+        return last  # fetched in the window, and the closing fetch is taken or not due yet
     remaining = await credits_remaining_async()
     if remaining is not None and remaining - len(PROP_MARKETS) < CREDIT_RESERVE:
         logger.warning("Odds API: skipping props for %s, %s credits left (reserve %s)", event_id, remaining, CREDIT_RESERVE)

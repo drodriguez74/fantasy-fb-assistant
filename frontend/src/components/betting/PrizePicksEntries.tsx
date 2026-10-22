@@ -70,6 +70,7 @@ export function PrizePicksEntries({ state, ticket }: { state: EntriesState; tick
   const ranked = size === 'all' ? allRanked : allRanked.filter((e) => e.size === size)
   // By default, skip entries that mostly repeat a better shown one (half or
   // more of their picks already used above): the same bet with one swap.
+  // The backend tracks exactly this list (tracked_entries.tickets_from_entries).
   const distinct: typeof ranked = []
   const used = new Set<string>()
   for (const e of ranked) {

@@ -26,6 +26,7 @@ from app.services.user_entries import entry_payout, grade_legs
 logger = logging.getLogger(__name__)
 
 TOP_PAIRS = 5
+DISTINCT_ENTRIES = 6  # the page's default list of entries
 
 
 def _leg(leg: Dict[str, Any]) -> Dict[str, Any]:
@@ -72,14 +73,21 @@ def tickets_from_board(prizepicks: Dict[str, Any], most_likely: Optional[Dict[st
 
 
 def tickets_from_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """The best 3-6 pick Power / 2-6 pick Flex entry of each size and type
-    (betting_service.prizepicks_entries' first per group is its best)."""
-    seen, out = set(), []
+    """The entries the Bets page shows by default (PrizePicksEntries.tsx, keep
+    the two in step): positive EV, best first, at most DISTINCT_ENTRIES, and
+    none that shares half or more of its picks with one kept above it. Until
+    2026-10-20 this tracked the best entry of every size and type, shown or
+    not, so one leg could sit in dozens of graded tickets (Brissett Less 269.5
+    passing was in 39 in week 5) and the record measured the same few legs
+    over and over."""
+    used, out = set(), []
     for e in sorted(entries, key=lambda e: -e["ev"]):
-        key = (e["type"], e["size"])
-        if key in seen:
+        if e["ev"] <= 0 or len(out) >= DISTINCT_ENTRIES:
             continue
-        seen.add(key)
+        keys = [f"{l['player']}|{l['market']}" for l in e["legs"]]
+        if sum(k in used for k in keys) >= e["size"] / 2:
+            continue
+        used.update(keys)
         out.append(ticket("entry", e["type"], e["legs"], e.get("p_all"), e.get("ev"), e.get("payouts")))
     return out
 
