@@ -285,11 +285,16 @@ export const betting = {
   getEntries: () => api.get('/betting/entries'),
   // Picks made on radio shows and podcasts, by show (tracked only, never priced).
   getAnalystPicks: () => api.get('/betting/analyst-picks'),
+  // Also Hard Rock bets (platform "sportsbook": straight or parlay, each leg
+  // with its American odds; college legs need their kickoff).
   logEntry: (entry: {
-    entry_type: 'power' | 'flex'
+    platform?: 'prizepicks' | 'sportsbook'
+    sport?: 'nfl' | 'cfb'
+    book?: string
+    entry_type: 'power' | 'flex' | 'straight' | 'parlay'
     stake: number
     to_win: number
-    legs: { player: string; market: string; side: 'More' | 'Less'; line: number; team?: string }[]
+    legs: { player: string; market: string; side: 'More' | 'Less'; line: number; team?: string; price?: number; kickoff?: string }[]
     notes?: string
   }) => api.post('/betting/entries', entry),
   deleteEntry: (id: number) => api.delete(`/betting/entries/${id}`),

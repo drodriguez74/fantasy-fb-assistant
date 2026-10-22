@@ -21,9 +21,15 @@ the legs and the grading: a "straight" bet is one leg, a "parlay" 2-12, each
 leg with its American price. A straight push or void is refunded; a parlay
 loses on any lost leg, and pushed or void legs drop out (it pays the product
 of the winning legs' prices, the full stated payout when every leg wins).
+
+College sportsbook bets (body "sport": "cfb") are game lines only (spread,
+total, winner), with full team names ("Toledo Rockets") and each leg's
+kickoff; they grade from ESPN's college scoreboard on the kickoff date and
+are void 4 days after kickoff without a final, like the Shows tab's college
+picks. They're filed under the NFL betting week, as everywhere on the page.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.db.base import SessionLocal
@@ -96,6 +102,11 @@ def validate(body: Dict[str, Any]) -> Dict[str, Any]:
     stake = float(body.get("stake") or 0)
     legs = body.get("legs") or []
     # PrizePicks added 1-pick Power Plays (seen 2026-10-15: Broncos +2.5, $9.36 to win $18); Flex still needs 2.
+    sport = body.get("sport") or "nfl"
+    if sport not in ("nfl", "cfb"):
+        raise EntryError("sport must be nfl or cfb")
+    if sport == "cfb" and not book:
+        raise EntryError("College is sportsbook bets only.")
     lo, hi = ((1, 1) if entry_type == "straight" else (2, MAX_PARLAY_LEGS)) if book else (1 if entry_type == "power" else 2, 6)
     if not lo <= len(legs) <= hi:
         raise EntryError({(1, 1): "A straight bet has one pick.", (2, MAX_PARLAY_LEGS): f"A parlay has 2 to {MAX_PARLAY_LEGS} picks.",
@@ -105,8 +116,19 @@ def validate(body: Dict[str, Any]) -> Dict[str, Any]:
         player = (leg.get("player") or "").strip()
         if not player or leg.get("market") not in MARKETS or leg.get("side") not in ("More", "Less"):
             raise EntryError("Each pick needs a player, a stat and More or Less.")
-        row = {"player": player, "team": normalize_team(leg.get("team")) if leg.get("team") else None,
+        team = leg.get("team")
+        row = {"player": player, "team": (normalize_team(team) if sport == "nfl" else team.strip()) if team else None,
                "market": leg["market"], "side": leg["side"], "line": float(leg["line"])}
+        if sport == "cfb":
+            if leg["market"] not in GAME_MARKETS:
+                raise EntryError("College bets are spreads, totals or winners (no player props).")
+            try:
+                kickoff = datetime.fromisoformat(str(leg.get("kickoff")).replace("Z", "+00:00"))
+            except ValueError:
+                raise EntryError("Each college bet needs its kickoff time.")
+            if kickoff.tzinfo is None:
+                raise EntryError("A kickoff time needs its timezone (e.g. 2026-10-24T16:00:00Z).")
+            row.update(sport="cfb", kickoff=kickoff.isoformat())
         if book:
             row["price"] = _price(leg.get("price"))
         clean.append(row)
@@ -224,10 +246,11 @@ def delete(user_id: int, entry_id: int) -> bool:
 
 
 def grade_legs(legs: List[Dict[str, Any]], stats: Dict[tuple, Dict[str, Any]], finals: Dict[tuple, Any],
-               week_over: bool) -> List[Dict[str, Any]]:
+               week_over: bool, team_key=None) -> List[Dict[str, Any]]:
     """Grade each pending pick whose game is final (or every pick once the
     week is over) from Sleeper's stats; returns new leg dicts. Shared with
-    the app's own tracked tickets (tracked_entries.py)."""
+    the app's own tracked tickets (tracked_entries.py). `team_key` maps a
+    game leg's team to the finals' keys (college: cfb_team_key)."""
     done_teams = {t for pair in finals for t in pair}
     by_name: Dict[str, List[tuple]] = {}
     for (name, team), row in stats.items():
@@ -237,7 +260,7 @@ def grade_legs(legs: List[Dict[str, Any]], stats: Dict[tuple, Dict[str, Any]], f
         if leg.get("status", "pending") != "pending":
             continue
         if leg["market"] in GAME_MARKETS:
-            _grade_game_leg(leg, finals, week_over)
+            _grade_game_leg(leg, finals, week_over, team_key)
             continue
         candidates = by_name.get(normalize_name(leg["player"]), [])
         if leg.get("team"):
@@ -252,10 +275,12 @@ def grade_legs(legs: List[Dict[str, Any]], stats: Dict[tuple, Dict[str, Any]], f
     return out
 
 
-def _grade_game_leg(leg: Dict[str, Any], finals: Dict[tuple, Any], week_over: bool) -> None:
+def _grade_game_leg(leg: Dict[str, Any], finals: Dict[tuple, Any], week_over: bool, team_key=None) -> None:
     """Team-winner and game-total picks, from the final score of the game the
     leg's team played in; void once the week is over without a final."""
     team = leg.get("team") or leg["player"]
+    if team_key:
+        team = team_key(team)
     final = next(((home, away, score) for (home, away), score in finals.items() if team in (home, away)), None)
     if final is None:
         if week_over:
@@ -275,20 +300,25 @@ def _grade_game_leg(leg: Dict[str, Any], finals: Dict[tuple, Any], week_over: bo
 async def grade_pending(user_id: int, current_season: int, current_week: Optional[int]) -> int:
     """Grade pending legs whose game is final (ESPN scoreboard), or every leg
     once the NFL week is over. Network failures leave entries pending."""
-    from app.services.betting_tracking import _espn_finals, _sleeper_stats
+    from app.services.betting_tracking import _espn_cfb_finals, _espn_finals, _sleeper_stats
+    from app.services.espn_game_predictor import cfb_team_key
 
     with SessionLocal() as db:
         pending = db.query(UserEntry).filter(UserEntry.user_id == user_id, UserEntry.status == "pending").all()
         graded = 0
         for e in pending:
-            week_over = e.season < current_season or (current_week is not None and e.week < current_week)
+            kickoffs = [datetime.fromisoformat(l["kickoff"]) for l in e.legs if l.get("sport") == "cfb"]
             try:
-                finals = await _espn_finals(e.season, e.week)
-                stats = await _sleeper_stats(e.season, e.week)
+                if kickoffs:
+                    week_over = max(kickoffs) < datetime.now(timezone.utc) - timedelta(days=4)
+                    finals, stats, key = await _espn_cfb_finals(kickoffs), {}, cfb_team_key
+                else:
+                    week_over = e.season < current_season or (current_week is not None and e.week < current_week)
+                    finals, stats, key = await _espn_finals(e.season, e.week), await _sleeper_stats(e.season, e.week), None
             except Exception as err:  # noqa: BLE001 - try again next time
                 logger.warning("Entry %s grading skipped: %s", e.id, type(err).__name__)
                 continue
-            legs = grade_legs(e.legs, stats, finals, week_over)
+            legs = grade_legs(e.legs, stats, finals, week_over, key)
             e.legs = legs
             if all(leg["status"] != "pending" for leg in legs):
                 e.status, e.payout = entry_payout(e.entry_type, e.stake, e.to_win, [leg["status"] for leg in legs],

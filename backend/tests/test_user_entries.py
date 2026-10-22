@@ -98,3 +98,23 @@ def test_one_pick_power_play():
     assert ue.entry_payout("power", 9.36, 18, ["won"]) == ("won", 18.0)
     assert ue.entry_payout("power", 9.36, 18, ["lost"]) == ("lost", 0.0)
     assert ue.entry_payout("power", 9.36, 18, ["push"]) == ("refunded", 9.36)
+
+
+def test_college_sportsbook_bets():
+    """Hard Rock college bets: game lines only, full team names kept (not NFL
+    abbreviations), a kickoff with its timezone, graded on college finals."""
+    from app.services.espn_game_predictor import cfb_team_key
+
+    leg = {"player": "Auburn Tigers", "team": "Auburn Tigers", "market": "team_spread", "side": "More", "line": -7.5,
+           "price": -120, "kickoff": "2026-10-24T16:00:00Z"}
+    d = ue.validate(_body(platform="sportsbook", sport="cfb", entry_type="straight", stake=5, to_win=9.17, legs=[leg]))
+    assert d["legs"][0]["team"] == "Auburn Tigers" and d["legs"][0]["sport"] == "cfb"
+    for bad in ({**leg, "kickoff": None}, {**leg, "kickoff": "2026-10-24T12:00"},
+                {**leg, "market": "player_rush_yds"}):
+        with pytest.raises(ue.EntryError):
+            ue.validate(_body(platform="sportsbook", sport="cfb", entry_type="straight", stake=5, to_win=9.17, legs=[bad]))
+    with pytest.raises(ue.EntryError):  # PrizePicks college isn't graded here
+        ue.validate(_body(sport="cfb"))
+    finals = {(cfb_team_key("Auburn Tigers"), cfb_team_key("LSU Tigers")): (20.0, 24.0)}
+    out = ue.grade_legs([{**d["legs"][0], "status": "pending"}], {}, finals, week_over=False, team_key=cfb_team_key)
+    assert out[0]["status"] == "won" and out[0]["actual"] == -4.0

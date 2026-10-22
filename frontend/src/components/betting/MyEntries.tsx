@@ -66,6 +66,33 @@ interface DraftLeg {
   market: string
   side: 'More' | 'Less'
   line: string
+  // Hard Rock bets only: American odds, and (college) the kickoff as a local datetime.
+  price?: string
+  kickoff?: string
+}
+
+type Platform = 'prizepicks' | 'sportsbook'
+type Sport = 'nfl' | 'cfb'
+const GAME_MARKETS = ['team_spread', 'game_total', 'team_win']
+const MAX_LEGS: Record<Platform, number> = { prizepicks: 6, sportsbook: 12 }
+
+/** A form row -> the API's leg. A sportsbook spread is typed as the book shows
+ * it ("+7.5"); the API's spread is "wins by more than", so +7.5 is More -7.5. */
+function toApiLeg(l: DraftLeg, platform: Platform, sport: Sport) {
+  const book = platform === 'sportsbook'
+  let side = l.side
+  let line = Number(l.line)
+  if (book && l.market === 'team_spread') [side, line] = ['More', -line]
+  if (l.market === 'team_win') [side, line] = ['More', 0.5]
+  return {
+    player: l.player,
+    market: l.market,
+    side,
+    line,
+    ...(l.team ? { team: l.team } : sport === 'cfb' ? { team: l.player } : {}),
+    ...(book ? { price: Number(l.price) } : {}),
+    ...(sport === 'cfb' && l.kickoff ? { kickoff: new Date(l.kickoff).toISOString() } : {}),
+  }
 }
 
 // What /betting/entries/read-screenshot returns: the form, prefilled.
@@ -110,7 +137,13 @@ const LEG_DOT: Record<string, string> = {
 }
 
 function EntryForm({ markets, players, onSaved }: { markets: Record<string, string>; players: string[]; onSaved: () => void }) {
+  const [platform, setPlatform] = useState<Platform>('prizepicks')
+  const [sport, setSport] = useState<Sport>('nfl')
   const [entryType, setEntryType] = useState<'power' | 'flex'>('power')
+  const book = platform === 'sportsbook'
+  // College is game lines only (no player stats graded for college).
+  const legMarkets = Object.entries(markets).filter(([k]) => !(book && sport === 'cfb') || GAME_MARKETS.includes(k))
+  const blank = (): DraftLeg => (book && sport === 'cfb' ? { ...blankLeg(), market: 'team_spread' } : blankLeg())
   const [stake, setStake] = useState('')
   const [toWin, setToWin] = useState('')
   const [legs, setLegs] = useState<DraftLeg[]>([blankLeg(), blankLeg()])
@@ -155,14 +188,16 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
     setError('')
     try {
       await betting.logEntry({
-        entry_type: entryType,
+        platform,
+        ...(book ? { sport, book: 'Hard Rock Bet' } : {}),
+        entry_type: book ? (legs.length === 1 ? 'straight' : 'parlay') : entryType,
         stake: Number(stake),
         to_win: Number(toWin),
-        legs: legs.map((l) => ({ player: l.player, market: l.market, side: l.side, line: Number(l.line), ...(l.team ? { team: l.team } : {}) })),
+        legs: legs.map((l) => toApiLeg(l, platform, sport)),
       })
       setStake('')
       setToWin('')
-      setLegs([blankLeg(), blankLeg()])
+      setLegs(book ? [blank()] : [blankLeg(), blankLeg()])
       setWarnings([])
       onSaved()
     } catch (err) {
@@ -185,6 +220,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <h3 className="text-sm font-medium text-body">Log an entry you placed</h3>
+        {!book && (<>
         <label className={`text-xs text-body underline cursor-pointer ${reading ? 'opacity-50 pointer-events-none' : ''}`}>
           {reading ? 'Reading screenshot...' : 'Import from screenshot'}
           <input
@@ -199,6 +235,7 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
           />
         </label>
         <span className="text-xs text-faint">or paste one here</span>
+        </>)}
       </div>
       {warnings.length > 0 && (
         <ul className="text-xs text-warning-700 space-y-0.5">
@@ -209,23 +246,54 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
       )}
       <div className="flex flex-wrap items-end gap-3 text-xs">
         <Segmented
-          label="Entry type"
-          value={entryType}
+          label="Where"
+          value={platform}
           options={[
-            ['power', 'Power'],
-            ['flex', 'Flex'],
+            ['prizepicks', 'PrizePicks'],
+            ['sportsbook', 'Hard Rock Bet'],
           ]}
-          onChange={setEntryType}
+          onChange={(v) => {
+            setPlatform(v)
+            setLegs(v === 'sportsbook' ? [sport === 'cfb' ? { ...blankLeg(), market: 'team_spread' } : blankLeg()] : [blankLeg(), blankLeg()])
+          }}
         />
+        {book ? (
+          <Segmented
+            label="League"
+            value={sport}
+            options={[
+              ['nfl', 'NFL'],
+              ['cfb', 'College'],
+            ]}
+            onChange={(v) => {
+              setSport(v)
+              setLegs([v === 'cfb' ? { ...blankLeg(), market: 'team_spread' } : blankLeg()])
+            }}
+          />
+        ) : (
+          <Segmented
+            label="Entry type"
+            value={entryType}
+            options={[
+              ['power', 'Power'],
+              ['flex', 'Flex'],
+            ]}
+            onChange={setEntryType}
+          />
+        )}
         <label className="flex flex-col gap-1 text-muted">
-          Entry fee ($)
+          {book ? 'Wager ($)' : 'Entry fee ($)'}
           <input type="number" min="0" inputMode="decimal" value={stake} onChange={(e) => setStake(e.target.value)} className="w-24 rounded border-line bg-surface-2 px-2 py-1 text-body stat-nums" />
         </label>
         <label className="flex flex-col gap-1 text-muted">
-          Pays if all hit ($)
+          {book ? 'Payout ($)' : 'Pays if all hit ($)'}
           <input type="number" min="0" inputMode="decimal" value={toWin} onChange={(e) => setToWin(e.target.value)} className="w-28 rounded border-line bg-surface-2 px-2 py-1 text-body stat-nums" />
         </label>
-        <span className="text-faint pb-1">From PrizePicks' "$10 to pay $30" line.</span>
+        <span className="text-faint pb-1">
+          {book
+            ? `The full payout the bet slip shows (wager included). ${legs.length === 1 ? 'Straight bet' : `${legs.length}-leg parlay`}.`
+            : `From PrizePicks' "$10 to pay $30" line.`}
+        </span>
       </div>
       <datalist id="entry-players">
         {players.map((p) => (
@@ -236,20 +304,21 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
         {legs.map((l, i) => (
           <div key={i} className="flex flex-wrap items-center gap-2 text-sm">
             <input
-              list="entry-players"
-              placeholder="Player"
+              list={book && sport === 'cfb' ? undefined : 'entry-players'}
+              placeholder={book && sport === 'cfb' ? 'Team (e.g. Toledo Rockets)' : GAME_MARKETS.includes(l.market) ? 'Team' : 'Player'}
               value={l.player}
               onChange={(e) => update(i, { player: e.target.value, team: null })}
               className="w-44 rounded border-line bg-surface-2 px-2 py-1 text-body"
               aria-label={`Pick ${i + 1} player`}
             />
             <select value={l.market} onChange={(e) => update(i, { market: e.target.value })} className="rounded border-line bg-surface-2 px-2 py-1 text-body" aria-label={`Pick ${i + 1} stat`}>
-              {Object.entries(markets).map(([k, label]) => (
+              {legMarkets.map(([k, label]) => (
                 <option key={k} value={k}>
                   {label}
                 </option>
               ))}
             </select>
+            {!(book && l.market === 'team_spread') && l.market !== 'team_win' && (
             <div className="flex rounded border border-hairline">
               {(['More', 'Less'] as const).map((s) => (
                 <button
@@ -257,20 +326,42 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
                   onClick={() => update(i, { side: s })}
                   className={`px-2 py-1 text-xs ${l.side === s ? 'bg-surface-2 text-body font-medium' : 'text-muted'}`}
                 >
-                  {s}
+                  {l.market === 'game_total' ? (s === 'More' ? 'Over' : 'Under') : s}
                 </button>
               ))}
             </div>
+            )}
+            {l.market !== 'team_win' && (
             <input
               type="number"
               step="0.5"
-              placeholder="Line"
+              placeholder={book && l.market === 'team_spread' ? 'Spread (+7.5)' : 'Line'}
               value={l.line}
               onChange={(e) => update(i, { line: e.target.value })}
               className="w-20 rounded border-line bg-surface-2 px-2 py-1 text-body stat-nums"
               aria-label={`Pick ${i + 1} line`}
             />
-            {legs.length > (entryType === 'power' ? 1 : 2) && (
+            )}
+            {book && (
+              <input
+                type="number"
+                placeholder="Odds (-110)"
+                value={l.price ?? ''}
+                onChange={(e) => update(i, { price: e.target.value })}
+                className="w-24 rounded border-line bg-surface-2 px-2 py-1 text-body stat-nums"
+                aria-label={`Pick ${i + 1} odds`}
+              />
+            )}
+            {book && sport === 'cfb' && (
+              <input
+                type="datetime-local"
+                value={l.kickoff ?? ''}
+                onChange={(e) => update(i, { kickoff: e.target.value })}
+                className="rounded border-line bg-surface-2 px-2 py-1 text-body"
+                aria-label={`Pick ${i + 1} kickoff`}
+              />
+            )}
+            {legs.length > (book || entryType === 'power' ? 1 : 2) && (
               <button onClick={() => setLegs((ls) => ls.filter((_, j) => j !== i))} className="text-xs text-faint underline">
                 Remove
               </button>
@@ -279,9 +370,9 @@ function EntryForm({ markets, players, onSaved }: { markets: Record<string, stri
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        {legs.length < 6 && (
-          <button onClick={() => setLegs((ls) => [...ls, blankLeg()])} className="text-xs text-body underline">
-            Add a pick
+        {legs.length < MAX_LEGS[platform] && (
+          <button onClick={() => setLegs((ls) => [...ls, blank()])} className="text-xs text-body underline">
+            {book ? 'Add a parlay leg' : 'Add a pick'}
           </button>
         )}
         <button onClick={submit} disabled={saving} className="ml-auto bg-volt text-volt-ink px-3 py-1.5 rounded-lg text-sm hover:bg-volt-dark disabled:opacity-50">
