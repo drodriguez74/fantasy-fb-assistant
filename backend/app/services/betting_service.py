@@ -197,6 +197,10 @@ _zero_rush: Dict[str, float] = {}
 # (Sleeper stats), by normalized name, refreshed per board build. Used only to
 # keep part-time players out of most_likely (bm.MOST_LIKELY_MIN_SNAP).
 _snap_share: Dict[str, float] = {}
+# Each player's position (Sleeper), by normalized name, refreshed per board
+# build: picks the measured same-player correlation group for an entry that
+# holds two stats of one player (bm.same_player_correlation).
+_positions: Dict[str, str] = {}
 
 
 async def _lagged_snap_shares(season: int, week: int) -> Dict[str, float]:
@@ -749,13 +753,20 @@ class TicketError(ValueError):
 
 def price_ticket(legs: List[Dict[str, Any]]) -> Dict[str, Any]:
     """A user-built PrizePicks ticket (the entry-builder tray): PrizePicks'
-    rules checked (2-6 picks, one per player, 2+ teams), then the hit-count
-    distribution with same-game correlation. legs: {player, team, game,
+    rules checked (2-6 picks, one per player and stat, 2+ teams), then the
+    hit-count distribution with same-game correlation (two stats of one
+    player use the measured same-player value). legs: {player, team, game,
     market, side: More|Less, line, p_win}."""
     if not 2 <= len(legs) <= 6:
         raise TicketError("An entry has 2 to 6 picks.")
-    if len({normalize_name(l["player"]) for l in legs}) < len(legs):
-        raise TicketError("PrizePicks allows one pick per player.")
+    if len({(normalize_name(l["player"]), l["market"]) for l in legs}) < len(legs):
+        raise TicketError("PrizePicks allows one pick per player and stat.")
+    for i, a in enumerate(legs):
+        for b in legs[i + 1:]:
+            if normalize_name(a["player"]) == normalize_name(b["player"]) and bm.same_player_correlation(
+                    a["market"], b["market"], _positions.get(normalize_name(a["player"]))) is None:
+                raise TicketError(f"Two {a['player']} picks: we haven't measured how {a['market'].removeprefix('player_')} "
+                                  f"and {b['market'].removeprefix('player_')} move together, so this can't be priced.")
     if len({l.get("team") for l in legs if l.get("team")}) < 2:
         raise TicketError("PrizePicks needs players from at least two teams.")
     clean = [{**l, "p_win": min(0.99, max(0.01, float(l["p_win"])))} for l in legs]
@@ -768,14 +779,19 @@ def price_ticket(legs: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def _hit_distribution(legs: List[Dict[str, Any]]) -> np.ndarray:
-    """P(k picks hit), k = 0..n, with same-game legs correlated."""
+    """P(k picks hit), k = 0..n, with same-game legs correlated (two stats
+    of one player at the measured same-player value)."""
     n = len(legs)
     corr = np.eye(n)
     for i in range(n):
         for j in range(i + 1, n):
             a, b = legs[i], legs[j]
-            if a["game"] == b["game"]:
-                sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
+            sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
+            name = normalize_name(a["player"])
+            if name == normalize_name(b["player"]):
+                rho = bm.same_player_correlation(a["market"], b["market"], _positions.get(name)) or 0.0
+                corr[i, j] = corr[j, i] = sign * rho
+            elif a["game"] == b["game"]:
                 same_team = bool(a.get("team")) and a.get("team") == b.get("team")
                 corr[i, j] = corr[j, i] = sign * bm.leg_correlation(a["market"], b["market"], True, same_team)
     return bm.hit_count_distribution([l["p_win"] for l in legs], corr, "stack|" + "|".join(l["player"] for l in legs))
@@ -1352,6 +1368,8 @@ async def _build_board_now() -> Dict[str, Any]:
             rec.update(game=label, kickoff=g.get("commence_time"), team=team, home=home, away=away)
             player_props.append(rec)
 
+    _positions.update({normalize_name(f"{p.get('first_name', '')} {p.get('last_name', '')}"): p["position"]
+                       for p in ((r.get("player") or {}) for r in rows) if p.get("position")})
     sleeper_pts, espn_pts = _team_points(rows, espn)
     models = game_models(games, sleeper_pts, espn_pts, win_probs)
     game_props = [

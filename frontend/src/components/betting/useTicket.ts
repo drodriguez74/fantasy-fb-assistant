@@ -1,6 +1,8 @@
 // The PrizePicks entry-builder ticket, held by the Bets page (2026-10-12
 // review: it lived inside the PrizePicks tab and emptied on every tab switch).
-// One pick per player (a new pick replaces that player's old one), at most 6.
+// One pick per player and stat (a new line on the same stat replaces the old
+// one; two stats of one player can sit together, priced with the measured
+// same-player correlation since 2026-10-22), at most 6.
 import { useMemo, useState } from 'react'
 import { legKey, type TicketActions, type TicketLeg } from './ticketTypes'
 
@@ -20,12 +22,12 @@ export function useTicket(): Ticket {
       has: (l) => picks.some((p) => same(p, l)),
       toggle: (l) =>
         setPicks((ps) =>
-          ps.some((p) => same(p, l)) ? ps.filter((p) => legKey(p) !== legKey(l)) : [...ps.filter((p) => p.player !== l.player), l].slice(0, 6),
+          ps.some((p) => same(p, l)) ? ps.filter((p) => legKey(p) !== legKey(l)) : [...ps.filter((p) => legKey(p) !== legKey(l)), l].slice(0, 6),
         ),
       addAll: (ls) =>
         setPicks((ps) => {
-          const names = new Set(ls.map((l) => l.player))
-          return [...ps.filter((p) => !names.has(p.player)), ...ls].slice(-6)
+          const keys = new Set(ls.map(legKey))
+          return [...ps.filter((p) => !keys.has(legKey(p))), ...ls].slice(-6)
         }),
       remove: (l) => setPicks((ps) => ps.filter((p) => legKey(p) !== legKey(l))),
       clear: () => setPicks([]),

@@ -140,8 +140,10 @@ def validate(body: Dict[str, Any]) -> Dict[str, Any]:
         to_win = float(body.get("to_win") or 0) or round(full, 2)
     else:
         to_win = float(body.get("to_win") or 0)
-        if len({normalize_name(l["player"]) for l in clean}) < len(clean):
-            raise EntryError("PrizePicks allows one pick per player.")
+        # Two stats of one player are allowed (seen 2026-10-22: Roschon Johnson
+        # targets + receiving yards in one entry); the same stat twice isn't.
+        if len({(normalize_name(l["player"]), l["market"]) for l in clean}) < len(clean):
+            raise EntryError("PrizePicks allows one pick per player and stat.")
     if stake <= 0 or to_win <= stake:
         raise EntryError("Stake must be positive and the full payout larger than the stake.")
     return {"platform": platform, "book": (body.get("book") or DEFAULT_BOOK).strip() if book else None,
@@ -220,7 +222,9 @@ def create(user_id: int, data: Dict[str, Any], season: int, week: int, snapshots
     legs = [{**leg, **book, "snapshot": snap, "status": "pending", "actual": None} for leg, snap in zip(data["legs"], snapshots)]
     probs = [(s or {}).get("books_prob") for s in snapshots]
     est = None
-    if all(p is not None for p in probs):
+    # The product assumes independent picks; two stats of one player aren't.
+    one_player_twice = len({normalize_name(l["player"]) for l in data["legs"]}) < len(data["legs"])
+    if all(p is not None for p in probs) and not one_player_twice:
         est = 1.0
         for p in probs:
             est *= p

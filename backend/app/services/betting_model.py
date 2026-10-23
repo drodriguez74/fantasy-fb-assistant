@@ -701,6 +701,52 @@ CORRELATION_PROXY = {
 }
 
 
+# Two stats of ONE player in one entry (PrizePicks allows it; seen 2026-10-22,
+# Roschon Johnson targets + receiving yards). Measured by position group on
+# 2024 wk 1-18, 2025 wk 1-18, 2026 wk 1-4 (scripts/experiments/
+# corr_same_player.py, copula rho from phi, player-week bootstrap; n 900-5,100
+# per pair). Pairs whose 95% CI spans 0 ship as 0.0; a pair missing from its
+# group was not measured (combined stats such as Rush+Rec, anytime TD) and
+# has no price (same_player_correlation returns None).
+_ATT, _CMP, _TDS, _INT = "player_pass_attempts", "player_pass_completions", "player_pass_tds", "player_pass_interceptions"
+_RATT, _TGT = "player_rush_attempts", "player_rec_targets"
+SAME_PLAYER_CORRELATION: Dict[str, Dict[Tuple[str, str], float]] = {
+    "QB": {
+        (_PASS, _ATT): 0.62, (_PASS, _CMP): 0.74, (_PASS, _TDS): 0.52, (_PASS, _INT): 0.0,
+        (_ATT, _CMP): 0.86, (_ATT, _TDS): 0.19, (_ATT, _INT): 0.26, (_CMP, _TDS): 0.30, (_CMP, _INT): 0.10,
+        (_TDS, _INT): -0.16, (_RUSH, _RATT): 0.67,
+        # A QB's passing and rushing stats: all CIs span 0.
+        **{(a, b): 0.0 for a in (_PASS, _ATT, _CMP, _TDS, _INT) for b in (_RUSH, _RATT)},
+    },
+    "RB": {
+        (_RUSH, _RATT): 0.81, (_RECS, _REC_YDS): 0.76, (_RECS, _TGT): 0.92, (_REC_YDS, _TGT): 0.68,
+        **{(a, b): 0.0 for a in (_RUSH, _RATT) for b in (_RECS, _REC_YDS, _TGT)},
+    },
+    "WR/TE": {(_RECS, _REC_YDS): 0.82, (_RECS, _TGT): 0.84, (_REC_YDS, _TGT): 0.70},
+}
+_PASSING = {_PASS, _ATT, _CMP, _TDS, _INT}
+
+
+def same_player_correlation(market_a: str, market_b: str, position: Optional[str] = None) -> Optional[float]:
+    """Latent correlation between two Over legs of the same player, or None
+    when that pair wasn't measured. Position picks the group (QB / RB / WR or
+    TE); unknown, a passing stat means QB and anything else RB, then WR/TE."""
+    if position == "QB" or market_a in _PASSING or market_b in _PASSING:
+        groups = ["QB"]
+    elif position in ("WR", "TE"):
+        groups = ["WR/TE"]
+    elif position == "RB":
+        groups = ["RB"]
+    else:
+        groups = ["RB", "WR/TE"]
+    for g in groups:
+        table = SAME_PLAYER_CORRELATION[g]
+        rho = table.get((market_a, market_b), table.get((market_b, market_a)))
+        if rho is not None:
+            return rho
+    return None
+
+
 def leg_correlation(market_a: str, market_b: str, same_game: bool, same_team: bool) -> float:
     """Latent correlation between two Over legs (see LEG_CORRELATION)."""
     if not same_game:

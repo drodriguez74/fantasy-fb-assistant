@@ -1,3 +1,19 @@
+# START HERE — Session 26 (2026-10-21): Hard Rock bets in My entries (college too), shows imported
+
+> Session 25's notes below still hold for everything not mentioned here.
+
+- **Pushed** session 25's closing prop fetch (2daf958^) and **installed** `com.fantasyfootball.board-close` on the Mac (first run 2026-10-22 12:00; 19:30 covers TNF).
+- **My entries form** now logs Hard Rock bets: PrizePicks / Hard Rock switch, straight or parlay, odds per leg, spreads typed as the book shows them. College Hard Rock bets (`sport: "cfb"`, game lines only, each leg's kickoff) grade from ESPN's college scoreboard; void 4 days after kickoff without a final.
+- **Logged for the founder (week 7):** 5 college straight bets (ids 17-21: Toledo -2.5, Auburn +7.5, South Carolina -2.5, Liberty/Kennesaw St Over 50.5, Kennesaw St +9.5) and the NE +2.5 / Over 49.5 SGP (id 22, $9.76 to pay $34; leg prices unknown, -110 placeholders, neither leg can push).
+- **Shows:** imported Fantasy Alarm x2 (NE @ CHI totals, Caleb Williams pass TDs lean) and VSiN college week 8 (11 picks); skipped VSiN's WSH @ SF props (game played).
+- **Two stats of one player** (PrizePicks allows it; founder's entry 25, Roschon targets + rec yds): My entries and the ticket tray accept them; the tray prices the pair with `SAME_PLAYER_CORRELATION` (measured by `scripts/experiments/corr_same_player.py`, 8,398 player-weeks) and refuses unmeasured pairs. Generated suggestions stay one pick per player until the founder confirms which same-player combos PrizePicks accepts and at what payout.
+- **Shows 2026-10-23:** imported Action Network college (26), VSiN props (17), Fezzik Fridays (NFL 1 + college 2), Fantasy Alarm start/sit (2 leans). YouTube's bot check blocks both the transcript API and yt-dlp from the Mac, so the launchd fetch misses videos: get them in Chrome (YouTube's new panel uses `transcript-segment-view-model` elements; Chrome allows one automatic download per site, so later ones must be read off the page). Fantasy Alarm's 10-23 Betting Playbook (wc45KecI6K0) had no captions yet. The uncommitted yt-dlp fallback in `fetch_show_transcripts.py` doesn't get past the bot check; founder to decide keep/drop.
+- **Safest picks lesson:** Florida pays 1.2x for two goblins (confirmed again); the safest 2-pick (66%) loses ~21% there. Offered the founder two fixes (price the pair at the real payout / pair a goblin with a standard line); not decided.
+
+## Next
+- Founder's call on the Safest 2-pick change above.
+- After week 7: first real CLV read, check the college entries graded.
+
 # START HERE — Session 25 (2026-10-20): weeks 5-6 review, closing prop fetch, tracked tickets
 
 > Session 24's notes below still hold for everything not mentioned here.

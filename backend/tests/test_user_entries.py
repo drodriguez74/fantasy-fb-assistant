@@ -15,7 +15,7 @@ def _body(**kw):
 def test_validate():
     assert ue.validate(_body())["legs"][1]["side"] == "More"
     for bad in (_body(entry_type="parlay"), _body(to_win=5), _body(entry_type="flex", legs=_body()["legs"][:1]),
-                _body(legs=[_body()["legs"][0], {**_body()["legs"][0], "market": "player_receptions"}])):
+                _body(legs=[_body()["legs"][0], {**_body()["legs"][0], "line": 40.5}])):
         with pytest.raises(ue.EntryError):
             ue.validate(bad)
 
@@ -118,3 +118,32 @@ def test_college_sportsbook_bets():
     finals = {(cfb_team_key("Auburn Tigers"), cfb_team_key("LSU Tigers")): (20.0, 24.0)}
     out = ue.grade_legs([{**d["legs"][0], "status": "pending"}], {}, finals, week_over=False, team_key=cfb_team_key)
     assert out[0]["status"] == "won" and out[0]["actual"] == -4.0
+
+
+def test_two_stats_of_one_player_in_an_entry():
+    legs = [{"player": "Roschon Johnson", "market": "player_rec_targets", "side": "More", "line": 1.5},
+            {"player": "Roschon Johnson", "market": "player_reception_yds", "side": "More", "line": 6.5},
+            {"player": "Drake Maye", "market": "player_rush_yds", "side": "More", "line": 24.5}]
+    assert len(ue.validate(_body(stake=5, to_win=17.5, legs=legs))["legs"]) == 3
+    with pytest.raises(ue.EntryError):
+        ue.validate(_body(legs=[legs[1], {**legs[1], "line": 9.5}]))
+
+
+def test_same_player_tickets_use_the_measured_correlation():
+    from app.services import betting_model as bm
+
+    assert bm.same_player_correlation("player_reception_yds", "player_rec_targets", "RB") == 0.68
+    assert bm.same_player_correlation("player_rush_yds", "player_rush_attempts", "QB") == 0.67
+    assert bm.same_player_correlation("player_rush_yds", "player_rush_attempts", None) == 0.81  # unknown: RB
+    assert bm.same_player_correlation("player_pass_yds", "player_pass_completions") == 0.74      # passing: QB
+    assert bm.same_player_correlation("player_rush_rec_yds", "player_reception_yds", "RB") is None
+    rj = {"player": "Roschon Johnson", "team": "CHI", "game": "NE @ CHI", "side": "More", "p_win": 0.55}
+    legs = [{**rj, "market": "player_rec_targets", "line": 1.5}, {**rj, "market": "player_reception_yds", "line": 6.5},
+            {"player": "Drake Maye", "team": "NE", "game": "NE @ CHI", "market": "player_rush_yds", "side": "More",
+             "line": 24.5, "p_win": 0.53}]
+    t = bs.price_ticket(legs)
+    assert t["p_all"] > t["p_independent"] * 1.2  # the two Roschon legs mostly hit together
+    with pytest.raises(bs.TicketError):
+        bs.price_ticket([legs[0], {**legs[0], "line": 2.5}, legs[2]])
+    with pytest.raises(bs.TicketError):  # unmeasured same-player pair
+        bs.price_ticket([legs[0], {**rj, "market": "player_rush_rec_yds", "line": 20.5}, legs[2]])
