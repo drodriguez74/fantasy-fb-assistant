@@ -16,7 +16,9 @@ episode, the live show); added 2026-10-17 as the one extra college source,
 NFL videos deliberately left out (VSiN and Fantasy Alarm cover it). Each transcript is written to transcripts/ (gitignored) as
 <upload date>-<channel>-<nfl|cfb>-<slug>-<video id>.txt;
 a video already saved is skipped, and one whose captions aren't up yet is
-retried on the next run. Picks are still extracted by hand into JSON and
+retried on the next run. When YouTube blocks youtube_transcript_api from
+this network (IpBlocked, seen on and off since 2026-10-21), the captions are
+read through yt-dlp instead (the same json3 track YouTube's player uses). Picks are still extracted by hand into JSON and
 loaded with import_analyst_picks.py.
 
 Feeds the Shows tab on the Bets page (analyst_picks.py). On the founder's Mac
@@ -25,7 +27,9 @@ com.fantasyfootball.show-transcripts (scripts/launchd/ has the plist with
 install/remove steps; log at ~/Library/Logs/show-transcripts.log).
 """
 import argparse
+import json
 import re
+import urllib.request
 import sys
 import time
 from datetime import datetime
@@ -33,6 +37,7 @@ from pathlib import Path
 
 from yt_dlp import YoutubeDL
 from youtube_transcript_api import YouTubeTranscriptApi
+from youtube_transcript_api._errors import IpBlocked, RequestBlocked
 
 OUT_DIR = Path(__file__).resolve().parents[1] / "transcripts"
 COLLEGE = re.compile(r"\b(College Football|CFB)\b", re.I)
@@ -100,12 +105,33 @@ def upload_date(video_id: str) -> str:
     return f"{d[:4]}-{d[4:6]}-{d[6:]}"
 
 
+def ytdlp_captions(video_id: str) -> list:
+    """[(start seconds, text)] from the video's English captions (uploaded,
+    else auto-generated) via yt-dlp's json3 track. Raises LookupError when
+    there are none yet."""
+    with YoutubeDL({"quiet": True, "no_warnings": True, "skip_download": True}) as ydl:
+        info = ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=False)
+    for tracks in (info.get("subtitles") or {}, info.get("automatic_captions") or {}):
+        lang = next((k for k in ("en", "en-orig", "en-US") if k in tracks), None)
+        url = next((t["url"] for t in tracks.get(lang) or [] if t.get("ext") == "json3"), None)
+        if url:
+            with urllib.request.urlopen(url, timeout=30) as r:
+                events = json.load(r).get("events") or []
+            lines = [(e["tStartMs"] / 1000, "".join(s.get("utf8", "") for s in e["segs"]).replace("\n", " ").strip())
+                     for e in events if e.get("segs")]
+            return [(t, x) for t, x in lines if x]
+    raise LookupError("no English captions yet")
+
+
 def save(channel: dict, video_id: str, title: str) -> Path:
-    lines = YouTubeTranscriptApi().fetch(video_id, languages=["en"])
+    try:
+        lines = [(s.start, s.text) for s in YouTubeTranscriptApi().fetch(video_id, languages=["en"])]
+    except (IpBlocked, RequestBlocked):
+        lines = ytdlp_captions(video_id)
     day = upload_date(video_id)
     sport = "cfb" if COLLEGE.search(title) else "nfl"
     path = OUT_DIR / f"{day}-{channel['tag']}-{sport}-{slug(title)}-{video_id}.txt"
-    body = "\n".join(f"[{int(s.start) // 60}:{int(s.start) % 60:02d}] {s.text}" for s in lines)
+    body = "\n".join(f"[{int(start) // 60}:{int(start) % 60:02d}] {text}" for start, text in lines)
     path.write_text(
         f"# {title}\n# {channel['name']} | {day} | {sport}\n# https://www.youtube.com/watch?v={video_id}\n\n{body}\n"
     )
