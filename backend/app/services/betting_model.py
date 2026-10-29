@@ -691,6 +691,21 @@ LEG_CORRELATION = {
 }
 
 
+# A prop vs its own game's total points (a "game_total" leg, Over/Over
+# orientation): measured the same way (corr_props.py, prop Over a centred
+# line vs the game going Over its nflverse closing total; 2024 wk 1-18, 2025
+# wk 1-18, 2026 wk 1-4; game-clustered bootstrap CIs). Either team's player.
+# Measured 2026-10-28 after a Hard Rock SGP (both QBs' passing Unders + game
+# Over) was priced on a guessed 0.3-0.45.
+_TOTAL = "game_total"
+PROP_TOTAL_CORRELATION = {
+    _PASS: 0.40,     # [0.32, 0.48], n=1,202 (normal-score 0.39)
+    _REC_YDS: 0.16,  # [0.12, 0.21], n=4,948
+    _RECS: 0.12,     # [0.07, 0.16], n=5,146
+    _RUSH: 0.06,     # [0.01, 0.12], n=2,383
+}
+
+
 # Markets added 2026-10-15 borrow the measured value of the core market they
 # move with (not measured themselves): a QB's attempts, completions, TDs and
 # pass + rush yards track his passing yards; rush attempts track rushing
@@ -752,6 +767,8 @@ def leg_correlation(market_a: str, market_b: str, same_game: bool, same_team: bo
     if not same_game:
         return 0.0
     a, b = CORRELATION_PROXY.get(market_a, market_a), CORRELATION_PROXY.get(market_b, market_b)
+    if _TOTAL in (a, b):
+        return PROP_TOTAL_CORRELATION.get(b if a == _TOTAL else a, 0.0)
     return LEG_CORRELATION.get((a, b, same_team), LEG_CORRELATION.get((b, a, same_team), 0.0))
 
 

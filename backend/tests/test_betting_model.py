@@ -102,6 +102,13 @@ def test_joint_prob_copula():
     assert bm.joint_prob(0.6, 0.6, 0.45) > 0.36 > bm.joint_prob(0.6, 0.6, -0.2)
     assert bm.leg_correlation("player_reception_yds", "player_pass_yds", True, True) == 0.38
     assert bm.leg_correlation("player_pass_yds", "player_reception_yds", False, False) == 0.0
+    # A prop vs its own game's total, either team; proxies borrow their core market.
+    assert bm.leg_correlation("game_total", "player_pass_yds", True, False) == 0.40
+    assert bm.leg_correlation("player_pass_completions", "game_total", True, True) == 0.40
+    assert bm.leg_correlation("player_reception_yds", "game_total", True, False) == 0.16
+    assert bm.leg_correlation("player_anytime_td", "game_total", True, False) == 0.0  # not measured
+    assert bm.leg_correlation("game_total", "game_total", True, False) == 0.0
+    assert bm.leg_correlation("game_total", "player_pass_yds", False, False) == 0.0
 
 
 def test_prizepicks_leg_uses_market_at_prizepicks_number():
