@@ -372,7 +372,10 @@ export function PrizePicksPairs({
               <Explainer>
                 <p>
                   A 2-pick pays {data.payout}x, so each pick needs about {chance(data.breakeven_leg)} to break even. Pairs
-                  never use teammates (an entry needs two teams); opponents in the same game are priced together.
+                  never use teammates (an entry needs two teams).{' '}
+                  {data.platform === 'betr'
+                    ? 'On Betr every pick comes from a different game: Betr pays less when two picks share a game (2.8x instead of 3x), so same-game pairs and stacks are left out.'
+                    : 'Opponents in the same game are priced together.'}
                 </p>
               </Explainer>
               {(positive.length ? positive : data.pairs.slice(0, 5)).map((pair) => (

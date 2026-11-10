@@ -642,7 +642,7 @@ def _prizepicks_leg(pp_line: float, samples, fair_over: Dict[float, float], espn
     }
 
 
-def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, Any]:
+def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25, distinct_games: bool = False) -> Dict[str, Any]:
     """Best 2-pick Power Plays (3x) from the board's PrizePicks legs.
     Same-game legs are priced with their correlation (betting_model.
     leg_correlation). PrizePicks requires players from at least two
@@ -672,6 +672,8 @@ def prizepicks_pairs(props: List[Dict[str, Any]], limit: int = 25) -> Dict[str, 
             if a["player"] == b["player"] or (a.get("team") and a.get("team") == b.get("team")):
                 continue
             same_game = a.get("game") == b.get("game")
+            if same_game and distinct_games:
+                continue  # Betr cuts the multiplier on same-game picks (BETR_SAME_GAME_NOTE)
             rho = bm.leg_correlation(a["market"], b["market"], same_game, a.get("team") == b.get("team"))
             sign = (1 if a["prizepicks"]["side"] == "More" else -1) * (1 if b["prizepicks"]["side"] == "More" else -1)
             pa, pb = value(a), value(b)
@@ -710,6 +712,14 @@ def board_lines(priced: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # discounts instead of being paired at the standard multiplier, where a 93%
 # leg would look like a large fake edge. Shakir 39.5 vs 42.5 (7%) stays standard.
 BETR_OFF_MARKET_SHARE = 0.15
+# Betr pays less when an entry holds two picks from one game ("edge combos";
+# read off a real slip 2026-11-09): McCarthy + Daniels, both QBs in WAS @ NYG,
+# 2.8x Perfect / 1.75x Flex where a cross-game 2-pick paid 3x / 2x; a 3-pick
+# with one same-game pair 4x vs 6x across three games. Its reduced
+# multipliers vary and aren't in the pasted text, so Betr pairs, entries and
+# the safest pair use one pick per game, and correlated stacks (same-game by
+# design) are off for Betr.
+BETR_SAME_GAME_NOTE = "same-game picks pay less on Betr"
 
 
 def _resolve_abbreviated_names(lines: List[Dict[str, Any]], matched: List[tuple]) -> List[Dict[str, Any]]:
@@ -805,7 +815,8 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
                        "espn_projection": round(espn_mean, 2) if espn_mean else None,
                        "odds_type": odds_type, "prizepicks": leg})
 
-    section = prizepicks_pairs([p for p in priced if p["odds_type"] == "standard"])
+    betr = platform == "betr"
+    section = prizepicks_pairs([p for p in priced if p["odds_type"] == "standard"], distinct_games=betr)
 
     def ranked(kind):
         rows = [p for p in priced if p["odds_type"] == kind and p["prizepicks"].get("espn_agrees") is not False]
@@ -816,8 +827,9 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
             "lines_priced": len(priced), "lines_unmatched": unmatched,
             "goblins": ranked("goblin"), "demons": ranked("demon"), "discounts": ranked("discount"),
             "board_lines": board_lines(priced),
-            "stacks": correlated_stacks([p for p in priced if p["odds_type"] == "standard"]),
-            "most_likely": most_likely([p for p in priced if p["odds_type"] != "demon"])}
+            # Stacks are same-game by design, and Betr cuts the payout on those.
+            "stacks": [] if betr else correlated_stacks([p for p in priced if p["odds_type"] == "standard"]),
+            "most_likely": most_likely([p for p in priced if p["odds_type"] != "demon"], distinct_games=betr)}
 
 
 # Correlated stacks (2026-10-08): PrizePicks pays fixed multipliers that
@@ -977,7 +989,7 @@ def correlated_stacks(rows: List[Dict[str, Any]], payout: float = bm.POWER_PAYOU
     return sorted(out + four, key=lambda s: -s["ev"])
 
 
-def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
+def most_likely(rows: List[Dict[str, Any]], distinct_games: bool = False) -> Dict[str, Any]:
     """The PrizePicks picks most likely to win: calibrated win chance >=
     MOST_LIKELY_MIN, backed by our engine (its chance >= the books'), not
     contradicted by ESPN and not a part-time player (lagged snap share under
@@ -1010,6 +1022,8 @@ def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
         for b in picks[i + 1:]:
             if not a.get("team") or a.get("team") == b.get("team"):
                 continue  # PrizePicks needs two teams
+            if distinct_games and a.get("game") == b.get("game"):
+                continue  # Betr pays less on same-game picks
             sign = (1 if a["side"] == "More" else -1) * (1 if b["side"] == "More" else -1)
             rho = sign * bm.leg_correlation(a["market"], b["market"], a.get("game") == b.get("game"), False)
             joint = bm.joint_prob(a["p_win"], b["p_win"], rho)
@@ -1020,7 +1034,7 @@ def most_likely(rows: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, float]] = None,
                        flex: Optional[Dict[int, Dict[int, float]]] = None, pool: int = 12,
-                       per_size: int = 3) -> List[Dict[str, Any]]:
+                       per_size: int = 3, distinct_games: bool = False) -> List[Dict[str, Any]]:
     """Best PrizePicks entries -- 3-6 pick Power (2-pick Power is the pairs
     list) and 2-6 pick Flex -- from the most likely
     legs. Rules: one pick per player and players from at least two teams.
@@ -1039,6 +1053,8 @@ def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, flo
         for combo in combinations(top, size):
             if len({l["player"] for l in combo}) < size or len({l.get("team") for l in combo}) < 2:
                 continue
+            if distinct_games and len({l.get("game") for l in combo}) < size:
+                continue  # Betr pays less on same-game picks (BETR_SAME_GAME_NOTE)
             corr = np.eye(size)
             for i, a in enumerate(combo):
                 for j in range(i + 1, size):

@@ -114,3 +114,25 @@ def test_ambiguous_name_stays_unresolved():
                _m("Ty Johnson", "BUF", "MIN", "BUF", "player_reception_yds")]
     line = {"player": "T. Johnson", "opponent": "MIN", "market": "player_reception_yds"}
     assert _resolve_abbreviated_names([line], matched)[0]["player"] == "T. Johnson"
+
+
+def _leg(player, team, game, p=0.6):
+    return {"player": player, "team": team, "game": game, "market": "player_reception_yds",
+            "market_label": "Receiving Yds", "projection": 50.0,
+            "prizepicks": {"side": "More", "line": 40.5, "p_win": p, "p_value": p, "market_prob": 0.55,
+                           "espn_agrees": True}}
+
+
+def test_betr_pairs_and_entries_use_one_pick_per_game():
+    from app.services import betting_model as bm
+    from app.services.betting_service import prizepicks_entries, prizepicks_pairs
+    props = [_leg("A", "WSH", "WSH @ NYG"), _leg("B", "NYG", "WSH @ NYG"), _leg("C", "DET", "NE @ DET"),
+             _leg("D", "BUF", "BUF @ MIN")]
+    games = lambda pair: {l["game"] for l in pair["legs"]}
+    assert any(len(games(p)) == 1 for p in prizepicks_pairs(props)["pairs"])  # PrizePicks: same-game pairs priced
+    betr_pairs = prizepicks_pairs(props, distinct_games=True)["pairs"]
+    assert betr_pairs and all(len(games(p)) == 2 for p in betr_pairs)
+    legs = prizepicks_pairs(props)["legs"]
+    entries = prizepicks_entries(legs, bm.BETR_PERFECT_PAYOUTS, bm.BETR_FLEX_PAYOUTS, distinct_games=True)
+    assert entries and all(len({l["game"] for l in e["legs"]}) == e["size"] for e in entries)
+    assert {(e["type"], e["size"]) for e in entries} <= {("power", 3), ("flex", 2)}  # only known Betr payouts

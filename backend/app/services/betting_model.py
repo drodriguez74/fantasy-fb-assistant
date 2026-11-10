@@ -452,13 +452,17 @@ def td_fair_prob(implied_p: float, rate_scale: Optional[float]) -> float:
 # multipliers for all-standard lineups; they vary by state and change over
 # time, so the page lets the user override them. Flex maps hits -> payout.
 POWER_PAYOUTS = {2: 3.0, 3: 6.0, 4: 10.0, 5: 20.0, 6: 37.5}  # 2-pick 3x confirmed (Florida)
-# Betr Picks "Perfect Play" (all must hit), the default when the board is a
-# pasted Betr board (betr_board.py; the founder's pick'em app since
-# 2026-11-09). Published figures (RotoWire), NOT yet confirmed in the
-# founder's Florida app: editable on the page. Betr's "Dynamic Play" (pays
-# with a miss) isn't modeled until its payouts are known, so no Flex-style
-# entries are built for Betr.
-BETR_PERFECT_PAYOUTS = {2: 3.0, 3: 5.0, 4: 10.0, 5: 20.0, 6: 30.0}
+# Betr Picks payouts, the default when the board is a pasted Betr board
+# (betr_board.py; the founder's pick'em app since 2026-11-09). Read off the
+# founder's Florida slip 2026-11-09, picks from different games: Perfect 2-pick
+# 3x, 3-pick 6x; Flex 2-pick 2x / 0.5x. 4-6 pick Perfect are Betr's published
+# figures (RotoWire's 3-pick 5x was wrong, so treat them as unconfirmed; the
+# page lets the user edit them); 3+ pick Flex isn't known, so not built.
+# Florida also offers "1st place in your group, up to 3x" on top of these
+# minimums: upside only, not modeled. Same-game picks pay less
+# (betting_service.BETR_SAME_GAME_NOTE).
+BETR_PERFECT_PAYOUTS = {2: 3.0, 3: 6.0, 4: 10.0, 5: 20.0, 6: 30.0}
+BETR_FLEX_PAYOUTS = {2: {2: 2.0, 1: 0.5}}
 FLEX_PAYOUTS = {
     2: {2: 2.0, 1: 0.5},   # confirmed in the founder's Florida app, 2026-10-07
     3: {3: 3.0, 2: 1.0},

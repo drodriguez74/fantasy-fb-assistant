@@ -184,20 +184,20 @@ async def get_prizepicks_entries(
     standard published multipliers -- they vary by state)."""
     board = await (betting_service.build_cfb_board() if sport == "cfb" else build_board())
     legs = (board.get("prizepicks") or {}).get("legs") or []
-    # A pasted Betr board (betr_board.py) defaults to Betr's Perfect Play
-    # payouts and builds no Flex-style entries (Dynamic Play isn't modeled).
+    # A pasted Betr board (betr_board.py) defaults to Betr's payouts and builds
+    # entries with one pick per game (Betr pays less on same-game picks).
     betr = (board.get("prizepicks") or {}).get("platform") == "betr"
     default_power = betting_service.bm.BETR_PERFECT_PAYOUTS if betr else betting_service.bm.POWER_PAYOUTS
-    default_flex = {} if betr else betting_service.bm.FLEX_PAYOUTS
+    default_flex = betting_service.bm.BETR_FLEX_PAYOUTS if betr else betting_service.bm.FLEX_PAYOUTS
     try:
         power_table = ({int(k): float(v) for k, v in power.items() if float(v) > 0} if power else
                        (default_power if betr else None))
-        flex_table = ({} if betr else
-                      {int(k): {int(h): float(m) for h, m in tiers.items() if float(m) > 0} for k, tiers in flex.items()}
-                      if flex else None)
+        flex_table = ({int(k): {int(h): float(m) for h, m in tiers.items() if float(m) > 0} for k, tiers in flex.items()}
+                      if flex else (default_flex if betr else None))
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Payouts must be numbers keyed by pick count.")
-    entries = await asyncio.to_thread(betting_service.prizepicks_entries, legs, power_table, flex_table)
+    entries = await asyncio.to_thread(betting_service.prizepicks_entries, legs, power_table, flex_table,
+                                      distinct_games=betr)
     if sport == "nfl" and board.get("week") and board.get("season"):
         try:  # the suggested entries are tracked and graded (tracked_entries.py)
             await asyncio.to_thread(tracked_entries.record, int(board["season"]), int(board["week"]),
