@@ -74,3 +74,55 @@ def test_board_rolls_to_next_week_once_this_weeks_games_have_started():
     during = datetime(2026, 11, 10, 2, 0, tzinfo=timezone.utc)  # MNF under way
     got, rolled = odds_service.upcoming_games(games, during)
     assert rolled and [g["id"] for g in got] == ["tnf", "sun"]
+
+
+def _fake_props_api(monkeypatch, cached_age_hours=None):
+    """get_event_props with a fake cache and API: returns the list of markets requested."""
+    from datetime import timedelta
+    calls = []
+    monkeypatch.setattr(odds_service.settings, "ODDS_API_KEY", "test")
+
+    async def entry(key):
+        return (cached_age_hours * 3600, {"cached": True}) if cached_age_hours is not None else None
+
+    async def get(path, params, sport="x"):
+        calls.append(params["markets"].split(","))
+        return {"fresh": True}
+
+    async def put(key, data):
+        return None
+
+    async def credits():
+        return 19000
+
+    monkeypatch.setattr(odds_service, "_cache_entry", entry)
+    monkeypatch.setattr(odds_service, "_get", get)
+    monkeypatch.setattr(odds_service, "_cache_put", put)
+    monkeypatch.setattr(odds_service, "credits_remaining_async", credits)
+    monkeypatch.setattr(odds_service, "_db_read", lambda key: None)
+    return calls
+
+
+def test_free_plan_fetches_five_markets_and_no_closing_line(monkeypatch):
+    kickoff = datetime(2026, 11, 13, 1, 15, tzinfo=timezone.utc)
+    one_hour_before = datetime(2026, 11, 13, 0, 15, tzinfo=timezone.utc)
+    # Paid: a game fetched 20h ago gets its closing fetch, all 16 markets.
+    monkeypatch.setattr(odds_service.settings, "ODDS_PLAN", "paid")
+    calls = _fake_props_api(monkeypatch, cached_age_hours=20)
+    asyncio.run(odds_service.get_event_props("g", kickoff.isoformat(), now=one_hour_before))
+    assert len(calls) == 1 and len(calls[0]) == len(odds_service.PROP_MARKETS) == 16
+    # Free: the same moment serves the 36h fetch, no closing fetch.
+    monkeypatch.setattr(odds_service.settings, "ODDS_PLAN", "free")
+    calls = _fake_props_api(monkeypatch, cached_age_hours=20)
+    got = asyncio.run(odds_service.get_event_props("g", kickoff.isoformat(), now=one_hour_before))
+    assert calls == [] and got == {"cached": True}
+    # Free, never fetched: the 5 core markets only.
+    calls = _fake_props_api(monkeypatch)
+    asyncio.run(odds_service.get_event_props("g", kickoff.isoformat(), now=one_hour_before))
+    assert calls == [list(odds_service.FREE_PROP_MARKETS)] and len(calls[0]) == 5
+    assert odds_service.lines_ttl_seconds() == 24 * 3600
+
+
+def test_paid_plan_is_the_default():
+    from app.core.config import Settings
+    assert Settings.model_fields["ODDS_PLAN"].default == "paid"

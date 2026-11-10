@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     # than silently running with no auth at all.
     DIGEST_CRON_SECRET: Optional[str] = None
 
+    # The Odds API plan: "paid" (the $30 / 20,000-credit tier, the default)
+    # or "free" (500 credits a month). "free" fetches only the 5 core prop
+    # markets once per game (no closing fetch, no extra or alternate
+    # markets) and game lines once a day: ~410 credits a month instead of
+    # ~2,200. Set ODDS_PLAN=free in Render before the paid plan lapses
+    # (odds_service.free_plan).
+    ODDS_PLAN: str = "paid"
+
     # Origins allowed to call this API with credentials. Defaults to the
     # frontend's local dev URLs (matches vite.config.ts's non-default port
     # and its 127.0.0.1 equivalent, plus the backend's own two forms) so

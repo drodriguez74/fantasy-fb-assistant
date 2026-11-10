@@ -39,6 +39,8 @@ SOURCE = "Vegas consensus (DraftKings, FanDuel, Hard Rock Bet)"
 # when its games are near; other days serve the last fetch. Founder's call
 # 2026-10-13.
 _CACHE_TTL_SECONDS = 12 * 3600
+# On the free plan (settings.ODDS_PLAN = "free") game lines are refetched once a day.
+_FREE_CACHE_TTL_SECONDS = 24 * 3600
 CFB_LINE_WEEKDAYS = frozenset({3, 4, 5})
 _cache: Dict[str, Any] = {}
 
@@ -143,6 +145,25 @@ PROP_FETCH_LEAD = timedelta(hours=36)
 # the 1pm, 4pm and night windows; any page visit in the window works too.
 PROP_CLOSE_LEAD = timedelta(hours=2)
 _EASTERN = ZoneInfo("America/New_York")
+# The free plan's props: the original five, one fetch per game (no closing
+# fetch). ~5 credits a game, ~75 a week. Loses closing-line value on props,
+# the 7 extra markets (Betr's Passing TD, Completions, Passing Att, Rushing
+# Att, Interceptions, Rush+Rec and Pass+Rush tabs go unpriced) and the
+# alternate lines (far pick'em lines fall back to the shift from the main line).
+FREE_PROP_MARKETS = CORE_PROP_MARKETS + ("player_anytime_td",)
+
+
+def free_plan() -> bool:
+    """True when settings.ODDS_PLAN is "free" (500 credits a month)."""
+    return (settings.ODDS_PLAN or "paid").strip().lower() == "free"
+
+
+def prop_markets() -> tuple:
+    return FREE_PROP_MARKETS if free_plan() else PROP_MARKETS
+
+
+def lines_ttl_seconds() -> int:
+    return _FREE_CACHE_TTL_SECONDS if free_plan() else _CACHE_TTL_SECONDS
 
 
 def cfb_line_day(now: Optional[datetime] = None) -> bool:
@@ -269,7 +290,7 @@ async def get_game_lines(sport: str = NFL) -> List[Dict[str, Any]]:
     if not settings.ODDS_API_KEY:
         return []
     key = "games" if sport == NFL else f"games:{sport}"
-    ttl = _CACHE_TTL_SECONDS if sport == NFL or cfb_line_day() else float("inf")
+    ttl = lines_ttl_seconds() if sport == NFL or cfb_line_day() else float("inf")
     cached = await _cache_get(key, ttl)
     if cached is not None:
         return cached
@@ -334,7 +355,8 @@ async def get_event_props(event_id: str, commence_time: Optional[str], sport: st
     def fetched_at(e) -> datetime:
         return now - timedelta(seconds=e[0])
 
-    in_close = kickoff is not None and close_window <= now < kickoff
+    # The free plan skips the closing fetch: one fetch per game.
+    in_close = not free_plan() and kickoff is not None and close_window <= now < kickoff
     if entry and in_close and fetched_at(entry) < close_window:
         # Another process (the Mac's build_board.py, or Render) may have
         # taken the closing fetch already: check the table before memory.
@@ -349,12 +371,13 @@ async def get_event_props(event_id: str, commence_time: Optional[str], sport: st
     if entry and fetched_at(entry) >= window and not (in_close and fetched_at(entry) < close_window):
         return last  # fetched in the window, and the closing fetch is taken or not due yet
     remaining = await credits_remaining_async()
-    if remaining is not None and remaining - len(PROP_MARKETS) < CREDIT_RESERVE:
+    markets = prop_markets()
+    if remaining is not None and remaining - len(markets) < CREDIT_RESERVE:
         logger.warning("Odds API: skipping props for %s, %s credits left (reserve %s)", event_id, remaining, CREDIT_RESERVE)
         return last  # the last fetch beats no props
     data = await _get(f"/events/{event_id}/odds", {
         "bookmakers": ",".join(PROP_BOOKMAKERS),
-        "markets": ",".join(PROP_MARKETS),
+        "markets": ",".join(markets),
         "oddsFormat": "american",
     }, sport)
     if not isinstance(data, dict):
