@@ -1378,12 +1378,15 @@ async def _build_board_now() -> Dict[str, Any]:
 
     now = datetime.now(timezone.utc)
     # Only games that haven't kicked off: in-game odds aren't what we'd
-    # recommend, and they'd pollute the tracked record.
-    games = [g for g in odds_service.this_week(await odds_service.get_game_lines(), now)
-             if g.get("commence_time", "") > now.strftime("%Y-%m-%dT%H:%M:%SZ")]
+    # recommend, and they'd pollute the tracked record. Once this week's are
+    # all under way (Monday night), next week's games (odds_service.upcoming_games).
+    games, rolled = odds_service.upcoming_games(await odds_service.get_game_lines(), now)
     state = await sleeper_service.get_nfl_state()
     week = state.get("week") if isinstance(state, dict) else None
     season = int(state.get("season") or now.year) if isinstance(state, dict) else now.year
+    if rolled and week:
+        # Sleeper's week flips mid-week; until then its week is the one in progress.
+        week = int(week) + 1
     if not games or not week:
         return {"available": False, "detail": "No NFL lines available right now.", "disclaimer": DISCLAIMER}
 

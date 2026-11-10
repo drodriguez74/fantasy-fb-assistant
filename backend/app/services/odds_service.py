@@ -293,6 +293,28 @@ def this_week(games: List[Dict[str, Any]], now: datetime) -> List[Dict[str, Any]
     return out
 
 
+def upcoming_games(games: List[Dict[str, Any]], now: datetime) -> Tuple[List[Dict[str, Any]], bool]:
+    """The board's games: this week's that haven't kicked off, or -- once all
+    of them have (Monday night's kickoff until the week rolls over Tuesday
+    10:00 UTC) -- next week's. Returns (games, rolled_to_next_week). Without
+    the roll the Bets page went blank every Monday night ("No NFL lines
+    available right now") while Thursday's and Sunday's lines were already in."""
+    started = now.strftime("%Y-%m-%dT%H:%M:%SZ")
+    current = [g for g in this_week(games, now) if g.get("commence_time", "") > started]
+    if current:
+        return current, False
+    cutoff = week_cutoff(now)
+    nxt = []
+    for g in games:
+        try:
+            kickoff = datetime.fromisoformat(g["commence_time"].replace("Z", "+00:00"))
+        except (KeyError, ValueError):
+            continue
+        if cutoff <= kickoff < cutoff + timedelta(days=7):
+            nxt.append(g)
+    return nxt, bool(nxt)
+
+
 async def get_event_props(event_id: str, commence_time: Optional[str], sport: str = NFL,
                           now: Optional[datetime] = None) -> Optional[Dict[str, Any]]:
     """One game's player props (PROP_MARKETS across PROP_BOOKMAKERS), fetched

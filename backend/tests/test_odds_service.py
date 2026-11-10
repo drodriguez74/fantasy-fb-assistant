@@ -61,3 +61,16 @@ def test_team_aliases_match_espn_abbreviations():
 def test_no_key_means_no_odds(monkeypatch):
     monkeypatch.setattr(odds_service.settings, "ODDS_API_KEY", None)
     assert asyncio.run(odds_service.get_implied_totals()) == {}
+
+
+def test_board_rolls_to_next_week_once_this_weeks_games_have_started():
+    # Monday 2026-11-09: MNF kicked off 01:15 UTC Tue; Thursday and Sunday are next week.
+    games = [{"id": "mnf", "commence_time": "2026-11-10T01:15:00Z"},
+             {"id": "tnf", "commence_time": "2026-11-13T01:15:00Z"},
+             {"id": "sun", "commence_time": "2026-11-15T14:30:00Z"},
+             {"id": "far", "commence_time": "2026-11-20T01:15:00Z"}]
+    before = datetime(2026, 11, 9, 23, 0, tzinfo=timezone.utc)
+    assert odds_service.upcoming_games(games, before) == ([games[0]], False)
+    during = datetime(2026, 11, 10, 2, 0, tzinfo=timezone.utc)  # MNF under way
+    got, rolled = odds_service.upcoming_games(games, during)
+    assert rolled and [g["id"] for g in got] == ["tnf", "sun"]
