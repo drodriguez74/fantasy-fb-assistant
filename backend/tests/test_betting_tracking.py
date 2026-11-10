@@ -105,3 +105,37 @@ def test_results_filter_by_sport(monkeypatch):
     assert bt.summarize(sport="cfb")["overall"]["won"] == 2
     every = bt.summarize()
     assert every["overall"]["bets"] == 4 and set(every["by_sport"]) == {"NFL", "College"}
+
+
+def test_live_picks_flag_model_only_bets(monkeypatch):
+    """Picks for a game under way stay listed; an old-engine bet whose price
+    was worse than the books' fair chance is marked model_only, a fill isn't."""
+    from datetime import datetime, timezone
+    from app.services import betting_tracking as bt
+
+    kickoff = datetime(2026, 11, 10, 1, 15, tzinfo=timezone.utc)
+
+    def pick(kind, market, side, price, market_prob, confidence):
+        return SimpleNamespace(kind=kind, subject="Ben Yurosek" if kind == "player_prop" else "BUF @ MIN",
+                               game="BUF @ MIN", market=market, side=side, line=0.5, book="Hard Rock Bet",
+                               price=price, units=3.0 if confidence != "fill" else 0.5, confidence=confidence,
+                               p_win=0.6, p_push=0.0, market_prob=market_prob, ev=0.05, kickoff=kickoff,
+                               engine_version="2026-10-15.1")
+    rows = [pick("player_prop", "player_receptions", "Under", 100, 0.459, "high"),
+            pick("player_prop", "player_receptions", "Under", 120, 0.50, "high"),
+            pick("game", "spread", "MIN", -115, 0.544, "fill")]
+
+    class FakeQuery:
+        def filter(self, *a): return self
+        def order_by(self, *a): return self
+        def all(self): return rows
+
+    class FakeSession:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def query(self, _): return FakeQuery()
+
+    monkeypatch.setattr(bt, "SessionLocal", FakeSession)
+    live = bt.live_picks(datetime(2026, 11, 10, 2, 0, tzinfo=timezone.utc))
+    assert [p["model_only"] for p in live] == [True, False, False]
+    assert live[2]["card_fill"] and live[0]["player"] == "Ben Yurosek" and live[2]["player"] is None

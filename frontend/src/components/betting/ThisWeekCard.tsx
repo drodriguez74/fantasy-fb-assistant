@@ -2,7 +2,7 @@
 // game lines and PrizePicks, in kickoff order -- what a bettor opens the page
 // for. Everything else on the page is the evidence behind it.
 import { type ReactNode, useState } from 'react'
-import { type Board, type BoardRow, dollars } from './betTypes'
+import { type Board, type BoardRow, type LivePick, dollars } from './betTypes'
 import { MY_BOOK } from './BetCard'
 import { rankEntries, type EntriesState } from './prizePicksEntriesData'
 import { chance, signedPct } from './format'
@@ -33,6 +33,53 @@ export function BankrollInput({ bankroll, onChange }: { bankroll: number | null;
 }
 
 const TOP = 5
+
+const americanPrice = (p: number) => (p > 0 ? `+${p}` : String(p))
+
+/** Picks for games under way, kept on screen until the game ends. Shown as
+ *  priced before kickoff: our numbers can't price a game in progress, so
+ *  these are what we said, not a live recommendation. */
+export function LiveNow({ picks }: { picks?: LivePick[] }) {
+  if (!picks || picks.length === 0) return null
+  return (
+    <section className="rounded-xl border border-hairline bg-surface p-3 sm:p-5" aria-labelledby="live-now">
+      <h2 id="live-now" className="font-display font-bold uppercase tracking-tight text-lg text-body">
+        Live now
+      </h2>
+      <p className="text-xs text-muted mt-1">
+        Our picks for games under way, at the price we saw before kickoff. Live odds have moved since; don't chase these at
+        a worse number.
+      </p>
+      <ul className="mt-3 divide-y divide-hairline">
+        {picks.map((p) => (
+          <li
+            key={`${p.game}-${p.player ?? ''}-${p.market}-${p.side}`}
+            className={`py-2 flex flex-wrap items-baseline gap-x-3 gap-y-1 ${p.model_only ? 'opacity-60' : ''}`}
+          >
+            <span className="stat-nums text-sm font-semibold text-body w-10 shrink-0">{p.units}u</span>
+            <span className="min-w-0 text-sm text-body">
+              {p.player ? `${p.player} ` : ''}
+              <span className="font-medium">{p.side}</span>
+              {p.line != null && <span className="stat-nums"> {p.line}</span>}{' '}
+              <span className="text-muted">{p.market_label}</span>{' '}
+              <span className="text-faint text-xs">{p.game}</span>
+            </span>
+            <span className="ml-auto stat-nums text-xs text-faint">
+              {americanPrice(p.price)} at {p.book} · {chance(p.p_win)}
+              {p.card_fill ? ' · best available' : ''}
+            </span>
+            {p.model_only && (
+              <span className="w-full text-xs text-warning-700">
+                Older rules: the price was worse than the books' own chance. Today's rules would have kept this on the
+                watch list.
+              </span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
 
 export function ThisWeekCard({
   board,

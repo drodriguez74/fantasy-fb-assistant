@@ -8,7 +8,7 @@ import { useTicket } from '../components/betting/useTicket'
 import { GameCombos } from '../components/betting/GameCombos'
 import { GameSlate } from '../components/betting/GameSlate'
 import { BetCard } from '../components/betting/BetCard'
-import { BankrollInput, ThisWeekCard } from '../components/betting/ThisWeekCard'
+import { BankrollInput, LiveNow, ThisWeekCard } from '../components/betting/ThisWeekCard'
 import { ShowMore } from '../components/betting/ShowMore'
 import { MyEntries } from '../components/betting/MyEntries'
 import { PlayerSearch } from '../components/betting/PlayerSearch'
@@ -311,6 +311,8 @@ export function BettingPage() {
               )}
             </div>
           )}
+
+          {sport === 'nfl' && <LiveNow picks={view.live} />}
 
           {view.available && (
             <ThisWeekCard

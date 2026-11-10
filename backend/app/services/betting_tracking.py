@@ -509,3 +509,36 @@ def summarize(season: Optional[int] = None, sport: Optional[str] = None,
         "lines_tracked": len(picks),
         "picks": [_pick_out(p) for p in sorted(recs, key=lambda p: (p.season, p.week, p.units), reverse=True)],
     }
+
+
+# How long after kickoff a game's picks stay in the "Live now" list: a game
+# runs ~3h15m; grading waits 5h, so pending rows past this are just ungraded.
+LIVE_WINDOW = timedelta(hours=4)
+
+
+def live_picks(now: Optional[datetime] = None) -> List[Dict[str, Any]]:
+    """Bets and Best available fills for games under way, as first priced
+    before kickoff (the board drops started games: pregame numbers can't price
+    a game in progress). The founder bets live and wants the card's picks to
+    stay visible until the game ends. `model_only` marks a bet whose price
+    was worse than the books' own fair chance -- staked by an engine before
+    2026-11-09.1, which today's price-edge rule (bm.PROP_MIN_BOOK_EV) would
+    have put on the watch list instead."""
+    now = now or datetime.now(timezone.utc)
+    with SessionLocal() as db:
+        rows = (db.query(BetPick)
+                .filter(BetPick.units > 0, BetPick.status == "pending",
+                        BetPick.kickoff <= now, BetPick.kickoff > now - LIVE_WINDOW)
+                .order_by(BetPick.kickoff, BetPick.units.desc()).all())
+    out = []
+    for r in rows:
+        book_ev = bm.ev(r.market_prob, r.price, r.p_push or 0.0) if r.market_prob is not None else None
+        out.append({"type": "player_prop" if r.kind == "player_prop" else "game", "kind": r.kind,
+                    "player": r.subject if r.kind == "player_prop" else None, "game": r.game,
+                    "market": r.market, "side": r.side, "line": r.line, "book": r.book, "price": r.price,
+                    "units": r.units, "confidence": r.confidence, "card_fill": r.confidence == "fill",
+                    "p_win": r.p_win, "market_prob": r.market_prob, "ev": r.ev,
+                    "kickoff": r.kickoff.isoformat() if r.kickoff else None, "engine_version": r.engine_version,
+                    "model_only": bool(r.kind == "player_prop" and r.confidence != "fill" and book_ev is not None
+                                       and book_ev < bm.PROP_MIN_BOOK_EV)})
+    return out

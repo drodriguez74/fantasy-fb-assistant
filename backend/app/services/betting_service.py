@@ -1387,8 +1387,17 @@ async def _build_board_now() -> Dict[str, Any]:
     if rolled and week:
         # Sleeper's week flips mid-week; until then its week is the one in progress.
         week = int(week) + 1
+    try:  # the card's picks for games under way stay visible until they end
+        from app.services.betting_tracking import live_picks
+        live = await asyncio.to_thread(live_picks, now)
+        for r in live:
+            r["market_label"] = MARKET_LABELS.get(r["market"], r["market"].capitalize())
+    except Exception as e:  # noqa: BLE001 - the board never depends on it
+        logger.warning("Live picks unavailable: %s", type(e).__name__)
+        live = []
     if not games or not week:
-        return {"available": False, "detail": "No NFL lines available right now.", "disclaimer": DISCLAIMER}
+        return {"available": False, "detail": "No NFL lines available right now.", "disclaimer": DISCLAIMER,
+                "live": live}
 
     rows, espn, win_probs = await asyncio.gather(fetch_weekly_projections(season, int(week)),
                                                  fetch_espn_weekly_projections(season, int(week)),
@@ -1540,6 +1549,8 @@ async def _build_board_now() -> Dict[str, Any]:
         "week": week,
         "season": season,
         "generated_at": now.isoformat(),
+        # Picks for games under way, as priced before kickoff (betting_tracking.live_picks).
+        "live": live,
         "player_props": ranked(player_props),
         "game_props": ranked(game_props),
         # The uploaded PrizePicks board when there's a recent one, else the

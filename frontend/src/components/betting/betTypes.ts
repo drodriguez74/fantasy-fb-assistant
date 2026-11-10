@@ -77,8 +77,31 @@ export interface MostLikely {
   safest_pair: { legs: string[]; p_both: number } | null
 }
 
+// A bet or fill for a game under way, as priced before kickoff (backend
+// betting_tracking.live_picks); never re-priced live.
+export interface LivePick {
+  type: 'player_prop' | 'game'
+  player?: string | null
+  game: string
+  market: string
+  market_label: string
+  side: string
+  line: number | null
+  book: string
+  price: number
+  units: number
+  card_fill: boolean
+  p_win: number
+  kickoff?: string | null
+  // Price worse than the books' fair chance: staked by an older engine that
+  // today's price-edge rule would have put on the watch list.
+  model_only: boolean
+}
+
 export interface Board {
   available: boolean
+  // Picks for games under way (kept until they end).
+  live?: LivePick[]
   detail?: string
   season?: number
   week?: number
