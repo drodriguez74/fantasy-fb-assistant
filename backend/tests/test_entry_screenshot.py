@@ -17,7 +17,7 @@ def keys(monkeypatch):
 
 
 def _provider(result):
-    async def call(b64, media_type):
+    async def call(b64, media_type, *args):
         if isinstance(result, Exception):
             raise result
         return result

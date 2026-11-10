@@ -109,28 +109,39 @@ def _read_card(rows: List[str], i: int, matchup: "re.Match") -> Optional[tuple]:
     while j < len(rows) and rows[j] in ("More", "Less") and len(sides) < 2:
         sides.append(rows[j])
         j += 1
+    side, opponent = matchup.group(1), matchup.group(2)
+    return line_from_card(rows[i], rows[i + 1], side, opponent, matchup.group(3), stat, numbers,
+                          more_only=bool(sides) and "Less" not in sides), j
+
+
+def line_from_card(player: str, position: str, side: str, opponent: str, start_label: Optional[str], stat: str,
+                   numbers: List[float], more_only: bool) -> Optional[Dict[str, Any]]:
+    """One Betr card -> a board line, or None for a stat we don't price.
+    `side` is "vs" (player at home) or "@"; `numbers` is [line] or
+    [struck-through line, current line] for a discounted card. Shared by the
+    paste parser and the screenshot reader (betr_screenshot.py)."""
     market = STAT_MARKETS.get(stat)
-    if market is None:
-        return None, j
+    if market is None or not numbers:
+        return None
     line = numbers[-1]
-    allowed = ["over", "under"] if "Less" in sides or not sides else ["over"]
     if market == "player_anytime_td" and line != 0.5:
-        return None, j
+        return None
+    discounted = len(numbers) == 2
     return {
-        "player": rows[i],
-        "position": rows[i + 1],
-        "opponent": odds_service.normalize_team(matchup.group(2)) or matchup.group(2),
-        "player_home": matchup.group(1) == "vs",
-        "start_label": matchup.group(3),
+        "player": player,
+        "position": position,
+        "opponent": odds_service.normalize_team(opponent) or opponent,
+        "player_home": side == "vs",
+        "start_label": start_label,
         "market": market,
         "line": line,
         # A struck-through earlier number: Betr discounted the line toward
         # More. Its payout isn't in the text, so it's ranked by hit chance
         # (like a PrizePicks goblin), never paired at the standard multiplier.
-        "was_line": numbers[0] if len(numbers) == 2 else None,
-        "odds_type": "discount" if len(numbers) == 2 else "standard",
-        "allowed": ["over"] if len(numbers) == 2 else allowed,
-    }, j
+        "was_line": numbers[0] if discounted else None,
+        "odds_type": "discount" if discounted else "standard",
+        "allowed": ["over"] if discounted or more_only else ["over", "under"],
+    }
 
 
 def merge(previous: Optional[Dict[str, Any]], parsed: Dict[str, Any]) -> Dict[str, Any]:

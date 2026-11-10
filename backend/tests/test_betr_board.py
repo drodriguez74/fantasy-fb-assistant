@@ -136,3 +136,36 @@ def test_betr_pairs_and_entries_use_one_pick_per_game():
     entries = prizepicks_entries(legs, bm.BETR_PERFECT_PAYOUTS, bm.BETR_FLEX_PAYOUTS, distinct_games=True)
     assert entries and all(len({l["game"] for l in e["legs"]}) == e["size"] for e in entries)
     assert {(e["type"], e["size"]) for e in entries} <= {("power", 3), ("flex", 2)}  # only known Betr payouts
+
+
+def test_screenshot_cards_become_the_same_lines_as_a_paste(monkeypatch):
+    import asyncio
+    from app.services import betr_screenshot
+
+    read = {"notes": "", "cards": [
+        {"player": "J. Cook III", "position": "RB", "matchup": "@ MIN", "line": 74.5, "was_line": 84.5,
+         "stat": "Rushing Yds", "more_only": True},
+        {"player": "J. Jefferson", "position": "WR", "matchup": "vs BUF", "line": 79.5, "was_line": None,
+         "stat": "Receiving Yds", "more_only": False},
+        {"player": "T. Johnson", "position": "TE", "matchup": "vs WAS", "line": 4.5, "was_line": None,
+         "stat": "Receiving Yds", "more_only": False},
+        {"player": "J. Allen", "position": "QB", "matchup": "@ MIN", "line": 130.5, "was_line": None,
+         "stat": "Passing Yds", "more_only": True},
+        {"player": "T. Bass", "position": "K", "matchup": "@ MIN", "line": 1.5, "was_line": None,
+         "stat": "FG Made", "more_only": False},
+        {"player": "X. Unknown", "position": "WR", "matchup": "Thu 8:15 PM", "line": 10.5, "was_line": None,
+         "stat": "Receiving Yds", "more_only": False}]}
+
+    async def fake_read(*a, **k):
+        return read
+    monkeypatch.setattr(betr_screenshot, "read_image_json", fake_read)
+    got = asyncio.run(betr_screenshot.read_screenshots([(b"png", "image/png"), (b"png", "image/png")]))
+    pasted = {(l["player"], l["opponent"], l["market"]): l for l in betr_board.parse_paste(PASTE)["lines"]}
+    shot = {(l["player"], l["opponent"], l["market"]): l for l in got["lines"]}
+    assert len(got["lines"]) == 4 and got["total"] == 12  # two images, deduped; FG Made unpriced
+    for key in [("J. Cook III", "MIN", "player_rush_yds"), ("J. Jefferson", "BUF", "player_reception_yds"),
+                ("T. Johnson", "WSH", "player_reception_yds")]:
+        same = ("line", "was_line", "odds_type", "allowed", "player_home")
+        assert {k: shot[key][k] for k in same} == {k: pasted[key][k] for k in same}
+    assert shot[("J. Allen", "MIN", "player_pass_yds")]["allowed"] == ["over"]  # More-only card
+    assert any("X. Unknown" in w for w in got["warnings"])

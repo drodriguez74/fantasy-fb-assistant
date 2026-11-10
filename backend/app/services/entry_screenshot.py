@@ -96,7 +96,8 @@ def _warnings(data: Dict[str, Any]) -> list:
     return out
 
 
-async def _read_openai(b64: str, media_type: str) -> Dict[str, Any]:
+async def _read_openai(b64: str, media_type: str, prompt: str = PROMPT, schema: Dict[str, Any] = SCHEMA,
+                       name: str = "prizepicks_entry") -> Dict[str, Any]:
     if not settings.OPENAI_API_KEY:
         raise RuntimeError("OpenAI not configured")
     client = openai.AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -105,10 +106,10 @@ async def _read_openai(b64: str, media_type: str) -> Dict[str, Any]:
         model=AIService.DEEP_OPENAI_MODEL,
         max_completion_tokens=8000,
         response_format={"type": "json_schema",
-                         "json_schema": {"name": "prizepicks_entry", "strict": True, "schema": SCHEMA}},
+                         "json_schema": {"name": name, "strict": True, "schema": schema}},
         messages=[{"role": "user", "content": [
             {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{b64}"}},
-            {"type": "text", "text": PROMPT},
+            {"type": "text", "text": prompt},
         ]}],
     )
     choice = response.choices[0]
@@ -117,17 +118,18 @@ async def _read_openai(b64: str, media_type: str) -> Dict[str, Any]:
     return json.loads(choice.message.content)
 
 
-async def _read_anthropic(b64: str, media_type: str) -> Dict[str, Any]:
+async def _read_anthropic(b64: str, media_type: str, prompt: str = PROMPT, schema: Dict[str, Any] = SCHEMA,
+                          name: str = "prizepicks_entry") -> Dict[str, Any]:
     if not settings.ANTHROPIC_API_KEY:
         raise RuntimeError("Anthropic not configured")
     client = anthropic.AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
     response = await client.messages.create(
         model=AIService.DEEP_ANTHROPIC_MODEL,
         max_tokens=8000,
-        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": SCHEMA}},
+        output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema}},
         messages=[{"role": "user", "content": [
             {"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}},
-            {"type": "text", "text": PROMPT},
+            {"type": "text", "text": prompt},
         ]}],
     )
     if response.stop_reason != "end_turn":
@@ -135,26 +137,38 @@ async def _read_anthropic(b64: str, media_type: str) -> Dict[str, Any]:
     return json.loads(next(b.text for b in response.content if b.type == "text"))
 
 
-async def read_screenshot(image: bytes, media_type: str) -> Dict[str, Any]:
+async def read_image_json(image: bytes, media_type: str, prompt: str, schema: Dict[str, Any], name: str,
+                          too_big: str = "That image is over 5 MB; crop it and try again.") -> Dict[str, Any]:
+    """One screenshot -> JSON matching `schema`: OpenAI first, Claude as the
+    fallback (like ai_service). Shared by the entry reader below and the Betr
+    board reader (betr_screenshot.py)."""
     if media_type not in MEDIA_TYPES:
         raise ScreenshotError("Upload a PNG, JPEG, WebP or GIF screenshot.")
     if len(image) > MAX_BYTES:
-        raise ScreenshotError("That image is over 5 MB; crop it to the entry and try again.")
+        raise ScreenshotError(too_big)
     if not (settings.OPENAI_API_KEY or settings.ANTHROPIC_API_KEY):
         raise ScreenshotError("Screenshot reading isn't configured (no AI key set).")
 
     b64 = base64.standard_b64encode(image).decode()
-    data, last_error = None, None
+    last_error = None
     for provider, call in (("openai", _read_openai), ("anthropic", _read_anthropic)):
         try:
-            data = await call(b64, media_type)
-            break
+            return await call(b64, media_type, prompt, schema, name)
         except Exception as e:  # noqa: BLE001 - fall through to the next provider
             last_error = e
             # Type only: never log the request (it carries the image and key headers).
             logger.warning("Screenshot read via %s failed: %s", provider, type(e).__name__)
-    if data is None:
-        raise ScreenshotError("Couldn't read the screenshot right now; try again or enter it by hand.") from last_error
+    raise ScreenshotError("Couldn't read the screenshot right now; try again in a minute.") from last_error
+
+
+async def read_screenshot(image: bytes, media_type: str) -> Dict[str, Any]:
+    try:
+        data = await read_image_json(image, media_type, PROMPT, SCHEMA, "prizepicks_entry",
+                                     too_big="That image is over 5 MB; crop it to the entry and try again.")
+    except ScreenshotError as e:
+        if "right now" in str(e):
+            raise ScreenshotError("Couldn't read the screenshot right now; try again or enter it by hand.") from e
+        raise
     if not data.get("picks"):
         raise ScreenshotError("No picks found. Is this a PrizePicks entry screenshot?")
     return {**data, "warnings": _warnings(data)}

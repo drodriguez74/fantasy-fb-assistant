@@ -320,6 +320,12 @@ export const betting = {
   // Betr Picks lines pasted from a stat tab of picks.betr.app (no feed or file exists);
   // each paste is added to the recent Betr board (backend betr_board.py).
   pasteBetrBoard: (text: string) => api.post('/betting/betr-board', { text }),
+  // Screenshots of Betr's board, read by a vision model (backend betr_screenshot.py).
+  uploadBetrScreenshots: (files: File[]) => {
+    const form = new FormData()
+    files.forEach((f) => form.append('files', f))
+    return api.post('/betting/betr-screenshots', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
   uploadPrizePicksBoard: (file: File) => {
     const form = new FormData()
     form.append('file', file)

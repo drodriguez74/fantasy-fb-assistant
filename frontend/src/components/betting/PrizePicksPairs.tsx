@@ -106,6 +106,7 @@ const BETR_URL = 'https://picks.betr.app/picks/home/NFL'
 
 function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded: () => void }) {
   const input = useRef<HTMLInputElement>(null)
+  const shots = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
   const [text, setText] = useState('')
   const [message, setMessage] = useState('')
@@ -130,6 +131,24 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
       setText('')
       return `Added ${r.added} Betr lines (${r.lines} on the board now). Paste another stat tab to add more.`
     })
+  const readShots = (files: File[]) =>
+    run(async () => {
+      try {
+        const r = (await betting.uploadBetrScreenshots(files)).data
+        const warn = r.warnings?.length ? ` Note: ${r.warnings.join(' ')}` : ''
+        return `Read ${r.cards_read} cards from ${files.length} screenshot${files.length === 1 ? '' : 's'}: added ${r.added} Betr lines (${r.lines} on the board now).${warn}`
+      } finally {
+        if (shots.current) shots.current.value = ''
+      }
+    })
+  // A screenshot copied to the clipboard (Cmd+Ctrl+Shift+4 on a Mac) pasted into the box.
+  const onPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const images = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/'))
+    if (images.length) {
+      e.preventDefault()
+      readShots(images)
+    }
+  }
   const upload = (file: File) =>
     run(async () => {
       try {
@@ -163,7 +182,8 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={3}
-        placeholder="Paste a stat tab from Betr's NFL page here"
+        onPaste={onPaste}
+        placeholder="Paste a screenshot of Betr's board here (or its text)"
         className="w-full rounded-md border border-hairline bg-surface-2 p-2 text-sm text-body placeholder:text-faint"
         aria-label="Pasted Betr board"
       />
@@ -175,6 +195,21 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
         >
           {busy ? 'Reading...' : 'Add Betr lines'}
         </button>
+        <button
+          onClick={() => shots.current?.click()}
+          disabled={busy}
+          className="border border-line px-3 py-1.5 rounded-lg text-sm text-body disabled:opacity-50"
+        >
+          Upload screenshots
+        </button>
+        <input
+          ref={shots}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          className="hidden"
+          onChange={(e) => e.target.files?.length && readShots(Array.from(e.target.files))}
+        />
         <button onClick={() => input.current?.click()} disabled={busy} className="text-xs text-muted underline">
           Upload a PrizePicks file instead
         </button>
@@ -193,10 +228,11 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
           Open{' '}
           <a href={BETR_URL} target="_blank" rel="noreferrer" className="text-body underline">
             Betr's NFL page
-          </a>
-          , pick a stat tab (Receiving Yds, Passing Yds, Rushing Yds, Receptions...), press Cmd+A then Cmd+C, and paste it
-          here. Do one tab at a time or several at once: each paste is added to the board, and a newer line replaces the
-          old one. Lines older than 36 hours are dropped. The app never signs into Betr.
+          </a>{' '}
+          and pick a stat tab (Receiving Yds, Passing Yds, Rushing Yds, Receptions...). Screenshot the cards to the
+          clipboard (Cmd+Ctrl+Shift+4 on a Mac) and paste into the box, or save screenshots and use Upload screenshots
+          (several at once is fine). Each screenshot takes a few seconds to read. Each one is added to the board, and a
+          newer line replaces the old one; lines older than 36 hours are dropped. The app never signs into Betr.
         </p>
       </details>
       {message && <p className="text-success-700">{message}</p>}

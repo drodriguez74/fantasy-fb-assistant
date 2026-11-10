@@ -3,7 +3,7 @@ betting_service (Monte Carlo + de-vigged market, quarter-Kelly units)."""
 import asyncio
 import json
 import logging
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query, UploadFile
 
@@ -170,6 +170,31 @@ async def paste_betr_board(
     betting_service._board_cache.clear()  # reprice on the next board request
     return {"platform": "betr", "added": len(parsed["lines"]), "lines": len(merged["lines"]),
             "cards_read": parsed["total"], "uploaded_at": stored["uploaded_at"]}
+
+
+@router.post("/betr-screenshots")
+async def upload_betr_screenshots(
+    files: List[UploadFile] = File(..., description="Screenshots of stat tabs on Betr's NFL page"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Read Betr board screenshots into lines (betr_screenshot.py: one vision
+    model call per image) and add them to the recent Betr board, exactly like
+    a paste. Betr's site doesn't allow selecting its text."""
+    from app.services import betr_board, betr_screenshot
+    from app.services.entry_screenshot import MAX_BYTES, ScreenshotError
+
+    images = []
+    for f in files[:betr_screenshot.MAX_FILES + 1]:
+        images.append((await f.read(MAX_BYTES + 1), f.content_type or ""))
+    try:
+        parsed = await betr_screenshot.read_screenshots(images)
+    except ScreenshotError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    merged = betr_board.merge(await prizepicks_board.load_recent("NFL"), parsed)
+    stored = await prizepicks_board.save(merged)
+    betting_service._board_cache.clear()
+    return {"platform": "betr", "added": len(parsed["lines"]), "lines": len(merged["lines"]),
+            "cards_read": parsed["total"], "warnings": parsed["warnings"], "uploaded_at": stored["uploaded_at"]}
 
 
 @router.post("/prizepicks-entries")
