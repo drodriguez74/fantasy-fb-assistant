@@ -32,12 +32,12 @@ export interface PrizePicksLeg {
 }
 
 export interface PrizePicksAltLine extends PrizePicksLeg {
-  odds_type: 'goblin' | 'demon'
+  odds_type: 'goblin' | 'demon' | 'discount'
 }
 
 // One line of the uploaded board, for search (betting_service.board_lines).
 export interface PrizePicksBoardLine extends PrizePicksLeg {
-  odds_type: 'standard' | 'goblin' | 'demon'
+  odds_type: 'standard' | 'goblin' | 'demon' | 'discount'
   espn_agrees?: boolean | null
 }
 
@@ -59,17 +59,20 @@ export interface PrizePicksBoard {
   pairs: PrizePicksPair[]
   positive_ev_pairs: number
   source: 'upload' | 'odds_api' | null
+  // Which pick'em app the uploaded lines came from (a pasted Betr board, or a PrizePicks file).
+  platform?: 'betr' | 'prizepicks'
   detail?: string
   uploaded_at?: string
   lines_priced?: number
   lines_unmatched?: number
   goblins?: PrizePicksAltLine[]
   demons?: PrizePicksAltLine[]
+  // Betr special lines: discounted, or far from the books' line (payout unknown).
+  discounts?: PrizePicksAltLine[]
   stacks?: Stack[]
   board_lines?: PrizePicksBoardLine[]
 }
 
-const BOARD_URL = 'https://api.prizepicks.com/projections?league_id=9&per_page=1000'
 
 
 function Leg({ leg }: { leg: PrizePicksLeg }) {
@@ -99,51 +102,81 @@ function ageLabel(iso?: string) {
   return hours < 1 ? 'under an hour ago' : `${Math.round(hours)}h ago`
 }
 
+const BETR_URL = 'https://picks.betr.app/picks/home/NFL'
+
 function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded: () => void }) {
   const input = useRef<HTMLInputElement>(null)
   const [busy, setBusy] = useState(false)
+  const [text, setText] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  const upload = async (file: File) => {
+  const run = async (send: () => Promise<string>) => {
     setBusy(true)
     setError('')
     setMessage('')
     try {
-      const response = await betting.uploadPrizePicksBoard(file)
-      setMessage(`Loaded ${response.data.lines} NFL lines.`)
+      setMessage(await send())
       onUploaded()
     } catch (err) {
-      setError(getErrorMessage(err, "Couldn't read that file."))
+      setError(getErrorMessage(err, "Couldn't read that."))
     } finally {
       setBusy(false)
-      if (input.current) input.current.value = ''
     }
   }
+  const paste = () =>
+    run(async () => {
+      const r = (await betting.pasteBetrBoard(text)).data
+      setText('')
+      return `Added ${r.added} Betr lines (${r.lines} on the board now). Paste another stat tab to add more.`
+    })
+  const upload = (file: File) =>
+    run(async () => {
+      try {
+        return `Loaded ${(await betting.uploadPrizePicksBoard(file)).data.lines} PrizePicks lines.`
+      } finally {
+        if (input.current) input.current.value = ''
+      }
+    })
 
-  // Uploads expire at 36h (prizepicks_board); past 12h lines have likely moved.
+  // Boards expire at 36h (prizepicks_board); past 12h lines have likely moved.
   const hours = data?.uploaded_at ? (Date.now() - new Date(data.uploaded_at).getTime()) / 3_600_000 : 0
-  const stale = data?.source === 'upload' && hours >= 12
+  const uploaded = data?.source === 'upload'
+  const app = data?.platform === 'betr' ? 'Betr' : 'PrizePicks'
+  const stale = uploaded && hours >= 12
   return (
     <div className="rounded-lg border border-hairline bg-surface p-4 text-xs text-muted space-y-2">
       {stale && (
         <p className="rounded-md border border-warning-700 px-3 py-2 text-sm text-warning-700">
-          This board is {Math.round(hours)} hours old, so PrizePicks' lines have likely moved. Upload a fresh one before you
+          This board is {Math.round(hours)} hours old, so {app}'s lines have likely moved. Paste fresh lines before you
           build an entry{hours >= 30 ? `; it stops being used in ${Math.max(0, Math.round(36 - hours))} hours` : ''}.
         </p>
       )}
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-body">
-          {data?.source === 'upload'
-            ? `Using your PrizePicks board, uploaded ${ageLabel(data.uploaded_at)} (${data.lines_priced} lines priced).`
-            : "Using PrizePicks' standard lines from our odds feed. Upload today's board for goblins, demons and every line."}
-        </p>
+      <p className="text-sm text-body">
+        {uploaded
+          ? `Using your ${app} board, updated ${ageLabel(data?.uploaded_at)} (${data?.lines_priced} lines priced${
+              data?.lines_unmatched ? `; ${data.lines_unmatched} not on the books' board yet` : ''
+            }).`
+          : "Using PrizePicks' standard lines from our odds feed. Paste Betr's lines to price your app's board."}
+      </p>
+      <textarea
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        rows={3}
+        placeholder="Paste a stat tab from Betr's NFL page here"
+        className="w-full rounded-md border border-hairline bg-surface-2 p-2 text-sm text-body placeholder:text-faint"
+        aria-label="Pasted Betr board"
+      />
+      <div className="flex flex-wrap items-center gap-3">
         <button
-          onClick={() => input.current?.click()}
-          disabled={busy}
+          onClick={paste}
+          disabled={busy || !text.trim()}
           className="bg-volt text-volt-ink px-3 py-1.5 rounded-lg hover:bg-volt-dark disabled:opacity-50 text-sm"
         >
-          {busy ? 'Uploading...' : 'Upload board'}
+          {busy ? 'Reading...' : 'Add Betr lines'}
+        </button>
+        <button onClick={() => input.current?.click()} disabled={busy} className="text-xs text-muted underline">
+          Upload a PrizePicks file instead
         </button>
         <input
           ref={input}
@@ -154,15 +187,16 @@ function UploadPanel({ data, onUploaded }: { data?: PrizePicksBoard; onUploaded:
         />
       </div>
       {/* The how-to only matters when there's no board from today; otherwise one tap away. */}
-      <details open={data?.source !== 'upload'}>
-        <summary className="cursor-pointer text-body underline w-fit">How to upload</summary>
+      <details open={!uploaded}>
+        <summary className="cursor-pointer text-body underline w-fit">How to add Betr's lines</summary>
         <p className="mt-1">
-          Once a day: open{' '}
-          <a href={BOARD_URL} target="_blank" rel="noreferrer" className="text-body underline break-all">
-            PrizePicks' NFL board data
-          </a>{' '}
-          in your browser, press Cmd+S (Ctrl+S on Windows) to save it, then upload the file here. PrizePicks blocks
-          automatic downloads, so this step has to come from your browser. Uploads older than 36 hours are ignored.
+          Open{' '}
+          <a href={BETR_URL} target="_blank" rel="noreferrer" className="text-body underline">
+            Betr's NFL page
+          </a>
+          , pick a stat tab (Receiving Yds, Passing Yds, Rushing Yds, Receptions...), press Cmd+A then Cmd+C, and paste it
+          here. Do one tab at a time or several at once: each paste is added to the board, and a newer line replaces the
+          old one. Lines older than 36 hours are dropped. The app never signs into Betr.
         </p>
       </details>
       {message && <p className="text-success-700">{message}</p>}
@@ -215,7 +249,7 @@ function AltLines({ rows, note, ticket }: { rows?: PrizePicksAltLine[]; note: st
   )
 }
 
-const ODDS_TAG: Record<string, string> = { goblin: 'Goblin', demon: 'Demon' }
+const ODDS_TAG: Record<string, string> = { goblin: 'Goblin', demon: 'Demon', discount: 'Special' }
 
 function SearchResults({ rows, query, ticket }: { rows: PrizePicksBoardLine[]; query: string; ticket: TicketActions }) {
   if (rows.length === 0) {
@@ -307,6 +341,7 @@ export function PrizePicksPairs({
         ...(data?.legs ?? []).map((l) => ({ ...l, odds_type: 'standard' as const })),
         ...(data?.goblins ?? []),
         ...(data?.demons ?? []),
+        ...(data?.discounts ?? []),
       ],
     [data],
   )
@@ -336,8 +371,8 @@ export function PrizePicksPairs({
             >
               <Explainer>
                 <p>
-                  A 2-pick Power Play pays {data.payout}x, so each pick needs about {chance(data.breakeven_leg)} to break
-                  even. Pairs never use teammates (PrizePicks needs two teams); opponents in the same game are priced together.
+                  A 2-pick pays {data.payout}x, so each pick needs about {chance(data.breakeven_leg)} to break even. Pairs
+                  never use teammates (an entry needs two teams); opponents in the same game are priced together.
                 </p>
               </Explainer>
               {(positive.length ? positive : data.pairs.slice(0, 5)).map((pair) => (
@@ -347,6 +382,15 @@ export function PrizePicksPairs({
           )}
           {!data?.pairs.length && data?.detail && (
             <div className="bg-surface rounded-lg border border-hairline p-4 text-sm text-muted">{data.detail}</div>
+          )}
+          {(data?.discounts?.length ?? 0) > 0 && (
+            <Fold title="Special lines" summary="discounted or far from the books' line · most likely to hit">
+              <AltLines
+                ticket={ticket}
+                rows={data?.discounts}
+                note="Betr discounted these lines, or set them far from the books' line, so they may pay less than a standard pick. Check the multiplier Betr shows before counting on one. They're never used in the pairs or entries above."
+              />
+            </Fold>
           )}
           {(data?.goblins?.length ?? 0) > 0 && (
             <Fold title="Goblins" summary="easier lines, smaller payout · most likely to hit">

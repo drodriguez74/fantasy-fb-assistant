@@ -18,7 +18,8 @@ export interface Entry {
 export type Power = Record<string, number>
 export type Flex = Record<string, Record<string, number>>
 
-const STORAGE_KEY = 'prizepicks-payouts'
+// v2 (2026-11-09): payouts saved for PrizePicks aren't reused for Betr's board.
+const STORAGE_KEY = 'pickem-payouts-v2'
 
 function loadSaved(): { power?: Power; flex?: Flex } {
   try {

@@ -317,6 +317,9 @@ export const betting = {
     payouts: { power?: Record<string, number>; flex?: Record<string, Record<string, number>> },
     sport: 'nfl' | 'cfb' = 'nfl',
   ) => api.post('/betting/prizepicks-entries', payouts, { params: { sport } }),
+  // Betr Picks lines pasted from a stat tab of picks.betr.app (no feed or file exists);
+  // each paste is added to the recent Betr board (backend betr_board.py).
+  pasteBetrBoard: (text: string) => api.post('/betting/betr-board', { text }),
   uploadPrizePicksBoard: (file: File) => {
     const form = new FormData()
     form.append('file', file)

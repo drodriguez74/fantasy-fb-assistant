@@ -145,6 +145,33 @@ async def upload_prizepicks_board(
             "uploaded_at": stored["uploaded_at"]}
 
 
+_MAX_PASTE_CHARS = 2_000_000
+
+
+@router.post("/betr-board")
+async def paste_betr_board(
+    text: str = Body(..., embed=True, description="Text copied from a stat tab of Betr's NFL page (Cmd+A, Cmd+C)"),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Store pasted Betr Picks NFL lines (betr_board.py). Each paste is added
+    to the recent Betr board (same player and stat replaced), so stat tabs
+    can be pasted one at a time; priced like an uploaded PrizePicks board
+    until it's 36h old."""
+    from app.services import betr_board
+
+    if len(text) > _MAX_PASTE_CHARS:
+        raise HTTPException(status_code=413, detail="That paste is too long for a Betr board.")
+    try:
+        parsed = betr_board.parse_paste(text)
+    except betr_board.PasteError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    merged = betr_board.merge(await prizepicks_board.load_recent("NFL"), parsed)
+    stored = await prizepicks_board.save(merged)
+    betting_service._board_cache.clear()  # reprice on the next board request
+    return {"platform": "betr", "added": len(parsed["lines"]), "lines": len(merged["lines"]),
+            "cards_read": parsed["total"], "uploaded_at": stored["uploaded_at"]}
+
+
 @router.post("/prizepicks-entries")
 async def get_prizepicks_entries(
     power: Optional[Dict[str, float]] = Body(None, description='Power Play payouts by size, e.g. {"3": 6}'),
@@ -157,9 +184,16 @@ async def get_prizepicks_entries(
     standard published multipliers -- they vary by state)."""
     board = await (betting_service.build_cfb_board() if sport == "cfb" else build_board())
     legs = (board.get("prizepicks") or {}).get("legs") or []
+    # A pasted Betr board (betr_board.py) defaults to Betr's Perfect Play
+    # payouts and builds no Flex-style entries (Dynamic Play isn't modeled).
+    betr = (board.get("prizepicks") or {}).get("platform") == "betr"
+    default_power = betting_service.bm.BETR_PERFECT_PAYOUTS if betr else betting_service.bm.POWER_PAYOUTS
+    default_flex = {} if betr else betting_service.bm.FLEX_PAYOUTS
     try:
-        power_table = {int(k): float(v) for k, v in power.items() if float(v) > 0} if power else None
-        flex_table = ({int(k): {int(h): float(m) for h, m in tiers.items() if float(m) > 0} for k, tiers in flex.items()}
+        power_table = ({int(k): float(v) for k, v in power.items() if float(v) > 0} if power else
+                       (default_power if betr else None))
+        flex_table = ({} if betr else
+                      {int(k): {int(h): float(m) for h, m in tiers.items() if float(m) > 0} for k, tiers in flex.items()}
                       if flex else None)
     except (TypeError, ValueError):
         raise HTTPException(status_code=400, detail="Payouts must be numbers keyed by pick count.")
@@ -171,7 +205,7 @@ async def get_prizepicks_entries(
         except Exception as e:  # noqa: BLE001 - tracking must never break the endpoint
             logger.warning("Recording suggested entries failed: %s", e)
     return {"entries": entries, "legs_considered": min(len(legs), 12),
-            "default_power": betting_service.bm.POWER_PAYOUTS, "default_flex": betting_service.bm.FLEX_PAYOUTS}
+            "default_power": default_power, "default_flex": default_flex, "platform": "betr" if betr else "prizepicks"}
 
 
 async def _nfl_week():

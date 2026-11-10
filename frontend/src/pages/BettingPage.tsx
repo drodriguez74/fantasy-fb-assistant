@@ -23,14 +23,16 @@ import { Explainer, Segmented } from '../components/betting/ui'
 // quarter-Kelly units). Layout: this week's card (the bets) first, then the
 // evidence per tab.
 
-// Tabs follow the weekly loop (2026-10-09 review): act first (PrizePicks, the
-// shows' picks), then monitor (the watch list), then review (your entries,
-// the model's record). The bets themselves live in This week's best bets.
+// Tabs follow the weekly loop (2026-10-09 review): act first, then review
+// (your entries, the model's record). Since 2026-11-09 the founder bets Hard
+// Rock first and Betr second, so Lines (every game + the prop watch list, the
+// sportsbook side) leads and is the default, then the pick'em tab (Betr). The
+// bets themselves live in This week's best bets.
 type Tab = 'prizepicks' | 'shows' | 'watch' | 'entries' | 'track'
 
 const TAB_LABELS: Record<Tab, [string, string]> = {
   // [full label, phone label]: all five fit at 390px without scrolling.
-  prizepicks: ['PrizePicks', 'PrizePicks'],
+  prizepicks: ['Betr', 'Betr'],
   shows: ['Shows', 'Shows'],
   // Every game graded (spread + total), then the player-prop watch list.
   watch: ['Lines', 'Lines'],
@@ -60,7 +62,7 @@ export function BettingPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [sport, setSport] = useState<'nfl' | 'cfb'>('nfl')
-  const [tab, setTab] = useState<Tab>('prizepicks')
+  const [tab, setTab] = useState<Tab>('watch')
   // Lines tab: every game graded, or sportsbook player props (college has games only).
   const [lines, setLines] = useState<'props' | 'games'>('games')
   const [showInfo, setShowInfo] = useState(false)
@@ -166,15 +168,15 @@ export function BettingPage() {
   // College: game lines + the shared Results (college player props are shelved).
   const switchSport = (next: 'nfl' | 'cfb') => {
     setSport(next)
-    setTab(next === 'cfb' ? 'shows' : 'prizepicks')
+    setTab(next === 'cfb' ? 'shows' : 'watch')
   }
   const view = sport === 'cfb' ? college : board
   const viewLoading = sport === 'cfb' ? collegeLoading || (!college && !collegeError) : loading
   const viewError = sport === 'cfb' ? collegeError : error
   // Without lines (Monday night until the first game's props, or no key) the record, shows and
-  // entries still show: only PrizePicks and Lines need a priced board.
+  // entries still show: only Betr (pick'em) and Lines need a priced board.
   const linesUp = !!view?.available
-  const allTabs: readonly Tab[] = sport === 'cfb' ? ['shows', 'watch', 'track'] : ['prizepicks', 'shows', 'watch', 'entries', 'track']
+  const allTabs: readonly Tab[] = sport === 'cfb' ? ['shows', 'watch', 'track'] : ['watch', 'prizepicks', 'shows', 'entries', 'track']
   const tabs = linesUp ? allTabs : allTabs.filter((t) => t !== 'prizepicks' && t !== 'watch')
   const activeTab: Tab = tabs.includes(tab) ? tab : tabs[0]
 

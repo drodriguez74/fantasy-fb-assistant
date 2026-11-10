@@ -703,6 +703,37 @@ def board_lines(priced: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             for p in sorted(priced, key=lambda p: (p["player"], p["market"]))]
 
 
+# A Betr line this far from the books' main line (share of it) is a special
+# line even when its card shows one number: Josh Allen More 130.5 passing
+# (books 227.5, 2026-11-09) carried the same badge as a discounted card. Its
+# payout isn't in the pasted text, so it's ranked by win chance with the
+# discounts instead of being paired at the standard multiplier, where a 93%
+# leg would look like a large fake edge. Shakir 39.5 vs 42.5 (7%) stays standard.
+BETR_OFF_MARKET_SHARE = 0.15
+
+
+def _resolve_abbreviated_names(lines: List[Dict[str, Any]], matched: List[tuple]) -> List[Dict[str, Any]]:
+    """Betr's "J. Jefferson" + opponent "BUF" -> the books' "Justin Jefferson":
+    same market, same first initial, a full name ending in the same last name
+    (suffixes dropped by normalize_name), and the player's opponent in that
+    game. An ambiguous or unknown card keeps Betr's name, so it lands in
+    lines_unmatched instead of being priced as the wrong player."""
+    index: Dict[tuple, set] = {}
+    for g, label, team, home, away, player, market, *_ in matched:
+        opponent = away if team == home else home
+        full = normalize_name(player)
+        index.setdefault((market, opponent, full[:1]), set()).add(player)
+    out = []
+    for line in lines:
+        name = line.get("player") or ""
+        initial, _, rest = name.partition(" ")
+        last = normalize_name(rest)
+        candidates = [p for p in index.get((line["market"], line.get("opponent"), normalize_name(initial)[:1]), ())
+                      if normalize_name(p).endswith(" " + last)] if last else []
+        out.append({**line, "player": candidates[0]} if len(candidates) == 1 else line)
+    return out
+
+
 def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: int, scales: Dict[str, float],
                          td_scales: Dict[str, Optional[float]], espn_means: Dict[Tuple[str, str], Optional[float]],
                          espn_scales: Dict[str, float]) -> Dict[str, Any]:
@@ -713,6 +744,9 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
     by_key = {(normalize_name(m[5]), m[6]): m for m in matched}
     priced: List[Dict[str, Any]] = []
     unmatched = 0
+    platform = uploaded.get("platform") or "prizepicks"
+    if platform == "betr":
+        uploaded = {**uploaded, "lines": _resolve_abbreviated_names(uploaded.get("lines") or [], matched)}
     # A player can have a dozen lines in one stat (standard, goblins, demons);
     # the simulation is the same for all of them (same seed), so lines are
     # walked grouped by (player, stat) and simulated once per group. Only the
@@ -734,6 +768,7 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
             esamp = (_sim(market, espn_mean * espn_scales.get(market, 1.0), f"{seed}|espn", player)
                      if espn_mean and espn_mean > 0 else None)
         allowed = set(line.get("allowed") or ["over", "under"])
+        odds_type = line.get("odds_type", "standard")
         if market == "player_anytime_td":
             if line["line"] != 0.5 or "over" not in allowed:
                 continue
@@ -757,15 +792,18 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
                                   player=player)
             if leg is None:
                 continue
-            outlier = bm.projection_outlier(market, model_mean, market_line=_outlier_center(
-                market, offers, min(fair, key=lambda pt: abs(fair[pt] - 0.5))))
+            main_line = min(fair, key=lambda pt: abs(fair[pt] - 0.5))
+            outlier = bm.projection_outlier(market, model_mean, market_line=_outlier_center(market, offers, main_line))
+            if (platform == "betr" and odds_type == "standard"
+                    and abs(line["line"] - main_line) > BETR_OFF_MARKET_SHARE * max(main_line, 1.0)):
+                odds_type = "discount"
         if outlier:
             continue  # stale projection: don't rank it
         priced.append({"player": player, "team": team, "game": label, "kickoff": g.get("commence_time"),
                        "home": home, "away": away, "allowed": sorted(allowed),
                        "market": market, "market_label": MARKET_LABELS[market], "projection": round(mean, 2),
                        "espn_projection": round(espn_mean, 2) if espn_mean else None,
-                       "odds_type": line.get("odds_type", "standard"), "prizepicks": leg})
+                       "odds_type": odds_type, "prizepicks": leg})
 
     section = prizepicks_pairs([p for p in priced if p["odds_type"] == "standard"])
 
@@ -774,9 +812,10 @@ def price_uploaded_board(uploaded: Dict[str, Any], matched: List[tuple], week: i
         rows.sort(key=lambda p: -p["prizepicks"]["p_win"])
         return [{k: v for k, v in p.items() if k != "prizepicks"} | p["prizepicks"] for p in rows[:25]]
 
-    return {**section, "source": "upload", "uploaded_at": uploaded.get("uploaded_at"),
+    return {**section, "source": "upload", "platform": platform, "uploaded_at": uploaded.get("uploaded_at"),
             "lines_priced": len(priced), "lines_unmatched": unmatched,
-            "goblins": ranked("goblin"), "demons": ranked("demon"), "board_lines": board_lines(priced),
+            "goblins": ranked("goblin"), "demons": ranked("demon"), "discounts": ranked("discount"),
+            "board_lines": board_lines(priced),
             "stacks": correlated_stacks([p for p in priced if p["odds_type"] == "standard"]),
             "most_likely": most_likely([p for p in priced if p["odds_type"] != "demon"])}
 
@@ -989,8 +1028,8 @@ def prizepicks_entries(legs: List[Dict[str, Any]], power: Optional[Dict[int, flo
     entry can hold a QB and his own receiver) -- are simulated together
     (leg correlation); different games are independent."""
     from itertools import combinations
-    power = power or bm.POWER_PAYOUTS
-    flex = flex or bm.FLEX_PAYOUTS
+    power = bm.POWER_PAYOUTS if power is None else power
+    flex = bm.FLEX_PAYOUTS if flex is None else flex
     top = sorted(legs, key=lambda l: -l["p_win"])[:pool]
     out: List[Dict[str, Any]] = []
     for size in range(2, 7):

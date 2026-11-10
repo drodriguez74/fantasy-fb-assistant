@@ -6,7 +6,9 @@
 - **Engine 2026-11-09.1, prop bets need a price edge** (`PROP_MIN_BOOK_EV` = 0): 116 of 119 live bets were model-only (Hard Rock worse than fair), predicted 54.4%, hit 46.6%; 2025 backtest the same (n=199). They now drop to watch → 0.5u fills. Expect ~3-4 real bets a week.
 - **Engine 2026-11-09.2, anytime TD × 1.30** (`TD_RATE_CALIBRATION`): fit on 2025 only, held-out gain on 2026 live (Brier CI excludes 0). Longshots under 15% read ~1 pt high; capped at the raw price.
 - **Shows:** imported VSiN Bills-Vikings MNF props (7; Jefferson "longest reception" lean not trackable); skipped Fantasy Alarm's Sunday week-9 stream (games played). FA's MNF stream (YD7hkNZImlw) had no captions yet.
-- 58 betting tests pass; the cron endpoint was run end to end locally (200, 80 props, 15s).
+- 58 betting tests pass; the cron endpoint was run end to end locally (200, 80 props, 15s). Pushed as d7ae216; the founder ran the GitHub workflow by hand: success, board saved. GitHub's scheduled runs were late/missing on day one (the weekly digest runs 5-7h late every week): check them; if unreliable, move the trigger to Supabase pg_cron + pg_net.
+- **Betr replaces PrizePicks (founder, 2026-11-09): Hard Rock first, Betr second.** Paste flow built (`betr_board.py`, `POST /betting/betr-board`, paste box on the Betr tab); Bets tabs now Lines (default) → Betr → Shows → Entries → Record. Tested on the live MNF board text: 20/20 cards matched. Waiting on the founder: Betr payout screenshots, how special lines pay, the 2-team rule. Reading Betr via Chrome only when asked.
+- Founder's Mac was off Oct 28 - Nov 8 (vacation): that, not sleep, is why weeks 8-9 lost their closing lines.
 
 ## Next
 - Founder: deploy (push), and confirm `DIGEST_CRON_SECRET` is set in both Render env and the repo's Actions secrets; then run the workflow once by hand (Actions → Betting board build → Run workflow) and check the log shows HTTP 200.
