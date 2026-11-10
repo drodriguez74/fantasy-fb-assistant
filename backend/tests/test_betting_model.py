@@ -159,24 +159,48 @@ def test_anytime_td_devig_uses_game_total():
     scale = bm.td_rate_scale([0.30] * 20, 45.0)
     assert 0.6 < scale < 0.7
     fair = bm.td_fair_prob(0.30, scale)
-    assert 0.20 < fair < 0.23                      # a 30% price is really ~21%
+    # A 30% price is really ~25% (raw 25-35% hit 25.6% on 2025 real lines);
+    # without TD_RATE_CALIBRATION the totals scale alone said ~21%.
+    assert 0.24 < fair < 0.27
+    # Never above the books' raw price, however loose the game scale.
+    assert bm.td_fair_prob(0.30, 0.95) == pytest.approx(0.30)
     assert bm.td_rate_scale([0.30] * 5, 45.0) is None   # partial prop list: no game estimate
     assert bm.td_rate_scale([0.30] * 20, None) is None  # no total
     assert bm.td_fair_prob(0.30, None) < 0.30           # fallback still removes a hold
 
 
+# DraftKings' Over +120 is off a -110/-110 consensus: a price edge on the books' own chance.
+_OFF_MARKET = _offers(60.5, +120, -140, extra_books=(("fanduel", 60.5, -110, -110), ("betmgm", 60.5, -110, -110)))
+
+
 def test_espn_must_agree_before_units():
     # Sleeper above the line (not far enough to be an outlier): Over gets units on its own...
-    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1")
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _OFF_MARKET, 80.0, "x1")
     assert rec["side"] == "Over" and rec["units"] > 0 and "espn_agrees" not in rec
     # ...but not when ESPN projects him under the line.
-    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1",
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _OFF_MARKET, 80.0, "x1",
                                espn_projection=40.0)
     assert rec["espn_agrees"] is False and rec["units"] == 0.0
     assert rec["espn_projection"] == 40.0
-    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1",
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _OFF_MARKET, 80.0, "x1",
                                espn_projection=80.0)
     assert rec["espn_agrees"] is True and rec["units"] > 0
+
+
+def test_prop_bet_needs_a_fair_price_on_the_books_chance():
+    # Same projection, but the only book's +120 is worse than its own fair
+    # chance (43.7% de-vigged -> -3.9% on the books' number): the edge would
+    # rest on the model alone, so no units; it stays on the watch list.
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _offers(60.5, +120, -140), 80.0, "x1")
+    assert rec["side"] == "Over" and rec["ev"] >= bm.MIN_EV
+    assert rec["book_ev"] < 0 and rec["model_only"] and rec["units"] == 0.0
+    assert rec["watch"] and rec["bet_at"] is not None
+    # The alert price is the stricter of the two bars: fair on the books' chance.
+    assert bm.ev(rec["market_prob"], rec["bet_at"]) >= bm.PROP_MIN_BOOK_EV - 1e-9
+    # With the price edge, a bet's min_price also keeps the price fair.
+    rec = evaluate_player_prop("WR One", "player_reception_yds", _OFF_MARKET, 80.0, "x1")
+    assert rec["book_ev"] > 0 and not rec.get("model_only") and rec["units"] > 0
+    assert bm.ev(rec["market_prob"], rec["min_price"]) >= bm.PROP_MIN_BOOK_EV - 1e-9
 
 
 def test_prizepicks_pairs_skip_legs_espn_disagrees_with():

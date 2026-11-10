@@ -5,9 +5,10 @@ import json
 import logging
 from typing import Dict, Optional
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query, UploadFile
 
 from app.api.deps import get_current_active_user
+from app.core.config import settings
 from app.models.user import User
 from app.services import analyst_picks, betting_service, entry_screenshot, prizepicks_board, tracked_entries, user_entries
 from app.services.sleeper_service import sleeper_service
@@ -34,6 +35,35 @@ async def get_betting_board(
     a board older than 15 minutes comes back with `refreshing: true` while
     it's rebuilt in the background."""
     return await betting_service.serve_board(sport, force=refresh)
+
+
+@router.post("/cron-build")
+async def cron_build_board(x_cron_secret: Optional[str] = Header(None, alias="X-Cron-Secret")):
+    """Build the NFL and college boards now, for the scheduled GitHub Actions
+    workflow (.github/workflows/board-build.yml). Each build fetches props for
+    games in their 36h / 2h windows (odds_service.PROP_FETCH_LEAD /
+    PROP_CLOSE_LEAD) and stores every pick's closing line
+    (betting_tracking.update_closing); with no scheduler on Render, this used
+    to depend on the founder's Mac being awake, and in weeks 8-9 it wasn't.
+
+    Not user-authenticated: a shared secret, the same DIGEST_CRON_SECRET the
+    weekly digest uses. Refuses every request when it isn't set. Outside the
+    windows a build spends no credits (props and lines come from odds_cache)."""
+    if not settings.DIGEST_CRON_SECRET or x_cron_secret != settings.DIGEST_CRON_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid or missing cron secret")
+    from app.services import odds_service
+    out: Dict[str, object] = {}
+    for sport, builder in (("nfl", betting_service.build_board), ("cfb", betting_service.build_cfb_board)):
+        try:
+            board = await builder(force=True)
+            out[sport] = {"available": board.get("available"),
+                          "props": len(board.get("player_props") or []),
+                          "recommended": board.get("recommended_count")}
+        except Exception as e:  # noqa: BLE001 - one sport failing shouldn't hide the other
+            logger.warning("Cron %s build failed: %s", sport, e)
+            out[sport] = {"error": type(e).__name__}
+    out["credits_left"] = odds_service.credits_remaining()
+    return out
 
 
 @router.get("/results")

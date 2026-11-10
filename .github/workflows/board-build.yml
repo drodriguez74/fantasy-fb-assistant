@@ -1,0 +1,69 @@
+name: Betting board build
+
+# Builds the Bets board on Render on game days, so every game's props are
+# fetched in the 36h before kickoff and again in the last 2h (the closing
+# line; odds_service.PROP_FETCH_LEAD / PROP_CLOSE_LEAD), and every pick's
+# closing line is stored (betting_tracking.update_closing).
+#
+# Why: Render's free tier has no scheduler, and the launchd job on the
+# founder's Mac (com.fantasyfootball.board-close) only runs while the Mac is
+# awake. In week 8 only 82 of 1,037 props got a closing line, and none in
+# week 9, which left closing-line value (the fastest test of an edge) blind.
+#
+# Setup: uses the same DIGEST_CRON_SECRET repo secret and Render env var as
+# weekly-digest.yml (see that file's header). BACKEND_URL as there.
+#
+# Cost: a build outside a game's prop windows spends no Odds API credits
+# (props and lines are served from odds_cache), so extra runs are free. Each
+# run wakes the Render instance; this schedule keeps it up roughly 15h a day
+# on Thu-Mon, well inside the free tier's 750 instance-hours a month.
+#
+# Schedule (UTC; minute 17 avoids GitHub's top-of-hour backlog, which can
+# delay scheduled runs). Hourly covers each game's 2h closing window with one
+# or two runs whatever the kickoff time, including 9:30am ET international
+# games, in both EDT and EST:
+#   - Thu-Mon 11:17-23:17 UTC (7am-7pm ET)
+#   - the following UTC day 00:17-02:17 (8pm-10pm ET evenings, for TNF/SNF/MNF)
+#   - Tue/Wed 16:17 UTC (noon ET): Wednesday's run opens the 36h window for
+#     Thursday's game; Tuesday's keeps lines and alerts fresh.
+on:
+  schedule:
+    - cron: '17 11-23 * * 0,1,4,5,6'
+    - cron: '17 0-2 * * 0,1,2,5,6'
+    - cron: '17 16 * * 2,3'
+  workflow_dispatch: {}
+
+concurrency:
+  group: board-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Build the board
+        env:
+          CRON_SECRET: ${{ secrets.DIGEST_CRON_SECRET }}
+          BACKEND_URL: ${{ vars.BACKEND_URL || 'https://fantasy-fb-assistant.onrender.com' }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "DIGEST_CRON_SECRET repo secret is not set -- see weekly-digest.yml's header. Skipping."
+            exit 1
+          fi
+          # Render cold-starts after ~15 min idle; a build itself can take a few
+          # minutes on the free CPU.
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /tmp/build.json -w "%{http_code}" -X POST \
+              "$BACKEND_URL/api/v1/betting/cron-build" \
+              -H "X-Cron-Secret: $CRON_SECRET" --max-time 600) || code="000"
+            echo "Attempt $attempt: HTTP $code"
+            cat /tmp/build.json 2>/dev/null || true
+            echo
+            if [ "$code" = "200" ]; then
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "Board build failed after 3 attempts."
+          exit 1

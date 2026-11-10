@@ -90,11 +90,11 @@ METHOD = (
     "Player props: a Monte Carlo simulation of Sleeper's projected stat line, including uncertainty in "
     "the projection itself. Each week, projections for each stat are rescaled so the model agrees with the "
     "market on the typical prop -- edges come from players projected unusually far from their line. ESPN's "
-    "projection must also favor the side over the market, or the bet gets no units. Blended 30/70 with the de-vigged consensus of DraftKings, FanDuel and Hard Rock "
-    "Bet. Game lines: projected scores from Sleeper's player projections (touchdowns and kicker points), "
-    "blended 30/70 with the consensus, with ESPN's matchup predictor and player projections as the cross-check. "
-    "Stakes are quarter-Kelly, capped at 3 units, and only when expected value is at least 3% "
-    "and the model agrees with the side."
+    "projection must also confirm the edge, or the bet gets no units. Blended 30/70 with the de-vigged consensus "
+    "of seven sportsbooks. A prop bet also needs your book's price to be fair or better on the books' own "
+    "chance: the model can pick a side but can't override a bad price (those picks go to the watch list). "
+    "Game lines: the market is the price; a bet exists only where a book is off the consensus. "
+    "Stakes are quarter-Kelly, capped at 3 units, and only when expected value is at least 3%."
 )
 
 _BOARD_TTL_SECONDS = 15 * 60
@@ -121,6 +121,36 @@ def _build_lock(name: str) -> asyncio.Lock:
 # ---------------------------------------------------------------------------
 _saved: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _refreshing: set = set()
+
+
+_CONNECTION_ERROR_TEXT = ("could not translate host name", "can't assign requested address",
+                          "could not receive data from server", "ssl syscall error",
+                          "server closed the connection", "connection refused", "timeout expired")
+
+
+def _is_connection_error(e: Exception) -> bool:
+    """A dropped or unreachable database, as opposed to a real SQL error."""
+    if getattr(e, "connection_invalidated", False):
+        return True
+    text = str(getattr(e, "orig", None) or e).lower()
+    return any(t in text for t in _CONNECTION_ERROR_TEXT)
+
+
+async def _db_write_retry(fn, *args, tries: int = 3, wait: float = 15.0):
+    """Run a tracking write in a thread, retrying a dropped connection.
+    In weeks 8-9 the board-close builds ran right as the Mac woke, and the
+    closing-line writes failed with "could not translate host name" / "Can't
+    assign requested address" before the network was back, so those weeks
+    lost their closing lines. Only connection errors are retried."""
+    from sqlalchemy.exc import DBAPIError
+    for attempt in range(tries):
+        try:
+            return await asyncio.to_thread(fn, *args)
+        except DBAPIError as e:
+            if attempt == tries - 1 or not _is_connection_error(e):
+                raise
+            logger.info("%s: connection error, retrying in %ss (%s)", getattr(fn, "__name__", fn), wait, type(e).__name__)
+            await asyncio.sleep(wait)
 
 
 async def _store_board(sport: str, board: Dict[str, Any]) -> None:
@@ -412,6 +442,7 @@ def evaluate_player_prop(
         return None
     if espn_samples is not None:
         candidates = [_espn_check(c, espn_samples, market) for c in candidates]
+    candidates = [_price_edge_check(c) for c in candidates]
     if market == "player_anytime_td":
         market_line, outlier = None, bm.projection_outlier(market, mean, market_td_prob=p_market)
     else:
@@ -425,8 +456,11 @@ def evaluate_player_prop(
     # Watch: positive EV that every source agrees with but too small to size.
     best["watch"] = bool(best["units"] == 0 and best["ev"] > 0 and not outlier and best["model_agrees"]
                          and best.get("espn_agrees") is not False)
-    # Watch: the worst price at which this side would clear the bar (alerts).
-    best["bet_at"] = bm.worst_price(best["p_win"], best["p_push"]) if best["watch"] else None
+    # Watch: the worst price at which this side would clear the bar (alerts):
+    # 3% EV on our chance and a fair price on the books' (PROP_MIN_BOOK_EV).
+    best["bet_at"] = (_stricter_price(bm.worst_price(best["p_win"], best["p_push"]),
+                                      bm.worst_price(best["market_prob"], best["p_push"], bm.PROP_MIN_BOOK_EV))
+                      if best["watch"] else None)
     pp_line = offers.get("prizepicks")
     pp_leg = (_prizepicks_leg(pp_line, samples, _pp_fair_over(offers), espn_samples, market=market, player=player)
               if pp_line is not None and market != "player_anytime_td" and not outlier else None)
@@ -499,6 +533,28 @@ def _espn_check(c: Dict[str, Any], espn_samples, market: Optional[str] = None) -
             return {**c, "units": 0.0, "confidence": "none", "min_price": None, "espn_confirms": False}
         units = min(c["units"], alt["units"])
         return {**c, "units": units, "confidence": bm.confidence_label(units), "espn_confirms": True}
+    return c
+
+
+def _stricter_price(a: Optional[int], b: Optional[int]) -> Optional[int]:
+    """Of two American price cutoffs, the one that demands the better price."""
+    if a is None or b is None:
+        return None
+    return a if bm.american_to_decimal(a) >= bm.american_to_decimal(b) else b
+
+
+def _price_edge_check(c: Dict[str, Any]) -> Dict[str, Any]:
+    """A prop bet keeps its units only if the price is fair or better on the
+    books' own chance (bm.PROP_MIN_BOOK_EV): the model may pick and size
+    the side, but it can't override a price worse than the consensus. A bet
+    that fails is flagged model_only and drops to the watch list."""
+    book_ev = bm.ev(c["market_prob"], c["price"], c.get("p_push", 0.0))
+    c = {**c, "book_ev": round(book_ev, 4)}
+    if c["units"] > 0 and book_ev < bm.PROP_MIN_BOOK_EV:
+        return {**c, "units": 0.0, "confidence": "none", "min_price": None, "model_only": True}
+    if c["units"] > 0:
+        c["min_price"] = _stricter_price(c.get("min_price"),
+                                         bm.worst_price(c["market_prob"], c.get("p_push", 0.0), bm.PROP_MIN_BOOK_EV))
     return c
 
 
@@ -1385,7 +1441,7 @@ async def _build_board_now() -> Dict[str, Any]:
         logger.warning("Recording forecasts failed: %s", e)
     try:  # closing line: the latest market for every pick not yet started
         from app.services.betting_tracking import update_closing
-        await asyncio.to_thread(update_closing, season, int(week), player_props + game_props)
+        await _db_write_retry(update_closing, season, int(week), player_props + game_props)
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
         logger.warning("Updating closing lines failed: %s", e)
     try:
@@ -1394,7 +1450,7 @@ async def _build_board_now() -> Dict[str, Any]:
     except Exception as e:  # noqa: BLE001 - alerts must never break the board
         logger.warning("Checking watch alerts failed: %s", e)
     try:
-        await asyncio.to_thread(record_board, season, int(week), player_props + game_props)
+        await _db_write_retry(record_board, season, int(week), player_props + game_props)
     except Exception as e:  # noqa: BLE001 - tracking must never break the board
         logger.warning("Recording betting board failed: %s", e)
 
@@ -1605,7 +1661,7 @@ async def _build_cfb_board_now() -> Dict[str, Any]:
     if week:
         try:
             from app.services.betting_tracking import update_closing
-            await asyncio.to_thread(update_closing, season, int(week), game_props, "cfb_game")
+            await _db_write_retry(update_closing, season, int(week), game_props, "cfb_game")
         except Exception as e:  # noqa: BLE001
             logger.warning("Updating college closing lines failed: %s", e)
         try:

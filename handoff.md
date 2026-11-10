@@ -1,3 +1,17 @@
+# START HERE — Session 27 (2026-11-09): weeks 5-9 review; price-edge rule, TD recalibration, cloud board builds
+
+> Session 26's notes below still hold for everything not mentioned here. Full record: BETTING_GUIDE "Weeks 5-9 review" + decisions log (2026-11-09).
+
+- **Board builds moved off the Mac:** `.github/workflows/board-build.yml` → `POST /api/v1/betting/cron-build` (secret `DIGEST_CRON_SECRET`, same as the weekly digest), hourly 7am-10pm ET Thu-Mon + noon Tue/Wed. Tracking writes retry dropped DB connections (`_db_write_retry`). Why: the launchd job missed/failed most runs since 10-29, so week 8 got 82/1,037 closing lines and week 9 none.
+- **Engine 2026-11-09.1, prop bets need a price edge** (`PROP_MIN_BOOK_EV` = 0): 116 of 119 live bets were model-only (Hard Rock worse than fair), predicted 54.4%, hit 46.6%; 2025 backtest the same (n=199). They now drop to watch → 0.5u fills. Expect ~3-4 real bets a week.
+- **Engine 2026-11-09.2, anytime TD × 1.30** (`TD_RATE_CALIBRATION`): fit on 2025 only, held-out gain on 2026 live (Brier CI excludes 0). Longshots under 15% read ~1 pt high; capped at the raw price.
+- **Shows:** imported VSiN Bills-Vikings MNF props (7; Jefferson "longest reception" lean not trackable); skipped Fantasy Alarm's Sunday week-9 stream (games played). FA's MNF stream (YD7hkNZImlw) had no captions yet.
+- 58 betting tests pass; the cron endpoint was run end to end locally (200, 80 props, 15s).
+
+## Next
+- Founder: deploy (push), and confirm `DIGEST_CRON_SECRET` is set in both Render env and the repo's Actions secrets; then run the workflow once by hand (Actions → Betting board build → Run workflow) and check the log shows HTTP 200.
+- After weeks 10-12: first clean CLV read (open item 7), and judge engine 2026-11-09.x on its own rows (Results → current engine).
+
 # START HERE — Session 26 (2026-10-21): Hard Rock bets in My entries (college too), shows imported
 
 > Session 25's notes below still hold for everything not mentioned here.
@@ -8,6 +22,8 @@
 - **Shows:** imported Fantasy Alarm x2 (NE @ CHI totals, Caleb Williams pass TDs lean) and VSiN college week 8 (11 picks); skipped VSiN's WSH @ SF props (game played).
 - **Two stats of one player** (PrizePicks allows it; founder's entry 25, Roschon targets + rec yds): My entries and the ticket tray accept them; the tray prices the pair with `SAME_PLAYER_CORRELATION` (measured by `scripts/experiments/corr_same_player.py`, 8,398 player-weeks) and refuses unmeasured pairs. Generated suggestions stay one pick per player until the founder confirms which same-player combos PrizePicks accepts and at what payout.
 - **Prop vs game-total correlation measured (2026-10-28):** `PROP_TOTAL_CORRELATION` in betting_model (passing yds +0.40, rec yds +0.16, receptions +0.12, rush yds +0.06), read by `leg_correlation` when a `game_total` leg meets a prop. Nothing recommended combines them yet, so ENGINE_VERSION unchanged. Same session: tune_from_results on 3,199 graded lines — every tier calibrated, blend beats books (Brier 0.2030 vs 0.2046), MODEL_WEIGHT stays 0.3.
+- **Shows 2026-11-08 (week 9, before the 9:30 Madrid kickoff):** imported Beating the Book MegaPod (10; CAR +2.5 x3, ARI +8.5 x2), VSiN week 9 props (15), Fantasy Alarm's Friday Betting Playbook (8), Fezzik Fridays (NE, no number on air, stored at the 11-08 consensus -3 with `line_stated: false`). Skipped 17: everything for week 8, TNF JAX @ BAL, college weeks 9-10 (all played) and the FA DFS/start-sit show (no picks). A fresh fetch at 09:15 found nothing new; the Sunday FA stream wasn't up yet.
+- **Shows 2026-10-29:** imported Fantasy Alarm TNF (4) and VSiN Panthers-Packers props (6).
 - **Shows 2026-10-26 to 10-28:** imported VSiN Cowboys-Eagles props (7), Fantasy Alarm's TNF over (1), VSiN college week 9 compilation (14), Beating the Book MegaPod week 8 (12); skipped two NBA/NHL-only Betting Playbooks and the Sunday start/sit stream.
 - **Shows 2026-10-23:** imported Action Network college (26), VSiN props (17), Fezzik Fridays (NFL 1 + college 2), Fantasy Alarm start/sit (2 leans). YouTube's bot check blocks both the transcript API and yt-dlp from the Mac, so the launchd fetch misses videos: get them in Chrome (YouTube's new panel uses `transcript-segment-view-model` elements; Chrome allows one automatic download per site, so later ones must be read off the page). Fantasy Alarm's 10-23 Betting Playbook (wc45KecI6K0) had no captions yet. The yt-dlp fallback in `fetch_show_transcripts.py` (used when the transcript API is IP-blocked) was committed 2026-10-28 at the founder's go-ahead; it doesn't get past the bot check either, so Chrome stays the backup.
 - **Safest picks lesson:** Florida pays 1.2x for two goblins (confirmed again); the safest 2-pick (66%) loses ~21% there. Offered the founder two fixes (price the pair at the real payout / pair a goblin with a standard line); not decided.

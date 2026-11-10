@@ -47,7 +47,7 @@ import numpy as np
 # Bump it whenever pricing changes. 2026-10-07.3: market-only NFL game lines
 # with key-number spreads, measured correlations, zero-catch and zero-rush
 # games. Rows from before versioning have NULL ("pre-versioning").
-ENGINE_VERSION = "2026-10-15.1"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution; 2026-10-12.1: passing bets capped at 1u when ESPN projects the other side; .2: part-time players out of most_likely; 2026-10-15.1: 7 more prop markets + the books' alternate lines for PrizePicks goblins/demons
+ENGINE_VERSION = "2026-11-09.2"  # .1: ESPN must confirm sportsbook edges; .2: and PrizePicks pairs/entries (pp_value); .3: correlated stacks; .4: college spreads market-only; .5: passing yards normal; .6: PrizePicks far lines shifted along the books' distribution; 2026-10-12.1: passing bets capped at 1u when ESPN projects the other side; .2: part-time players out of most_likely; 2026-10-15.1: 7 more prop markets + the books' alternate lines for PrizePicks goblins/demons; 2026-11-09.1: prop bets need a fair price on the books' own chance (PROP_MIN_BOOK_EV), model-only picks drop to watch; .2: anytime-TD rates x1.30 (TD_RATE_CALIBRATION)
 
 N_SIMS = 20_000
 PROJECTION_ERROR = 0.30      # sd of the true mean around the projection, as a share of it
@@ -58,6 +58,16 @@ KELLY_FRACTION = 0.25
 MIN_EV = 0.03                # 3% expected return per dollar staked
 MAX_UNITS = 3.0
 UNIT_STEP = 0.5
+# A player-prop bet also needs the price itself to be fair or better against
+# the seven-book consensus (the books' own fair chance, no model): EV at that
+# price >= PROP_MIN_BOOK_EV. Without it, a bet could rest entirely on the
+# model overriding a price worse than fair, and those "model-only" bets
+# didn't hold up (engine 2026-11-09.1): at Hard Rock they predicted 55% and
+# hit 50.8% in the 2025 real-lines backtest (n=199) and 46.6% live in 2026
+# weeks 5-9 (n=116; 116 of the 119 live bets were model-only). Bets with the
+# price edge too went +20% in 2025 (n=60, CI spans zero). Model-only picks
+# fall to the watch list, which feeds the 0.5u "Best available" fills.
+PROP_MIN_BOOK_EV = 0.0
 # The weekly card always shows at least MIN_CARD_PICKS picks (the founder's
 # call: people bet every week). When fewer bets clear MIN_EV, the best
 # remaining lines fill the card at a flat FILL_UNITS, labeled "Best
@@ -98,6 +108,17 @@ TD_PER_POINT = 0.105
 LISTED_TD_SHARE = 0.95
 MIN_LISTED_TD_PLAYERS = 15
 ONE_SIDED_HOLD = 0.35        # fallback overround on the scoring rate
+# The totals-based scale above over-corrects: on graded props the real
+# scoring rate ran ~1.30x the de-vigged one (fit on the 2025 real-lines
+# backtest, 5,737 props: shipped 15-25% hit 26.1%, 25-35% hit 36.7%).
+# Scored on 2026 weeks 5-9 live props it never saw (n=1,575), Brier
+# -0.0016 [-0.0034, -0.00003], game-clustered; 2025 wk1-9 -> 10-18 the same
+# direction, CI just touching zero. A free exponent fit to 1.01 and a
+# logistic recalibration did no better, so it's one factor. It slightly
+# overstates longshots under 15% (5.2% said vs 4.4% hit live), so the
+# combined scale is capped at 1: a fair chance never exceeds the books' raw
+# Yes price. Engine 2026-11-09.2.
+TD_RATE_CALIBRATION = 1.30
 
 # Projection-vs-market sanity check. When the projection sits far from the
 # market's line it is almost always the projection that's stale (a role
@@ -423,6 +444,7 @@ def td_rate_scale(implied_probs: List[float], game_total: Optional[float]) -> Op
 def td_fair_prob(implied_p: float, rate_scale: Optional[float]) -> float:
     """Fair P(score) from the books' Yes price (implied probability)."""
     scale = rate_scale if rate_scale is not None else 1 / (1 + ONE_SIDED_HOLD)
+    scale = min(1.0, scale * TD_RATE_CALIBRATION)
     return float(1 - np.exp(-td_rate(implied_p) * scale))
 
 

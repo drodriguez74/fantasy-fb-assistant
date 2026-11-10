@@ -89,13 +89,13 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 **Slate centering.** Each market's projections are rescaled each week so the median prop's simulated P(over) matches the market (`fit_projection_scale`). Week 5: rec yds ×1.13, rush ×1.15, pass ×1.07, receptions ×1.05, TD ×0.93.
 
-**Anytime TD de-vig.** Books quote "Yes" only, so each game's implied scoring rates are scaled to the TDs its Vegas total supports (`td_rate_scale`; 0.105 TDs per point, 95% to listed players). Typical scale is 0.66–0.76: a 30% price is really about 21%.
+**Anytime TD de-vig.** Books quote "Yes" only, so each game's implied scoring rates are scaled to the TDs its Vegas total supports (`td_rate_scale`; 0.105 TDs per point, 95% to listed players). Typical scale is 0.66–0.76, then multiplied by `TD_RATE_CALIBRATION` = 1.30 (capped at 1, so a fair chance never exceeds the raw price; 2026-11-09): the totals scale alone over-corrected (graded 15–25% props hit 26%). A 30% price is really about 25%.
 
 **ESPN cross-check.** ESPN's public weekly projections are centered the same way. A side gets units only if ESPN **confirms the edge on its own**: blended with the books exactly as Sleeper is, it must also clear 3% EV, and the stake is the smaller of the two sizes (since 2026-10-08, model version 2026-10-08.1). A side ESPN only leans toward stays on the watch list. Passing yards are exempt (`ESPN_CHECK_EXEMPT`; section 9).
 
 **Game lines.** The market is the price (`GAME_MODEL_WEIGHT = 0`): a game-line bet exists only where one book's line or price is off the consensus. Spreads use a key-number margin distribution (`market_margin_pmf`: a normal, SD 13.26, reweighted so games land on 3, 7, 6, 10 and 14 as often as they really do, centered so the consensus spread is 50/50), so a half point through 3 or 7 is priced at its real value. Totals stay N(consensus, 13.0). The Sleeper team-points model (6 × rush + rec TDs + kicker points) and its ESPN checks are still computed and shown, but neither moves the price nor gates a side: on real closing lines they carried no information (section 9). College keeps its 0.15-weight ESPN predictor and plain normal margins.
 
-**Sizing.** EV at the best available price. A bet needs EV ≥ 3% plus the model *and* the check agreeing (props; NFL game lines need only the price). Stake is quarter-Kelly in units (1u = 1% bankroll), rounded down to 0.5u, capped at 3u (college 1u). Sizes: Small 0.5–1u, Medium 1.5–2u, Max 2.5–3u. **Watch** = positive EV every source agrees on, but under 3%, so no units. Each bet also shows the worst price that still clears 3% (`min_price`).
+**Sizing.** EV at the best available price. A bet needs EV ≥ 3% plus the model *and* the check agreeing (props; NFL game lines need only the price). **A prop bet also needs a price edge** (`PROP_MIN_BOOK_EV` = 0, 2026-11-09): the price must be fair or better on the books' own de-vigged chance, so the model can choose and size a side but never override a worse-than-fair price. A pick that fails is flagged `model_only` and drops to the watch list (and from there to the 0.5u fills); its `bet_at` and a bet's `min_price` are the stricter of the two bars. Stake is quarter-Kelly in units (1u = 1% bankroll), rounded down to 0.5u, capped at 3u (college 1u). Sizes: Small 0.5–1u, Medium 1.5–2u, Max 2.5–3u. **Watch** = positive EV every source agrees on, but under 3%, so no units. Each bet also shows the worst price that still clears 3% (`min_price`).
 
 **Best available (card fill).** The weekly card always has at least 3 picks (`MIN_CARD_PICKS`): when fewer bets qualify, the best remaining lines fill it at a flat 0.5u (`FILL_UNITS`), watch list first, then highest EV, never a stale-projection outlier. They're labeled "Best available" (confidence `fill`), shown with their EV, kept stable through the week once chosen (`fill_keys`), and tracked as their own tier in Results so they're judged apart from real bets.
 
@@ -115,6 +115,9 @@ Code: `backend/app/services/betting_model.py` (pure math), `betting_service.py` 
 
 | Decision | Why | Evidence |
 |---|---|---|
+| Prop bets need a price edge (2026-11-09, engine 2026-11-09.1) | 116 of the 119 live prop bets (weeks 5–9) were "model-only": Hard Rock's price was worse than the seven-book fair chance (median −6.5% before the model), and the bet existed only because the model overrode it. They predicted 54.4% and hit 46.6%; the 2025 real-lines backtest found the same at Hard Rock (n=199, predicted 55.4%, hit 50.8%, −1.1%). On the same data, EV 3–6% and 6–10% picks hit 49.5% vs 52.6% predicted while 0–3% hit 54%: the bigger the model's disagreement with the books, the more it was projection error. Bets with a price edge too went 33-27, +20% in 2025 (n=60, CI [−8%, +47%]). `PROP_MIN_BOOK_EV` = 0; expect ~3–4 Hard Rock bets a week instead of ~12, the card filled by 0.5u Best available. Not a profit claim: it stops staking on an edge that hasn't shown up. | `scripts/backtest_props.py` data + live `bet_picks`, 2026-11-09 |
+| Anytime-TD rates ×1.30 (2026-11-09, engine 2026-11-09.2) | The totals-based de-vig over-corrects: on the 2025 lines shipped 15–25% hit 26.1%, 25–35% hit 36.7% (n=5,737); live 2026 the same (n=1,575: 25–35% said 29.7%, hit 38.4%). `TD_RATE_CALIBRATION` = 1.30 fit on 2025 only, scored on 2026 live: Brier −0.0016 [−0.0034, −0.00003] (game-clustered); 2025 wk 1–9 → 10–18 the same direction, CI touching zero. A free exponent (1.01) and a logistic recalibration did no better. Cost: longshots under 15% now read ~1 point high (5.2% said vs 4.4% hit live); capped at the raw price. On 2025 lines it adds 4 Hard Rock TD bets a season (1-3). | Same data |
+| Board builds from GitHub Actions (2026-11-09) | The Mac's launchd job missed or failed most runs from 2026-10-29 (asleep; on wake the DB writes failed: "could not translate host name"), so week 8 got closing lines for 82 of 1,037 props and week 9 none, and week 8's props were first seen ~6h before kickoff instead of ~28h. `.github/workflows/board-build.yml` calls `POST /betting/cron-build` (secret `DIGEST_CRON_SECRET`, as the weekly digest) hourly 7am–10pm ET Thu–Mon plus noon Tue/Wed; tracking writes retry dropped connections (`_db_write_retry`). | `~/Library/Logs/board-close.log`, `bet_picks.close_seen_at` |
 | Market 70% / model 30% | Projections lose to closing lines over large samples; the model may lean on the market, not override it. | Standard practice; to be checked by Brier scores. |
 | Quarter-Kelly, 3u cap, no 4u | Survives a model whose probabilities are a little off. 3u needs ~58% blended at −110 (~77% model vs a 50% market), which is almost always a stale projection. | 4u only if a few hundred graded bets show calibration and model Brier ≤ market. |
 | Stale-projection guard (35% / 1.6×) | The first board's "3u" picks were stale projections (Braelon Allen 38 vs 70.5). | Live week-5 board. |
@@ -270,6 +273,7 @@ Redesigned 2026-10-08 after a creative-director + UX review ("data overload"): o
 
 - **Render free instance: 512 MB.** After the lazy-load fix the app idles at ~137 MB and peaks ~210 MB on Bets; opening every analytics page adds ~145 MB once. Keep heavy libraries (scikit-learn, statsmodels, pandas, pulp) out of startup imports: import them inside the function or endpoint that needs them.
 - Cold starts take ~30 seconds. The page explains it, and boards are cached 15 minutes in memory.
+- **Scheduled builds:** `.github/workflows/board-build.yml` (GitHub Actions, free) calls `POST /api/v1/betting/cron-build` with header `X-Cron-Secret` = `DIGEST_CRON_SECRET` (Render env + repo secret, shared with the weekly digest). It builds the NFL and college boards: props in their 36h/2h windows, closing lines, watch alerts. The run log shows each build's props, recommended count and credits left. The Mac's launchd job can stay as a backup (builds share `odds_cache`, so a double build costs nothing).
 - Migrations: `bet_picks` (`03c72f4e93d0`), `odds_cache` (`cea70c9ce01c`) and `espn_projection` (`f79e92683ff7`) are all applied to Supabase, which Render shares.
 
 ---
@@ -422,6 +426,14 @@ Two correlated weeks: a direction, not a fit. Each live pattern was checked agai
 - **Suggested tickets:** 2-pick pairs 35 of 102 (34% vs 32% predicted). The 4-6 pick Powers' 0 for 70 was a few legs repeated across many tickets (now fixed, decisions log), not miscalibrated legs.
 - **CLV couldn't be read for week 6** (props fetched once); the closing fetch (decisions log) fixes that from week 7.
 
+### Weeks 5-9 review (2026-11-09)
+
+`tune_from_results.py` on 4,417 graded lines: keep `MODEL_WEIGHT` 0.30 (held-out change +0.0000 [−0.0002, +0.0002]); blend Brier 0.2054 vs books 0.2064 vs engine 0.2096. Most likely to win 84.9% vs 81.4% predicted (n=73). Three changes, each in the decisions log:
+- **Bets** went 13-25 (−16.6u) in weeks 7–8 after 42-26 in weeks 5–6; nearly all were model-only (Hard Rock's price worse than fair). That led to the price-edge rule.
+- **Anytime TD** live calibration (n=1,294 at the time) said 15.9%, hit 18.7%: the second sample after 2025. That led to `TD_RATE_CALIBRATION`.
+- **Closing lines** were missing for weeks 8–9. That led to the GitHub Actions schedule.
+- Watch list (no units) went 243-188 (56.4% vs 52.1% predicted); one sample, not acted on.
+
 ## 8. Open items
 
 **What the evidence says so far (2026-10-08).** Every projection source tested -- Sleeper, ESPN, ESPN's college predictor, TimesFM, Elo/situational models -- loses to the closing line. So edges have to come from *pricing*, not forecasting: correlated PrizePicks stacks, promos (the founder's Irving 0.5 promo was ~+40%), books off the consensus (line shopping at the founder's book), and PrizePicks lines lagging the books after news. Goblins are not an edge: PrizePicks prices them like ~91% hits while the books and the model say ~80%. Winner/total picks at PrizePicks are priced at the books' line, so they add risk without edge.
@@ -436,7 +448,7 @@ Two correlated weeks: a direction, not a fit. Each live pattern was checked agai
 
 **Waiting on data (judge, don't guess)**
 6. ~~Week 5 grades~~ Read 2026-10-12 (section 9, "Week 5 results"). Re-read after weeks 6–7: the Under pattern and Hard Rock-only record.
-7. Closing-line value after 2–3 weeks: if picks don't beat the close, raise `MIN_EV` (5–8% was the robust range in `corr_kelly.py`); if they do, keep it. Week 6 couldn't be read (one prop fetch per game); real closes start week 7 (closing fetch, 2026-10-20), so judge after weeks 7–9.
+7. Closing-line value after 2–3 weeks: if picks don't beat the close, raise `MIN_EV` (5–8% was the robust range in `corr_kelly.py`); if they do, keep it. Week 6 couldn't be read (one prop fetch per game); week 7 had real closes (967 of 1,034 props) but weeks 8–9 lost them to the Mac schedule (fixed 2026-11-09, section 7), so judge after weeks 10–12. The `MIN_EV` question is also narrower now: the 2026-11-09 price-edge rule removed the model-only bets, and on 2025 lines ROI didn't rise with EV anyway.
 8. `scripts/tune_from_results.py` once 300+ graded lines exist (engine weight, calibration per tier).
 9. After the season: rerun `backtest_projections.py --season 2026`, `backtest_game_lines.py --season 2026`, `backtest_cfb_lines.py --season 2026`, the correlation scripts, and test wind unders against `game_weather` forecasts.
 
@@ -452,5 +464,5 @@ Two correlated weeks: a direction, not a fit. Each live pattern was checked agai
 11. Start/finish risk: sportsbook props are void if the player doesn't play, but projections may average in a chance he doesn't start or finish (likely behind several big "Under" gaps). Worth investigating with injury/start data.
 12. Promo checker: promos are the best value seen so far; the tray already prices them if the user adds the pick and types the line -- a dedicated "promo" input could make it one step.
 13. Un-shelve college props when credits allow (`CFB_PROPS_ENABLED`, league_id=15); Caesars/Fanatics book keys returned nothing for NFL (recheck).
-14. ~~A scheduled board build~~ Partly done 2026-10-20: `scripts/build_board.py` from the founder's Mac at 12:00, 15:30, 19:30 (launchd `com.fantasyfootball.board-close`), so closing lines no longer depend on a page visit. Needs the Mac awake; a cloud cron would remove that.
+14. ~~A scheduled board build~~ Done 2026-11-09: GitHub Actions (`board-build.yml`, section 7). Before that, 2026-10-20: `scripts/build_board.py` from the founder's Mac at 12:00, 15:30, 19:30 (launchd `com.fantasyfootball.board-close`), so closing lines no longer depend on a page visit. Needs the Mac awake; a cloud cron would remove that.
 15. Known limits: props refresh Wed/Sun on the free tier, so a Thursday game's "close" is Wednesday's price; local sign-in doesn't work against the shared DB (check UI on the deployed site); Chrome won't resize, so phone checks use a 390px frame.
