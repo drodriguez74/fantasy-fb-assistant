@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider } from './hooks/useAuth'
+import { AuthProvider } from './components/auth/AuthProvider'
 import { Navbar } from './components/common/Navbar'
 import { ProtectedRoute } from './components/common/ProtectedRoute'
 import { ErrorBoundary } from './components/common/ErrorBoundary'
@@ -8,8 +8,7 @@ import { PageLoader } from './components/common/PageLoader'
 
 // Route-level code splitting: each page becomes its own chunk that's only
 // downloaded when a user actually navigates to it, instead of all pages
-// (plus their dependencies, e.g. recharts/d3 pulled in only by
-// AdvancedAnalysisPage) being bundled into one ~1MB chunk loaded upfront.
+// being bundled into one chunk loaded upfront.
 const BettingPage = lazy(() => import('./pages/BettingPage').then(m => ({ default: m.BettingPage })))
 const HomePage = lazy(() => import('./pages/HomePage').then(m => ({ default: m.HomePage })))
 const AuthPage = lazy(() => import('./pages/AuthPage').then(m => ({ default: m.AuthPage })))
@@ -22,9 +21,7 @@ const LeagueDetailPage = lazy(() => import('./pages/LeagueDetailPage').then(m =>
 const YahooCallbackPage = lazy(() => import('./pages/YahooCallbackPage').then(m => ({ default: m.YahooCallbackPage })))
 const ContentPage = lazy(() => import('./pages/ContentPage').then(m => ({ default: m.ContentPage })))
 const HistoricalPage = lazy(() => import('./pages/HistoricalPage').then(m => ({ default: m.HistoricalPage })))
-const AnalyticsPage = lazy(() => import('./pages/AnalyticsPage').then(m => ({ default: m.AnalyticsPage })))
 const WaiverWirePage = lazy(() => import('./pages/WaiverWirePage').then(m => ({ default: m.WaiverWirePage })))
-const AdvancedAnalysisPage = lazy(() => import('./pages/AdvancedAnalysisPage').then(m => ({ default: m.AdvancedAnalysisPage })))
 const PostDraftAnalysisPage = lazy(() => import('./pages/PostDraftAnalysisPage').then(m => ({ default: m.PostDraftAnalysisPage })))
 const TradeAnalyzerPage = lazy(() => import('./pages/TradeAnalyzerPage').then(m => ({ default: m.TradeAnalyzerPage })))
 const DraftHistoryPage = lazy(() => import('./pages/DraftHistoryPage').then(m => ({ default: m.DraftHistoryPage })))
@@ -98,14 +95,6 @@ function App() {
                   </ProtectedRoute>
                 } 
               />
-              <Route 
-                path="/analytics" 
-                element={
-                  <ProtectedRoute>
-                    <AnalyticsPage />
-                  </ProtectedRoute>
-                } 
-              />
               <Route
                 path="/bets"
                 element={
@@ -119,14 +108,6 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <WaiverWirePage />
-                  </ProtectedRoute>
-                } 
-              />
-              <Route 
-                path="/advanced-analysis" 
-                element={
-                  <ProtectedRoute>
-                    <AdvancedAnalysisPage />
                   </ProtectedRoute>
                 } 
               />

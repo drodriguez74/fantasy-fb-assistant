@@ -27,8 +27,6 @@ const primaryNavigation = [
 const moreNavigation = [
   { name: 'Reports', href: '/reports' },
   { name: 'Content', href: '/content' },
-  { name: 'Analytics', href: '/analytics' },
-  { name: 'Advanced Analysis', href: '/advanced-analysis' },
 ]
 
 const allNavigation = [...primaryNavigation, ...moreNavigation]

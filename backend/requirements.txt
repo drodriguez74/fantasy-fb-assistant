@@ -6,32 +6,17 @@ alembic==1.19.1
 pydantic==2.13.4
 pydantic-settings==2.11.0
 python-jose[cryptography]==3.5.0
-passlib[bcrypt]==1.7.4
-bcrypt==4.0.1  # passlib 1.7.4 is unmaintained and reads bcrypt.__about__.__version__ directly with no fallback; that module was removed in bcrypt 4.1, so anything >=4.1 raises AttributeError on every hash/verify call. 4.0.1 is the last version that still has it.
+bcrypt==5.0.0
 python-multipart==0.0.32
 httpx==0.28.1
-beautifulsoup4==4.15.0
 espn-api==0.46.0
 openai==3.3.1
 anthropic==1.0.0  # 0.7.8 predates the Messages API entirely (no `.messages` attribute) -- fallback to Anthropic was silently broken (AttributeError) until this bump
 python-dotenv==1.2.3
-pytest==9.1.1
-pytest-asyncio==1.4.0
-websockets==17.0.1
 email-validator==2.3.0
-# Advanced Analytics and Machine Learning
+# Numerics (betting model, waiver and historical services)
 numpy==2.4.6
-pandas==3.0.5
-scikit-learn==1.9.0
 scipy==1.17.1
-matplotlib==3.11.1
-seaborn==0.13.2
-plotly==6.9.0
-# Statistical Analysis
-statsmodels==0.14.6
-# Optimization
-pulp==3.3.2
-cvxpy==1.9.2
 # Spreadsheet reading (scripts/update_espn_draft_rankings.py)
 openpyxl==3.1.5
 tzdata==2026.3  # zoneinfo data on slim images (odds_service prop refresh days)

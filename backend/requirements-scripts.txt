@@ -2,3 +2,7 @@
 # fetch_show_transcripts.py
 yt-dlp==2026.8.19
 youtube-transcript-api==1.2.4
+# scripts/experiments/* (offline model research)
+pandas==3.0.5
+scikit-learn==1.9.0
+statsmodels==0.14.6

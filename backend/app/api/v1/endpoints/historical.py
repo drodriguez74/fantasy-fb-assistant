@@ -604,22 +604,3 @@ async def get_league_wide_trends(
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get league-wide trends: {str(e)}")
-
-
-# NOTE: This file used to also carry a set of "/advanced/*" routes
-# (compare-players, strength-of-schedule/{player_id}, breakout-candidates,
-# game-situation-analysis/{player_id}) backed by AdvancedHistoricalService
-# and an inline reimplementation. They had zero frontend callers (verified via
-# grep across frontend/src) and were fully duplicative:
-#   - compare-players / strength-of-schedule / breakout-candidates: the real
-#     statistical methods (ANOVA, Mann-Whitney U, Cohen's d) were merged into
-#     AdvancedAnalysisService (backend/app/services/advanced_analysis_service.py),
-#     the version actually wired to AdvancedAnalysisPage.tsx, so the live UI
-#     now benefits from them via POST /advanced-analysis/{compare-players,
-#     strength-of-schedule,breakout-candidates}.
-#   - game-situation-analysis/{player_id}: superseded by the more rigorous,
-#     honestly-labeled EnhancedGameSituationService, now wired into
-#     AdvancedAnalysisPage.tsx's Game Situations tab via
-#     POST /game-situations/enhanced-analysis.
-# advanced_historical_service.py itself was deleted alongside these routes
-# once this was confirmed to be its only remaining caller.

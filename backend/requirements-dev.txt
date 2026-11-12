@@ -1,0 +1,5 @@
+# Test and local-only tools. Not installed on Render (the Dockerfile reads
+# requirements.txt only).
+-r requirements.txt
+pytest==9.1.1
+pytest-asyncio==1.4.0
