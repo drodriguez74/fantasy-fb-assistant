@@ -1,6 +1,6 @@
 # START HERE — Session 28 (2026-11-12): project review, security and cleanup pass
 
-A whole-project review, then every recommendation carried out on branch `cleanup/review-recommendations` (pushed, CI green on GitHub; open the pull request at https://github.com/drodriguez74/fantasy-fb-assistant/pull/new/cleanup/review-recommendations; nothing deploys until it is merged).
+A whole-project review, then every recommendation carried out on branch `cleanup/review-recommendations` (merged to `main` and live in production on 2026-11-12; the founder confirmed login works).
 
 - **Security:** registration closed unless the email is in `REGISTRATION_ALLOWED_EMAILS`; per-IP rate limits on login, register, password reset and every AI / vision route (`core/rate_limit.py`); refresh tokens no longer work as access tokens; trade routes need a login; the demo credentials came off the login form and the auto-created demo user is gone (the founder's account is user 1 and no longer uses that password); password reset gives the same answer for known and unknown emails.
 - **Removed:** Analytics, Advanced Analysis and Game Situations (pages, endpoints, four services, the chart components, recharts). No auth on 16 of those routes, no tests, and they were the only users of scikit-learn, statsmodels, pandas and pulp. Their database tables and models are untouched.
@@ -13,7 +13,7 @@ A whole-project review, then every recommendation carried out on branch `cleanup
 - **Shows:** VSiN MegaPod week 10 (12 picks) and the VSiN college week 11 compilation (11) imported.
 
 ## Next
-- The founder: merge the pull request when ready; nothing reaches Render or Vercel until then. After the merge, check Render synced the Blueprint (Settings shows auto-deploy "After CI checks pass").
+- Nothing owed from this pass. Render's Auto-Deploy was switched to "After CI Checks Pass" in the dashboard (the service isn't Blueprint-managed, so `render.yaml` alone never changes it).
 - Optional: set `REGISTRATION_ALLOWED_EMAILS` in Render to let someone new sign up (unset = closed, which is safe).
 - Older sessions (12-21) are in `docs/archive/handoff-2026-sessions-12-21.md`.
 
