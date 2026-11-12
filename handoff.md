@@ -1,6 +1,6 @@
 # START HERE — Session 28 (2026-11-12): project review, security and cleanup pass
 
-A whole-project review, then every recommendation carried out on branch `cleanup/review-recommendations` (pull request open against `main`; nothing deploys until it is merged).
+A whole-project review, then every recommendation carried out on branch `cleanup/review-recommendations` (pushed, CI green on GitHub; open the pull request at https://github.com/drodriguez74/fantasy-fb-assistant/pull/new/cleanup/review-recommendations; nothing deploys until it is merged).
 
 - **Security:** registration closed unless the email is in `REGISTRATION_ALLOWED_EMAILS`; per-IP rate limits on login, register, password reset and every AI / vision route (`core/rate_limit.py`); refresh tokens no longer work as access tokens; trade routes need a login; the demo credentials came off the login form and the auto-created demo user is gone (the founder's account is user 1 and no longer uses that password); password reset gives the same answer for known and unknown emails.
 - **Removed:** Analytics, Advanced Analysis and Game Situations (pages, endpoints, four services, the chart components, recharts). No auth on 16 of those routes, no tests, and they were the only users of scikit-learn, statsmodels, pandas and pulp. Their database tables and models are untouched.
@@ -8,7 +8,7 @@ A whole-project review, then every recommendation carried out on branch `cleanup
 - **Dependencies:** `requirements.txt` holds only what the app imports (22 lines to 13 packages); pytest moved to `requirements-dev.txt`, research libraries to `requirements-scripts.txt`; passlib replaced by bcrypt 5 directly. The trimmed set was installed into a clean virtualenv and passed every test.
 - **CI:** `.github/workflows/ci.yml` runs pytest and the frontend lint, tests and build on every push and pull request, and Render now deploys only after it passes (`autoDeployTrigger: checksPass`).
 - **Shared board:** only the owner account (user 1) or emails in `BOARD_UPLOAD_EMAILS` can replace the uploaded Betr / PrizePicks board.
-- **Tests:** backend 304 to 337 (security, consensus ranking, position pressure, custom scoring, snapshot cache); frontend has its first tests (vitest, 21, Bets helpers and the Shows verdict).
+- **Tests:** backend 304 to 337; `test_players.py` no longer reads the real database (it failed in CI, which has none) (security, consensus ranking, position pressure, custom scoring, snapshot cache); frontend has its first tests (vitest, 21, Bets helpers and the Shows verdict).
 - **Frontend:** `LeagueDetailPage` 1,723 to ~500 lines and `WaiverWirePage` 1,565 to ~400, split into one component per tab; lint is clean. Checked three ways: moved JSX is line-identical to the original, the tabs render real cached league data, and all eleven tabs were clicked through in the browser against a throwaway local database.
 - **Shows:** VSiN MegaPod week 10 (12 picks) and the VSiN college week 11 compilation (11) imported.
 
