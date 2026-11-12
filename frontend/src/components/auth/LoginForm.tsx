@@ -95,13 +95,6 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
           </button>
         </p>
       </div>
-
-      <div className="mt-4 text-center">
-        <p className="text-xs text-muted">
-          Demo account:<br />
-          demo@test.com / Password123
-        </p>
-      </div>
     </div>
   )
 }

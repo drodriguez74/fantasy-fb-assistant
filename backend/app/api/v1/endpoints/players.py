@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from pydantic import BaseModel
 from app.api.deps import get_db, get_current_active_user
+from app.core.rate_limit import rate_limit
 from app.models.user import User
 from app.models.player import Player, Position
 from app.services.sleeper_service import sleeper_service
@@ -250,7 +251,8 @@ async def get_players_from_database(
 # matches routes in registration order, so a literal path like /database
 # has to come first or it gets shadowed (matched as player_id="database").
 # This bug was live-confirmed and documented in API_GUIDE.md before this fix.
-@router.get("/{player_id}")
+# Public page, but each call asks the AI for an analysis: limit it per IP.
+@router.get("/{player_id}", dependencies=[Depends(rate_limit("player-detail", 20, 60))])
 async def get_player(player_id: str):
     """Get detailed player information including AI analysis"""
     try:
@@ -461,7 +463,7 @@ async def add_player_from_sleeper(
         raise HTTPException(status_code=500, detail=f"Failed to add player: {str(e)}")
 
 
-@router.post("/{player_id}/analysis")
+@router.post("/{player_id}/analysis", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_player_analysis(
     player_id: str,
     current_user: User = Depends(get_current_active_user),
@@ -696,7 +698,7 @@ async def calculate_player_metrics(
         raise HTTPException(status_code=500, detail=f"Failed to calculate metrics: {str(e)}")
 
 
-@router.post("/enhanced/{player_id}/analysis")
+@router.post("/enhanced/{player_id}/analysis", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_enhanced_analysis(
     player_id: int,
     current_user: User = Depends(get_current_active_user),

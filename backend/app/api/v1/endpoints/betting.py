@@ -9,6 +9,7 @@ from fastapi import APIRouter, Body, Depends, File, Header, HTTPException, Query
 
 from app.api.deps import get_current_active_user
 from app.core.config import settings
+from app.core.rate_limit import rate_limit
 from app.models.user import User
 from app.services import analyst_picks, betting_service, entry_screenshot, prizepicks_board, tracked_entries, user_entries
 from app.services.sleeper_service import sleeper_service
@@ -120,10 +121,26 @@ async def get_betting_audit(
 _MAX_BOARD_BYTES = 25 * 1024 * 1024
 
 
+def require_board_uploader(current_user: User = Depends(get_current_active_user)) -> User:
+    """The uploaded Betr / PrizePicks board is one shared slot that every
+    account's picks are priced from, so only the owner (user id 1) or the
+    emails in BOARD_UPLOAD_EMAILS may replace it."""
+    allowed = (settings.BOARD_UPLOAD_EMAILS or "").strip()
+    if allowed == "*":
+        return current_user
+    if allowed:
+        ok = (current_user.email or "").lower() in {e.strip().lower() for e in allowed.split(",") if e.strip()}
+    else:
+        ok = current_user.id == 1
+    if not ok:
+        raise HTTPException(status_code=403, detail="Only the board owner can upload lines.")
+    return current_user
+
+
 @router.post("/prizepicks-board")
 async def upload_prizepicks_board(
     file: UploadFile = File(..., description="Saved api.prizepicks.com/projections?league_id=9 page"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_board_uploader),
 ):
     """Store today's PrizePicks NFL or college board -- the league is read
     from the file (see prizepicks_board.py for why it's uploaded rather than
@@ -151,7 +168,7 @@ _MAX_PASTE_CHARS = 2_000_000
 @router.post("/betr-board")
 async def paste_betr_board(
     text: str = Body(..., embed=True, description="Text copied from a stat tab of Betr's NFL page (Cmd+A, Cmd+C)"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_board_uploader),
 ):
     """Store pasted Betr Picks NFL lines (betr_board.py). Each paste is added
     to the recent Betr board (same player and stat replaced), so stat tabs
@@ -172,10 +189,10 @@ async def paste_betr_board(
             "cards_read": parsed["total"], "uploaded_at": stored["uploaded_at"]}
 
 
-@router.post("/betr-screenshots")
+@router.post("/betr-screenshots", dependencies=[Depends(rate_limit("vision", 20, 60))])
 async def upload_betr_screenshots(
     files: List[UploadFile] = File(..., description="Screenshots of stat tabs on Betr's NFL page"),
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_board_uploader),
 ):
     """Read Betr board screenshots into lines (betr_screenshot.py: one vision
     model call per image) and add them to the recent Betr board, exactly like
@@ -282,7 +299,7 @@ async def log_entry(body: Dict = Body(...), current_user: User = Depends(get_cur
     return await asyncio.to_thread(user_entries.create, current_user.id, data, season, week, snaps)
 
 
-@router.post("/entries/read-screenshot")
+@router.post("/entries/read-screenshot", dependencies=[Depends(rate_limit("vision", 20, 60))])
 async def read_entry_screenshot(
     file: UploadFile = File(..., description="Screenshot of a placed PrizePicks entry"),
     current_user: User = Depends(get_current_active_user),

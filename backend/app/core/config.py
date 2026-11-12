@@ -14,13 +14,26 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     
     DATABASE_URL: str
-    REDIS_URL: str = "redis://localhost:6379"
     
+    # Who may create an account (POST /auth/register). Comma-separated
+    # emails, or "*" for anyone. Unset means registration is closed: new
+    # accounts can call the AI and vision endpoints and upload the shared
+    # Betr board, so sign-up is opt-in, not open to whoever finds the site.
+    REGISTRATION_ALLOWED_EMAILS: Optional[str] = None
+
+    # Who may replace the shared Betr / PrizePicks board (the upload, paste
+    # and screenshot routes). There is one board for everyone, so a second
+    # account must not be able to overwrite the lines the founder's picks
+    # are priced from. Comma-separated emails, or "*" for any account.
+    # Unset = the owner account only (user id 1).
+    BOARD_UPLOAD_EMAILS: Optional[str] = None
+
+    # Per-IP limits on login, register, password reset and the AI / vision
+    # routes (app/core/rate_limit.py). Off only in tests that need it off.
+    RATE_LIMIT_ENABLED: bool = True
+
     OPENAI_API_KEY: Optional[str] = None
     ANTHROPIC_API_KEY: Optional[str] = None
-    
-    ESPN_CLIENT_ID: Optional[str] = None
-    ESPN_CLIENT_SECRET: Optional[str] = None
     
     YAHOO_CLIENT_ID: Optional[str] = None
     YAHOO_CLIENT_SECRET: Optional[str] = None

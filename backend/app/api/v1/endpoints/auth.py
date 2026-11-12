@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_db, get_current_user, get_current_active_user
 from app.core import security
 from app.core.config import settings
+from app.core.rate_limit import rate_limit
 from app.services.user_service import UserService
 from app.schemas.user import (
     UserCreate, UserLogin, UserResponse, Token, TokenRefresh,
@@ -16,9 +17,24 @@ from app.models.user import User
 router = APIRouter()
 
 
-@router.post("/register", response_model=UserResponse)
+def _registration_allowed(email: str) -> bool:
+    allowed = (settings.REGISTRATION_ALLOWED_EMAILS or "").strip()
+    if not allowed:
+        return False
+    if allowed == "*":
+        return True
+    return email.strip().lower() in {e.strip().lower() for e in allowed.split(",") if e.strip()}
+
+
+@router.post("/register", response_model=UserResponse, dependencies=[Depends(rate_limit("register", 5, 3600))])
 async def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    """Register a new user"""
+    """Register a new user (only emails in REGISTRATION_ALLOWED_EMAILS)"""
+    if not _registration_allowed(user_data.email):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Registration is closed. Ask the site owner to add your email."
+        )
+
     user_service = UserService(db)
     
     # Check if user already exists
@@ -62,7 +78,7 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         )
 
 
-@router.post("/login", response_model=Token)
+@router.post("/login", response_model=Token, dependencies=[Depends(rate_limit("login", 10, 60))])
 async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     """Authenticate user and return access token"""
     user_service = UserService(db)
@@ -95,10 +111,10 @@ async def login(user_credentials: UserLogin, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/refresh", response_model=Token)
+@router.post("/refresh", response_model=Token, dependencies=[Depends(rate_limit("refresh", 30, 60))])
 async def refresh_token(token_data: TokenRefresh, db: Session = Depends(get_db)):
     """Refresh access token using refresh token"""
-    user_id = security.verify_token(token_data.refresh_token)
+    user_id = security.verify_refresh_token(token_data.refresh_token)
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -170,7 +186,7 @@ async def change_password(
     return {"message": "Password changed successfully"}
 
 
-@router.post("/request-password-reset")
+@router.post("/request-password-reset", dependencies=[Depends(rate_limit("password-reset", 5, 3600))])
 async def request_password_reset(
     reset_data: PasswordResetRequest,
     background_tasks: BackgroundTasks,
@@ -187,13 +203,11 @@ async def request_password_reset(
         # Send password reset email
         background_tasks.add_task(send_password_reset_email, user.email, reset_token)
 
-        return {"message": "Password reset email sent"}
-    
-    # Always return success to prevent email enumeration
+    # The same answer either way, so this can't be used to find accounts
     return {"message": "If an account with that email exists, a password reset email has been sent"}
 
 
-@router.post("/reset-password")
+@router.post("/reset-password", dependencies=[Depends(rate_limit("password-reset-confirm", 10, 3600))])
 async def reset_password(
     reset_data: PasswordResetConfirm,
     db: Session = Depends(get_db)
@@ -243,7 +257,7 @@ async def verify_email(
     return {"message": "Email verified successfully"}
 
 
-@router.post("/resend-verification")
+@router.post("/resend-verification", dependencies=[Depends(rate_limit("resend-verification", 5, 3600))])
 async def resend_verification_email(
     email_data: PasswordResetRequest,  # Reuse schema since it just has email
     background_tasks: BackgroundTasks,

@@ -34,40 +34,13 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     
-    # Get user from database, create if doesn't exist (for demo mode)
     user = db.query(User).filter(User.id == user_id).first()
-    if user is None and str(user_id) == "1":
-        # Create demo user for authentication
-        try:
-            from app.core.security import get_password_hash
-            user = User(
-                id=1,
-                email="demo@test.com",
-                username="demo",
-                full_name="Demo User", 
-                hashed_password=get_password_hash("Password123"),
-                is_active=True,
-                is_verified=True
-            )
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        except Exception:
-            # If database creation fails, use in-memory user object
-            user = User(
-                id=1,
-                email="demo@test.com", 
-                username="demo",
-                full_name="Demo User",
-                is_active=True,
-                is_verified=True
-            )
-    elif user is None:
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
         )
-    
+
     # Check if user is active
     if not user.is_active:
         raise HTTPException(

@@ -47,3 +47,17 @@ def all_books_playable(monkeypatch):
     themselves (the app's default is the founder's Florida book)."""
     from app.core.config import settings
     monkeypatch.setattr(settings, "BETTING_MY_BOOKS", None, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def open_registration_and_fresh_limits(monkeypatch):
+    """Tests register users freely and start with empty rate-limit counters;
+    the closed-registration and rate-limit behavior is tested on its own in
+    test_security_hardening.py."""
+    from app.core import rate_limit
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "REGISTRATION_ALLOWED_EMAILS", "*", raising=False)
+    monkeypatch.setattr(settings, "BOARD_UPLOAD_EMAILS", "*", raising=False)
+    rate_limit.reset()
+    yield
+    rate_limit.reset()

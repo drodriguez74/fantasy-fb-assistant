@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from datetime import datetime
 from app.api.deps import get_db, get_current_active_user
+from app.core.rate_limit import rate_limit
 from app.models.user import User
 from app.models.blog_post import BlogPost
 from app.services.content_generation_service import ContentGenerationService, ContentType
@@ -25,7 +26,7 @@ class ContentPublishRequest(BaseModel):
     featured: bool = False
 
 
-@router.post("/generate")
+@router.post("/generate", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_content(
     request: ContentGenerationRequest,
     current_user: User = Depends(get_current_active_user),
@@ -71,7 +72,7 @@ async def generate_content(
         raise HTTPException(status_code=500, detail=f"Content generation failed: {str(e)}")
 
 
-@router.post("/generate-and-save")
+@router.post("/generate-and-save", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_and_save_content(
     request: ContentGenerationRequest,
     current_user: User = Depends(get_current_active_user),
@@ -314,7 +315,7 @@ async def delete_blog_post(
         raise HTTPException(status_code=500, detail=f"Failed to delete blog post: {str(e)}")
 
 
-@router.post("/weekly-rankings")
+@router.post("/weekly-rankings", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_weekly_rankings(
     week: int = Query(..., description="NFL week number"),
     position: str = Query("ALL", description="Position (QB, RB, WR, TE, ALL)"),
@@ -346,7 +347,7 @@ async def generate_weekly_rankings(
         raise HTTPException(status_code=500, detail=f"Failed to generate weekly rankings: {str(e)}")
 
 
-@router.post("/waiver-wire")
+@router.post("/waiver-wire", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_waiver_wire_content(
     week: int = Query(..., description="NFL week number"),
     save_as_post: bool = Query(True, description="Save as blog post"),
@@ -377,7 +378,7 @@ async def generate_waiver_wire_content(
         raise HTTPException(status_code=500, detail=f"Failed to generate waiver wire content: {str(e)}")
 
 
-@router.post("/injury-report")
+@router.post("/injury-report", dependencies=[Depends(rate_limit("ai", 20, 60))])
 async def generate_injury_report(
     save_as_post: bool = Query(True, description="Save as blog post"),
     current_user: User = Depends(get_current_active_user),

@@ -9,9 +9,11 @@ See `_player_value` below for the full reasoning behind the value curve.
 
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
+from app.api.deps import get_current_active_user
+from app.models.user import User
 from app.services.sleeper_service import sleeper_service
 # Retired/inactive-player filter (Sleeper's `status` field alone still tags
 # long-retired players like Frank Gore as "Active"; requiring a real `team`
@@ -101,7 +103,7 @@ class TradeAnalysisRequest(BaseModel):
 
 
 @router.post("/analysis")
-async def analyze_trade(request: TradeAnalysisRequest):
+async def analyze_trade(request: TradeAnalysisRequest, current_user: User = Depends(get_current_active_user)):
     """Analyze a proposed trade: side_a_gives vs side_b_gives (lists of
     sleeper_ids). Returns each side's total heuristic value, each player's
     individual contribution, and a plain-language verdict grounded in the
@@ -210,7 +212,8 @@ async def analyze_trade(request: TradeAnalysisRequest):
 @router.get("/player-search")
 async def search_trade_players(
     q: str = Query(..., min_length=1, description="Player name search term"),
-    limit: int = Query(20, description="Max number of results to return")
+    limit: int = Query(20, description="Max number of results to return"),
+    current_user: User = Depends(get_current_active_user),
 ):
     """Search for players to add to a trade proposal, filtered to players who
     are actually on an active NFL roster (excludes retired/free-agent

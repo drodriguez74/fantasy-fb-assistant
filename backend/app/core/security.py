@@ -1,11 +1,17 @@
 from datetime import datetime, timedelta
 from typing import Any, Union, Optional
 from jose import jwt, JWTError
-from passlib.context import CryptContext
+import bcrypt
 from app.core.config import settings
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt reads at most 72 bytes of a password. passlib (used here until
+# 2026-11) cut longer ones silently; bcrypt 5 raises instead, so cut them
+# the same way and every stored hash keeps verifying.
+_BCRYPT_MAX_BYTES = 72
+
+
+def _password_bytes(password: str) -> bytes:
+    return password.encode("utf-8")[:_BCRYPT_MAX_BYTES]
 
 ALGORITHM = "HS256"
 
@@ -34,26 +40,43 @@ def create_refresh_token(subject: Union[str, Any]) -> str:
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a plaintext password against its hash"""
-    return pwd_context.verify(plain_password, hashed_password)
+    try:
+        return bcrypt.checkpw(_password_bytes(plain_password), hashed_password.encode("utf-8"))
+    except (ValueError, TypeError, AttributeError):
+        # A missing or malformed stored hash is a failed login, not a 500.
+        return False
 
 
 def get_password_hash(password: str) -> str:
     """Generate password hash"""
-    return pwd_context.hash(password)
+    return bcrypt.hashpw(_password_bytes(password), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_token(token: str) -> Optional[str]:
-    """Verify JWT token and return subject (user_id)"""
+def _verify(token: str, token_type: Optional[str]) -> Optional[str]:
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[ALGORITHM]
         )
-        token_data = payload.get("sub")
-        if token_data is None:
-            return None
-        return token_data
     except JWTError:
         return None
+    if payload.get("type") != token_type:
+        return None
+    return payload.get("sub")
+
+
+def verify_token(token: str) -> Optional[str]:
+    """Verify an access token and return its subject (user_id).
+
+    Access tokens carry no "type" claim. Refresh, password-reset and
+    email-verification tokens do, and are refused here: a 30-day refresh
+    token must not work as an access token.
+    """
+    return _verify(token, None)
+
+
+def verify_refresh_token(token: str) -> Optional[str]:
+    """Verify a refresh token and return its subject (user_id)."""
+    return _verify(token, "refresh")
 
 
 def create_password_reset_token(email: str) -> str:
