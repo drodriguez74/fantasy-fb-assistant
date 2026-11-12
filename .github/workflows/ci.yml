@@ -1,14 +1,11 @@
 name: CI
 
 # Runs the backend tests and the frontend lint, tests and build on every
-# push and pull request. Render and Vercel deploy straight from main, so
-# this is the check that a broken commit shows up red before (or right
-# as) it ships. To make it a hard gate, protect main and require this
-# workflow, or turn on "Wait for CI" in Render's deploy settings.
+# push to any branch (which covers pull requests from this repo). Render
+# deploys main only after these checks pass (render.yaml:
+# autoDeployTrigger: checksPass).
 on:
   push:
-    branches: [main]
-  pull_request:
   workflow_dispatch: {}
 
 concurrency:

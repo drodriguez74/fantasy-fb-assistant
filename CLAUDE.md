@@ -43,7 +43,7 @@ npm run preview     # serve production build
 
 ### CI
 
-`.github/workflows/ci.yml` runs `pytest` and the frontend lint, tests and build on every push and pull request. Render deploys `main` only after this workflow passes (`autoDeployTrigger: checksPass` in `render.yaml`, once Render syncs the Blueprint). Vercel deploys on its own but runs the same `tsc -b && vite build`, so a type or build error stops it; lint and vitest failures do not, so keep the run green.
+`.github/workflows/ci.yml` runs `pytest` and the frontend lint, tests and build on every push to any branch. Render deploys `main` only after this workflow passes (`autoDeployTrigger: checksPass` in `render.yaml`, once Render syncs the Blueprint). Vercel deploys on its own but runs the same `tsc -b && vite build`, so a type or build error stops it; lint and vitest failures do not, so keep the run green.
 
 ## Architecture
 
