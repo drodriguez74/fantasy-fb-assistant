@@ -22,9 +22,15 @@ _Cross-session context that isn't project convention (that's CLAUDE.md's job) �
 
 ## Environment / infra decisions
 
-- **App is not deployed.** Running locally against a real Supabase Postgres for persistence (not a local throwaway DB) — treat data in it as real, not disposable.
+- **Deployed since 2026-09-09** (backend on Render's free tier, frontend on Vercel, both deploy from `main`). Local dev and production share one real Supabase Postgres for persistence (not a local throwaway DB) — treat data in it as real, not disposable.
 - **`docker-compose.yml` is stale** — don't use it, don't "fix" it as a side effect of unrelated work without checking with the user first (it may just need deleting rather than maintaining, but that's the user's call).
 - **No Celery/Redis** — deliberately removed after an audit found the scheduled tasks were either dead-pipeline calls or never persisted results. The in-app notification center is populated synchronously as a side effect of real requests, not on a schedule. Don't reintroduce a background-task system without checking this reasoning first (git history has the full removal rationale).
+
+## Security posture (2026-11-12)
+
+- **Registration is closed by default** (`REGISTRATION_ALLOWED_EMAILS`). The app is the founder's own tool: an open sign-up let any stranger spend the AI and vision budget. Don't reopen it without per-user limits.
+- **The demo login is gone.** The founder's account is user 1 (`demo@test.com` is only its email); the auto-created demo user and the credentials printed on the login form were removed.
+- **Analytics, Advanced Analysis and Game Situations were removed**, not lost: git history has them. Their tables and models were left alone (dropping them would need a migration against the real database).
 
 ## Working-style notes for this repo
 

@@ -19,6 +19,7 @@ alembic upgrade head                        # apply migrations
 
 python -c "from app.db.init_db import init_db; init_db()"   # (re)seed sample data
 
+pip install -r requirements-dev.txt         # runtime deps + pytest (Render installs requirements.txt only)
 pytest                                      # run all tests
 pytest tests/test_players.py                # run a single test file
 pytest tests/test_players.py::test_name -v  # run a single test
@@ -32,12 +33,17 @@ Tests use an isolated SQLite DB (see `tests/conftest.py`), not the Postgres dev 
 npm run dev       # dev server -> http://127.0.0.1:3001 (see vite.config.ts; NOT the default 5173)
 npm run build      # tsc -b && vite build
 npm run lint        # eslint
+npm test            # vitest (pure helpers: src/**/__tests__)
 npm run preview     # serve production build
 ```
 
 ### Full stack via Docker
 
-`docker-compose up -d` runs Postgres, backend, and frontend together. There is no Redis/Celery service — see "Background tasks" below.
+`docker-compose.yml` is stale (see `memory.md`): don't use it, and don't fix or delete it without asking the founder. Local dev runs the backend and frontend directly against the Supabase database.
+
+### CI
+
+`.github/workflows/ci.yml` runs `pytest` and the frontend lint, tests and build on every push and pull request. Render deploys `main` only after this workflow passes (`autoDeployTrigger: checksPass` in `render.yaml`, once Render syncs the Blueprint). Vercel deploys on its own but runs the same `tsc -b && vite build`, so a type or build error stops it; lint and vitest failures do not, so keep the run green.
 
 ## Architecture
 
@@ -51,13 +57,9 @@ Models are wired together in `app/models/__init__.py`, which imports every model
 
 `LeagueManagementService` (`app/services/league_management_service.py`) is the entry point for league *analysis* (roster grading, matchups, standings, waiver/trade recommendations bundled into one response) and branches on `league.platform.value.upper()` (compare the resolved `.value`, never the raw `Enum` against a string literal — `UserLeague.platform` is a plain `enum.Enum`, and comparing it directly to `"YAHOO"`/`"ESPN"` is always `False`; this exact bug once made the whole analysis path silently return `{}` for every user). `get_comprehensive_league_analysis` has real Yahoo and ESPN implementations (ESPN since 2026-09-05). Sleeper deliberately returns an honest "not supported for this platform yet" error rather than partial or fake data; building it out is real, tracked future work, not a quick fix.
 
-Live Draft (`app/api/v1/endpoints/live_draft.py` → `draft_assistant_service.py`) is a separate integration across all three platforms, each with a different auth model: Sleeper needs no credentials (its player/draft data is public); ESPN needs a per-user `SWID`/`espn_s2` cookie pair, persisted via `POST /leagues/espn/connect` (paste-your-own-cookies, since ESPN has no OAuth for fantasy); Yahoo needs a per-user OAuth token, persisted via `POST /leagues/yahoo/connect`. All three store credentials on the connecting user's own `UserLeague` row — never on a shared/global service instance — and every platform service method takes the token/cookies as an explicit parameter rather than storing them on `self`.
+Per-platform credentials: Sleeper needs none (its data is public); ESPN needs a per-user `SWID`/`espn_s2` cookie pair, saved by `POST /leagues/espn/connect` (ESPN has no OAuth for fantasy); Yahoo needs a per-user OAuth token, saved by `POST /leagues/yahoo/connect`. All are stored on the connecting user's own `UserLeague` row, never on a shared service instance, and every platform service method takes the token or cookies as a parameter.
 
-**ESPN's live draft data feed is confirmed broken, not just untested** (verified 2026-08-23 against a real, in-progress ESPN draft, mid-draft at round 15/16): neither the legacy `fantasy.espn.com` REST API `espn_api` calls, nor ESPN's own modern `lm-api-reads.fantasy.espn.com` host (same `mDraftDetail` view, fetched from inside the user's own authenticated browser session on ESPN's actual live draft page) ever returns real picks — both report 0 drafted players and `drafted: false` throughout, even as the real draft board visibly progressed through 190+ real picks. `espn_api`'s `_fetch_draft()` has an early-return specifically for this (`if not draftDetail.drafted: return`), discarding whatever in-progress data exists. Whatever actually powers ESPN's own live Pick History UI is almost certainly a WebSocket push feed with no discovered REST equivalent — reverse-engineering it is a real research project, not a quick fix. **Practical effect: ESPN's live draft session starts fine (auth, websocket infra, UI) but its "available players"/recommendations will silently include already-drafted players for the entire draft.** Researched whether a real API/WebSocket fix exists (2026-08-23): no documented path exists anywhere (no GitHub issue, library, or writeup); every real commercial competitor (FantasyPros, Draft Sharks, Subvertadown, Pick Pulse) solves this via a **browser extension reading the ESPN draft page's DOM directly**, not a backend API call — there may not be an externally-callable API for this at all. That's the real fix, not yet built.
-
-**Mitigation shipped in the meantime**: a manual "Mark gone" button per available player on `LiveDraftPage.tsx` (`POST /live-draft/mark-drafted` → `DraftAssistantService.mark_player_drafted`), letting the user manually remove a player from the pool when ESPN's feed hasn't. Session-scoped `manually_drafted_player_ids`, re-applied as a filter on every recommendations refresh (necessary since `_refresh_draft_state` wholesale-replaces `available_players` from the live feed every ~10s via the websocket loop, which would otherwise silently undo a manual correction). Distinct from `/update-pick`, which means "I drafted this" — don't conflate the two.
-
-Sleeper's live-pick feed is confirmed architecturally sound (hits a real, publicly-documented, non-cached live endpoint). Yahoo's code has no caching bug either, but whether Yahoo's platform actually exposes in-progress picks (vs. only post-completion, ESPN's exact failure mode) is unverified — don't assume it's fine by default; verify against a real in-progress Yahoo draft before trusting it.
+The draft assistant (live and mock draft) was removed on 2026-09-08; Post-Draft Analysis and Draft History were kept on purpose as in-season reports. ESPN exposes no in-progress draft picks to a backend (every competitor reads the draft page with a browser extension), so don't rebuild a live draft feature without that plan.
 
 ### Waiver & trade engine
 
@@ -96,7 +98,7 @@ Read the guide before touching betting code: it has the method, every decision w
 
 ### Memory on Render (512 MB free instance)
 
-Keep heavy libraries out of startup imports. scikit-learn, statsmodels, pandas and pulp (~200 MB) used to load at startup via the analytics endpoints, which put the idle app at 281 MB and caused an out-of-memory restart (2026-10-07). They're now imported inside `_analytics_service` / `_optimization_service` / `_analysis_service` in `analytics.py` and `advanced_analysis.py`. Idle is ~137 MB and the Bets peak ~210 MB, with no leak across repeated board builds. Any new heavy dependency should be imported where it's used, not at module top.
+Keep heavy libraries out of startup imports. scikit-learn, statsmodels, pandas and pulp (~200 MB) once loaded at startup through the analytics endpoints and caused an out-of-memory restart (2026-10-07). Those endpoints and their libraries were removed on 2026-11-12 (Analytics, Advanced Analysis and Game Situations: no tests, no auth on some routes, little use), so `requirements.txt` now holds only what the app imports; numpy and scipy are the only numeric libraries. Idle is ~137 MB and the Bets peak ~210 MB. Any new heavy dependency should be imported where it's used, not at module top, and research-only libraries go in `requirements-scripts.txt`.
 
 ### AI content generation
 
@@ -117,7 +119,11 @@ Three real systems, easy to confuse:
 
 ### Auth
 
-JWT auth via `python-jose`; `app/api/deps.py::get_current_user` decodes the bearer token and loads the `User`. Notably, if the token's user id is `"1"` and no matching user row exists, it auto-creates a demo user (`demo@test.com`) rather than 401ing — this is intentional demo-mode behavior, not a bug, so don't "fix" it without checking with the user first. Account lockout (`user_service.py::authenticate_user`) compares `locked_until` against `datetime.now(timezone.utc)`, not `datetime.utcnow()` — the columns are timezone-aware; mixing naive/aware datetimes here previously caused a 500 on any account with an expired lockout.
+JWT auth via `python-jose`; `app/api/deps.py::get_current_user` decodes the bearer token and loads the `User` (401 if the user row is gone: the old auto-created demo user was removed on 2026-11-12, and the founder's account is user 1). Passwords are hashed with `bcrypt` directly (`core/security.py`; passlib was dropped, and passwords are cut to bcrypt's 72 bytes the way passlib did, so old hashes still verify). Token types matter: access tokens carry no `type` claim, and `verify_token` refuses refresh, reset and verification tokens; `/auth/refresh` uses `verify_refresh_token`. Account lockout (`user_service.py::authenticate_user`) compares `locked_until` against `datetime.now(timezone.utc)`, not `datetime.utcnow()`: the columns are timezone-aware, and mixing naive and aware datetimes once caused a 500 on any account with an expired lockout.
+
+**Registration is closed by default.** `POST /auth/register` only accepts emails in `REGISTRATION_ALLOWED_EMAILS` (comma-separated, or `*`); unset means nobody. Any account can call the AI and vision endpoints, so don't reopen sign-up without a per-user limit on those. The uploaded Betr / PrizePicks board is one shared slot that everyone's picks are priced from: only the owner (user id 1) or the emails in `BOARD_UPLOAD_EMAILS` may replace it (`betting.require_board_uploader`).
+
+**Rate limits** (`core/rate_limit.py`, in memory, per IP): login, register, refresh, password reset, the AI content and player-analysis routes, the public `GET /players/{id}` (it calls the AI) and the Betr / entry screenshot reads. Use `dependencies=[Depends(rate_limit(name, limit, seconds))]` on any new route that costs money. Every route outside `auth` and the public player and blog reads requires a login; keep it that way.
 
 ### Email
 
@@ -129,7 +135,7 @@ There is no background task system. Celery/Redis were removed (`docker-compose.y
 
 ### Frontend
 
-`src/services/api.ts` is a single axios instance (with a request interceptor for the bearer token and a response interceptor that redirects to `/auth` on 401 — not `/login`, which doesn't exist as a route) plus grouped endpoint functions (`auth`, `leagues`, `players`, ...) — add new API calls there rather than calling axios directly from components. Routing/pages live in `src/pages/` (one file per route), reusable UI in `src/components/<domain>/`, and `src/hooks/useAuth.tsx` holds auth state.
+`src/services/api.ts` is a single axios instance (with a request interceptor for the bearer token and a response interceptor that redirects to `/auth` on 401 — not `/login`, which doesn't exist as a route) plus grouped endpoint functions (`auth`, `leagues`, `players`, ...) — add new API calls there rather than calling axios directly from components. Routing/pages live in `src/pages/` (one file per route), reusable UI in `src/components/<domain>/`. Auth state: the `useAuth` hook and context are in `src/hooks/useAuth.ts`, the provider in `src/components/auth/AuthProvider.tsx` (a file that exports a component can't also export a hook: the fast-refresh lint rule). The two big pages are split by tab: `LeagueDetailPage` renders `components/leagues/detail/*Tab.tsx` and `WaiverWirePage` renders `components/waivers/page/*Tab.tsx`; each folder has a `types.ts` for response shapes and pure helpers. The page owns the state and data loading and passes props down, so add a tab as a new component there rather than growing the page.
 
 ## Reference docs
 

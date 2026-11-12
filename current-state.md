@@ -1,10 +1,10 @@
 # Current State
 
-_High-level project status (last updated 2026-10-20, session 25; the START HERE entry in `handoff.md` has the session summary). Read this (with `memory.md`) via `/orient` after `/clear`. Not a task queue — see `handoff.md` for the active task._
+_High-level project status (last updated 2026-11-12, session 28; the START HERE entry in `handoff.md` has the session summary). Read this (with `memory.md`) via `/orient` after `/clear`. Not a task queue — see `handoff.md` for the active task._
 
 ## What this project is
 
-FastAPI + React/TS fantasy football assistant. PPR-scoped (keeper/dynasty explicitly out of scope, founder's call). Running locally against real Supabase Postgres, not deployed — see [[project_local_dev_supabase]] in memory. `docker-compose.yml` is stale, don't use it.
+FastAPI + React/TS fantasy football assistant. PPR-scoped (keeper/dynasty explicitly out of scope, founder's call). Backend on Render (free tier, deploys from `main`), frontend on Vercel, both against the real Supabase Postgres; local dev uses the same database, so treat its data as real. `docker-compose.yml` is stale, don't use it.
 
 ## Milestones (evidence-based, from repo docs + git log)
 
@@ -44,7 +44,8 @@ FastAPI + React/TS fantasy football assistant. PPR-scoped (keeper/dynasty explic
 - [x] **Weeks 5-9 review (session 27, 2026-11-09)**: prop bets now need a fair price on the books' own chance (model-only bets, 116 of 119 live, predicted 54% and hit 47%; engine 2026-11-09.1); anytime-TD rates ×1.30 on a held-out gain (2026-11-09.2); board builds moved from the Mac to GitHub Actions (`board-build.yml` → `POST /betting/cron-build`) after weeks 8-9 lost their closing lines. Engine weight stays 0.30.
 - [x] **Weeks 5-6 review (session 25, 2026-10-20)**: bets 42-26 +33.8u (Hard Rock 34-19), Most likely 81% as predicted; engine weight stays 0.30. Every live pattern re-tested on 2025 real lines; no pricing change cleared a held-out test (PrizePicks Less correction rejected). Built: a closing prop fetch 2h before kickoff (real CLV from week 7, `build_board.py` + launchd job on the Mac) and tracked tickets = the page's distinct entries. BETTING_GUIDE section 9, "Weeks 5-6".
 
-Ranked in-season backlog after the Yahoo parity `/goal` resolves: weekly recap + shareable card (new feature, needs a design decision on what "shareable" means), consolidate the 3 analysis pages (`AdvancedAnalysisPage`/`AnalyticsPage`/`HistoricalPage` — audit real-vs-fabricated first, `AnalyticsPage`'s ML predictions depend on per-player historical stats noted elsewhere as sparse). Also holding Vercel free tier ([[project_vercel_free_tier]]) — bundle diet.
+Ranked in-season backlog after the Yahoo parity `/goal` resolves: weekly recap + shareable card (new feature, needs a design decision on what "shareable" means), (done 2026-11-12: Analytics and Advanced Analysis were removed, Historical stays) consolidate the 3 analysis pages (`AdvancedAnalysisPage`/`AnalyticsPage`/`HistoricalPage` — audit real-vs-fabricated first, `AnalyticsPage`'s ML predictions depend on per-player historical stats noted elsewhere as sparse). Also holding Vercel free tier ([[project_vercel_free_tier]]) — bundle diet.
+- [x] **Project review + cleanup (session 28, 2026-11-12)**: registration closed by default, rate limits on auth and AI / vision routes, refresh tokens refused as access tokens, demo login removed; Analytics, Advanced Analysis and Game Situations retired with their heavy libraries; CI on every push; first frontend tests; `LeagueDetailPage` and `WaiverWirePage` split by tab. See `handoff.md`.
 - [ ] **Decommission audit findings** (`DECOMMISSION_TASK_LIST.md`) — large backlog of real, evidence-based bugs/dead-code, not yet started as a dedicated pass. See open items below.
 - [ ] **Push alerts (in-app MVP)** — scoped, not built (`DEFERRED_FEATURES_CHECKLIST.md`).
 - [~] **Multi-platform league analysis** — ESPN fullest; Yahoo now real for connect/standings/waivers/roster-grading/roster-import as of session 17, This Week still open; Sleeper still deliberately returns "not implemented" for This Week/comprehensive-analysis rather than fake data. See [[project_yahoo_sleeper_roster_grading_ask]].
@@ -76,7 +77,7 @@ Ranked in-season backlog after the Yahoo parity `/goal` resolves: weekly recap +
 
 **Duplicate/orphaned implementations needing a canonical-path decision** (from `docs/audits/DECOMMISSION_TASK_LIST.md`, "which version wins" calls, not pass/fail bugs):
 - [x] **Game situations — resolved 2026-08-29.** `enhanced_game_situation_service.py` (via `POST /game-situations/enhanced-analysis`) is now the sole implementation. Removed the dead duplicate `AdvancedAnalysisService.analyze_game_situations`/`POST /advanced-analysis/game-situations` (confirmed zero callers first) plus its 8 dedicated helper methods and now-dead imports. A third `historical.py` copy had already been removed in an earlier session. Verified: `pytest` 73/73, backend imports clean, `npm run build` green, no remaining references anywhere in the repo.
-- [ ] Advanced analysis: 2 stat engines (`advanced_analysis_service.py`, wired vs. `advanced_historical_service.py`, better stats but unwired). *Not yet re-verified.*
+- [x] Advanced analysis: removed 2026-11-12 (was: 2 stat engines (`advanced_analysis_service.py`, wired vs. `advanced_historical_service.py`, better stats but unwired). *Not yet re-verified.*
 - [ ] Matchup analysis: `matchup_analysis_service.py` used internally but its own endpoint file has zero frontend callers. *Not yet re-verified.*
 - [ ] Player AI analysis: 2 parallel paths (`POST /players/{id}/analysis`, frontend-used, vs. `POST /players/enhanced/{id}/analysis`, unused). *Not yet re-verified.*
 

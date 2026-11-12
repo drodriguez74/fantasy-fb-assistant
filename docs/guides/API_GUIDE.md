@@ -21,7 +21,7 @@ This guide is grounded in the actual code in `backend/app/api/v1/router.py` and 
 
 Send the token as `Authorization: Bearer <access_token>` on every subsequent request. Verified live: register → login → `GET /auth/me` → protected calls all work end-to-end against a running instance.
 
-**Demo-mode quirk (intentional, not a bug):** if a bearer token decodes to user id `"1"` and no such user row exists, `get_current_user` auto-creates a demo user (`demo@test.com`) instead of 401ing. Don't "fix" this without checking with the product owner first (see `CLAUDE.md`).
+**Access rules (2026-11-12):** registration only accepts emails in `REGISTRATION_ALLOWED_EMAILS` (403 otherwise; unset = closed). Login, register, refresh, password reset and the AI / vision routes are rate limited per IP (429 with `Retry-After`). A refresh token is refused as a bearer token; only `POST /auth/refresh` accepts it. A token for a user that no longer exists gets a 401 (the old auto-created demo user is gone). `POST /betting/prizepicks-board`, `/betr-board` and `/betr-screenshots` replace one shared board, so they return 403 unless the caller is the owner account (user id 1) or listed in `BOARD_UPLOAD_EMAILS`.
 
 ### User profile & account (`/users`, real, JWT-protected)
 
@@ -187,21 +187,9 @@ All auth required. Method, decisions and limits: [BETTING_GUIDE.md](BETTING_GUID
 
 **Backend-only / not currently wired:** `GET /matchup-analysis/player-matchups/{player_id}?weeks_ahead=`, `POST /matchup-analysis/roster-matchup-analysis`, `GET /matchup-analysis/player-vs-defense/{player_id}/{opponent_team}`.
 
-## Game Situations (`/game-situations`)
+## Game Situations, Advanced Analysis, Analytics — removed (2026-11-12)
 
-- `POST /game-situations/enhanced-analysis` — **the canonical, wired path** (used by `AdvancedAnalysisPage.tsx`). Body `{player_ids, analysis_type}` where `analysis_type` is one of `all`, `home_away`, `weather`, `opponent`, `game_script`, `venue`, `prime_time`, `rivalry`. Backed by `EnhancedGameSituationService` — "the most rigorous, best-documented code in the audit" per the original decommission audit, and previously unwired. Two duplicates used to exist alongside it: a thinner `AdvancedAnalysisService.analyze_game_situations` (at `POST /advanced-analysis/game-situations`) and a third inline copy in `historical.py`. Both are now removed (the `historical.py` copy earlier; `AdvancedAnalysisService.analyze_game_situations` and its route removed 2026-08-29, confirmed zero remaining callers first) — this is the one real implementation. No auth required on this specific route (unlike most of the rest of this file).
-- `GET /game-situations/home-away-analysis/{player_id}`, `/weather-analysis/{player_id}`, `/opponent-analysis/{player_id}`, `/game-script-analysis/{player_id}`, `/venue-analysis/{player_id}`, `/prime-time-analysis/{player_id}`, `/rivalry-analysis/{player_id}`, `POST /compare-home-away`, `POST /compare-weather-impact`, `GET /defensive-rankings`, `GET /venues`, `GET /situational-trends/{player_id}`, `GET /situation-summary`, `GET /constants` — real, granular single-factor endpoints behind the same service; **not individually called from the frontend** (the UI only calls the combined `POST /enhanced-analysis` above).
-- `POST /game-situations/game-situations/bulk-create` — note the doubled path segment (mounted under `/game-situations`, and the route itself is also `/game-situations/bulk-create`) — this is how it's really registered, not a typo in this doc.
-
-## Advanced Analysis (`/advanced-analysis`) — real, wired
-
-All require auth. Wired to `AdvancedAnalysisPage.tsx`:
-- `POST /advanced-analysis/compare-players` — body `{player_ids (2-5), metrics?}`.
-- `POST /advanced-analysis/strength-of-schedule` — body `{player_ids (1-10), weeks_ahead (1-8, default 4)}`.
-- `POST /advanced-analysis/breakout-candidates` — body `{position?, min_ownership, max_ownership}`.
-- `GET /advanced-analysis/player-suggestions?query=&position=&limit=` — searches the local `Player` table (small, seed-sized — see below). Verified live.
-
-**Backend-only / not currently wired:** `GET /advanced-analysis/analysis-summary` (returns local-DB player counts — verified live, currently 14 seed players), `GET /advanced-analysis/metrics-available`. (`POST /advanced-analysis/game-situations` — the superseded duplicate — was removed 2026-08-29; see Game Situations above.)
+`/game-situations/*`, `/advanced-analysis/*` and `/analytics/*` and their pages were removed: untested, partly unauthenticated, and the only users of scikit-learn, statsmodels, pandas and pulp. Git history has them. `/trade/*` now requires a login.
 
 ## Content / Blog (`/content`)
 
@@ -222,12 +210,6 @@ All require auth. Wired to `AdvancedAnalysisPage.tsx`:
 - `GET /historical/players/{player_id}/trends`, `GET /historical/players/{player_id}/weekly-performance/{season}`, `GET /historical/positions/{position}/analysis`, `POST /historical/players/compare`, `GET /historical/players/{player_id}/season-summaries`, `GET /historical/matchups/{team_a}/{team_b}`, `GET /historical/players/{player_id}/consistency-analysis` — real, **not called from the frontend** (defined in `api.ts` but unused by any page).
 
 **Removed this session:** the `/historical/advanced/*` family (strength-of-schedule, game-situation-analysis, etc. — a third, inline reimplementation of logic that now lives in `enhanced_game_situation_service.py`) no longer exists; it was merged into the canonical `game-situations` path above rather than left as a duplicate.
-
-## Analytics & Optimization (`/analytics`) — partially wired
-
-Wired to `AnalyticsPage.tsx`: `POST /analytics/predict/player-performance`, `POST /analytics/optimize/lineup`, `GET /analytics/correlations/players`.
-
-**Backend-only / not currently wired:** `GET /analytics/clustering/players`, `GET /analytics/trends/player/{player_id}`, `POST /analytics/optimize/multi-lineup`, `POST /analytics/optimize/season-roster`, `POST /analytics/risk/portfolio-analysis`, `GET /analytics/metrics/position-efficiency`, `GET /analytics/metrics/matchup-analysis`, `GET /analytics/visualization/correlation-matrix`, `GET /analytics/visualization/performance-clusters` — real routes exist, but `AnalyticsPage.tsx`'s "Clustering" and "Visualization" tabs explicitly render "Feature Coming Soon" instead of calling them.
 
 ## Post-Draft Analysis (`/post-draft`)
 

@@ -8,7 +8,7 @@ The Fantasy Football Assistant has a JWT-based authentication system: `backend/a
 
 ### Authentication & Security
 - **JWT-based authentication** with access and refresh tokens (`python-jose`, HS256)
-- **Password hashing** with bcrypt (`passlib`)
+- **Password hashing** with bcrypt
 - **Account lockout** after 5 failed login attempts (15 minutes) — fixed this session from a real crash bug (see below)
 - **Password reset** with secure, time-limited tokens
 - **Email verification** tokens/endpoints exist and work, but new accounts are auto-verified at registration (see "Email Verification" below) — this is intentional demo-mode behavior, not a gap
@@ -295,11 +295,16 @@ FROM_EMAIL=noreply@yourdomain.com
 
 **This environment currently has none of these set**, so `EmailService` runs in honest dev-log mode: it logs `EMAIL SENT (Dev Mode) - To: ..., Subject: ...` plus the full email body instead of calling `smtplib`, and still returns `True` (a "send" that didn't reach an inbox is not reported as a failure to the caller, since nothing did fail from the app's point of view). If you set all of `SMTP_SERVER`/`SMTP_USERNAME`/`SMTP_PASSWORD` (and optionally `SMTP_PORT`/`FROM_EMAIL`), the same code path sends real mail via `smtplib.SMTP(...).starttls()` — no code changes needed, just env vars.
 
-## Demo Mode: user id `"1"`
+## No demo mode (since 2026-11-12)
 
-`backend/app/api/deps.py::get_current_user` has intentional demo-mode behavior that this guide previously didn't document at all: if a valid JWT decodes to subject `"1"` but no `User` row with `id == 1` exists yet, it auto-creates one (`demo@test.com` / username `demo`, active and verified) instead of returning 401. If DB insertion itself fails, it falls back to an in-memory `User(id=1, ...)` object so the request still succeeds.
+`get_current_user` used to create a demo user (`demo@test.com`) when a valid token named user id 1 and no such row existed. That is gone: a token for a missing user gets a 401. The founder's real account is user 1, and the login form no longer prints demo credentials.
 
-This is **intentional**, not a bug — per this repo's `CLAUDE.md`, don't "fix" it into a 401 without checking with the user first. In practice it means: any token minted with subject `1` (e.g. via `security.create_access_token(subject="1")`, or a hardcoded `id: 1` in older frontend/test code) will always resolve to *some* valid user, seeded on first use. On a database that already has a real user with `id == 1` (common in a long-lived dev DB), that existing row is returned as-is and the auto-create path never triggers.
+## Registration and rate limits (since 2026-11-12)
+
+- `POST /auth/register` accepts only emails listed in `REGISTRATION_ALLOWED_EMAILS` (comma-separated, or `*` for anyone). Unset means registration is closed and returns 403.
+- Per-IP limits (`app/core/rate_limit.py`, in memory): login 10 a minute; register 5 an hour; password-reset request 5 an hour; refresh 30 a minute. Over the limit is a 429 with `Retry-After`.
+- Access tokens carry no `type` claim. Refresh, reset and verification tokens do, and `verify_token` refuses them, so a refresh token can't be used as a bearer token. `POST /auth/refresh` checks for `type: refresh`.
+- `POST /auth/request-password-reset` returns the same message whether or not the email has an account.
 
 ## Security Features
 
@@ -320,7 +325,7 @@ Enforced by `UserCreate`/`PasswordChange`/`PasswordResetConfirm` validators in `
 - **Lockout-check bug, fixed**: an earlier version of `authenticate_user` compared a timezone-aware `locked_until` against a naive `datetime.now()`, which raised `TypeError: can't compare offset-naive and offset-aware datetimes` and crashed `/auth/login` with a 500 for *any* login attempt once an account had ever been locked. It's now `datetime.now(timezone.utc)` throughout — fixed in commit `a471226` ("Fix login 500 crash: naive/aware datetime comparison on account lockout check").
 
 ### Database Security
-- **Password hashing**: bcrypt via `passlib` (`CryptContext(schemes=["bcrypt"], deprecated="auto")`)
+- **Password hashing**: `bcrypt` directly (`core/security.py`); passwords are cut to bcrypt's 72 bytes, as passlib did, so hashes made before 2026-11-12 still verify
 - **No plaintext storage**: passwords are never stored in plaintext
 - **Failed attempt tracking**: `failed_login_attempts` / `locked_until` columns on `users`
 - **Soft deletion**: `DELETE /api/v1/users/me` sets `is_active = False`; there is no hard-delete path

@@ -10,7 +10,9 @@ services:
     dockerfilePath: ./Dockerfile
     plan: free
     healthCheckPath: /
-    autoDeploy: true
+    # Deploy only after the CI workflow (.github/workflows/ci.yml) passes on
+    # main, so a commit that fails the tests never reaches production.
+    autoDeployTrigger: checksPass
     # Only redeploy (and restart) the API when backend files change; a
     # frontend-only push (Vercel) used to restart it and make the next page
     # load wait. Takes effect once Render syncs this Blueprint.
@@ -26,39 +28,26 @@ services:
         sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
-      - key: GEMINI_API_KEY
-        sync: false
       - key: ODDS_API_KEY
         sync: false
       # Sportsbooks the founder can bet at (Florida: Hard Rock Bet only); the
       # app defaults to this too (config.BETTING_MY_BOOKS).
       - key: BETTING_MY_BOOKS
         value: hardrockbet
+      # Who may create an account (comma-separated emails, or "*" for anyone).
+      # Unset = registration closed, which is the default: a new account can
+      # call the AI and vision endpoints and upload the shared Betr board.
+      - key: REGISTRATION_ALLOWED_EMAILS
+        sync: false
+      # Extra accounts allowed to replace the shared Betr board (emails, or
+      # "*"). Unset = the owner account only.
+      - key: BOARD_UPLOAD_EMAILS
+        sync: false
       - key: CORS_ORIGINS
         value: https://fantasy-fb-assistant.vercel.app,http://localhost:3001,http://127.0.0.1:3001
-      - key: SUPABASE_URL
-        sync: false
-      - key: SUPABASE_SECRET_KEY
-        sync: false
-      - key: SUPABASE_PUBLISHABLE_KEY
-        sync: false
-      - key: SUPABASE_JWKS_URL
-        sync: false
-      - key: SUPABASE_PROJECT_ID
-        sync: false
-      - key: ESPN_LEAGUE_ID
-        sync: false
-      - key: ESPN_SEASON
-        sync: false
-      - key: ESPN_SWID
-        sync: false
-      - key: ESPN_S2
-        sync: false
       - key: YAHOO_CLIENT_ID
         sync: false
       - key: YAHOO_CLIENT_SECRET
-        sync: false
-      - key: YAHOO_SEASON
         sync: false
       - key: YAHOO_REDIRECT_URI
         value: https://fantasy-fb-assistant.vercel.app/yahoo/callback

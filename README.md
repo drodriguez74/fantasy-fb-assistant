@@ -1,15 +1,15 @@
 # Fantasy Football Assistant
 
-An AI-powered fantasy football assistant that helps PPR league users with draft picks, waiver wire decisions, and provides intelligent content aggregation from multiple fantasy football sources.
+An in-season fantasy football assistant for PPR leagues: lineup, waiver and trade advice from your real ESPN, Yahoo or Sleeper league, plus a betting board priced against the sportsbooks.
 
 ## 🏆 Features
 
-- **🎯 Smart Draft Assistant**: PPR-optimized player rankings and real-time draft recommendations
-- **🔌 Platform Integrations**: Connect to ESPN, Yahoo, Sleeper, NFL.com, and CBS Fantasy
-- **🤖 AI-Powered Content**: Multi-perspective analysis with consensus recommendations
-- **📊 Player Analytics**: Comprehensive player database with injury tracking and projections
-- **👤 User Management**: JWT authentication with personalized preferences
-- **📱 Responsive UI**: Modern React interface with mobile support
+- **This Week**: your matchup, start/sit calls and lineup swaps from live projections
+- **Waivers and trades**: valued by what a player does to your real best lineup
+- **Platform integrations**: ESPN (cookies), Yahoo (OAuth) and Sleeper leagues
+- **Bets**: NFL props and game lines priced against a seven-book consensus, tracked and graded
+- **AI content**: player analysis and injury reports with an OpenAI/Anthropic fallback
+- **Accounts**: JWT auth; sign-up is closed unless an email is allowed (`REGISTRATION_ALLOWED_EMAILS`)
 
 ## 🛠 Tech Stack
 
@@ -44,7 +44,7 @@ fantasy-football-assistant/
 │   └── tailwind.config.js
 ├── scripts/               # Setup and utility scripts
 ├── docs/                  # Documentation
-└── docker-compose.yml     # Development environment
+└── .github/workflows/     # CI, weekly digest and betting board builds
 ```
 
 ## 🚀 Quick Start
@@ -102,14 +102,11 @@ npm install
 npm run dev
 ```
 
-**Frontend is now running at:** http://localhost:5173
+**Frontend is now running at:** http://127.0.0.1:3001
 
-### 3️⃣ Test the Application
+### 3️⃣ Create an account
 
-**Demo Accounts:**
-- **Admin:** `admin@fantasyfootball.com` / `admin123`
-- **User:** `test@example.com` / `password123`
-- **Demo:** `demo@test.com` / `DemoPass123!`
+Sign-up is closed by default. Add your email to `REGISTRATION_ALLOWED_EMAILS` in `backend/.env` (comma-separated, or `*` for anyone), restart the backend, then register at `/auth`. There are no built-in demo accounts.
 
 ## 🔧 Development Commands
 
@@ -126,6 +123,9 @@ alembic upgrade head
 
 # Reset database
 python -c "from app.db.init_db import init_db; init_db()"
+
+# Run the tests (isolated SQLite, not your database)
+pip install -r requirements-dev.txt && pytest
 ```
 
 ### Frontend Commands
@@ -136,8 +136,9 @@ cd frontend && npm run dev
 # Build for production
 npm run build
 
-# Run linter
+# Run linter and tests
 npm run lint
+npm test
 
 # Preview production build
 npm run preview
@@ -146,23 +147,20 @@ npm run preview
 ## 🌐 API Endpoints
 
 ### Authentication
-- `POST /api/v1/auth/register` - User registration
-- `POST /api/v1/auth/token` - User login
-- `GET /api/v1/auth/me` - Get current user
+- `POST /api/v1/auth/register` - Register (allowed emails only)
+- `POST /api/v1/auth/login` - Log in
+- `GET /api/v1/auth/me` - Current user
 
-### Players
-- `GET /api/v1/players/` - List all players
-- `GET /api/v1/players/{id}` - Get player details
-- `GET /api/v1/players/search` - Search players
+### Leagues
+- `GET /api/v1/leagues/{id}/this-week` - Matchup, start/sit and lineup swaps
+- `GET /api/v1/leagues/{id}/waiver-recommendations` - Waivers by lineup impact
+- `GET /api/v1/leagues/{id}/trade-suggestions` - Trades that help both teams
 
-### Draft Assistant
-- `POST /api/v1/draft/start` - Start draft session
-- `GET /api/v1/draft/{session_id}/recommendations` - Get recommendations
-- `POST /api/v1/draft/{session_id}/picks` - Record draft pick
+### Betting
+- `GET /api/v1/betting/board` - This week's priced props and game lines
+- `GET /api/v1/betting/results` - Graded record
 
-### Content
-- `GET /api/v1/content/blog-posts/` - List blog posts
-- `POST /api/v1/content/generate` - Generate AI content
+Full list: `docs/guides/API_GUIDE.md` or http://localhost:8000/docs.
 
 ## 🔐 Environment Variables
 
@@ -179,25 +177,17 @@ SECRET_KEY=your-secret-key-here
 OPENAI_API_KEY=your-openai-key
 ANTHROPIC_API_KEY=your-anthropic-key
 
-# Fantasy Platform APIs (optional)
-ESPN_CLIENT_ID=your-espn-client-id
-ESPN_CLIENT_SECRET=your-espn-client-secret
+# Who may sign up (comma-separated emails, or * for anyone; unset = closed)
+REGISTRATION_ALLOWED_EMAILS=you@example.com
+
+# Yahoo OAuth app (optional; ESPN and Sleeper need no app credentials)
 YAHOO_CLIENT_ID=your-yahoo-client-id
 YAHOO_CLIENT_SECRET=your-yahoo-client-secret
 ```
 
-## 🐳 Docker Development (Alternative)
+## ✅ CI
 
-```bash
-# Start all services
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop services
-docker-compose down
-```
+`.github/workflows/ci.yml` runs the backend tests and the frontend lint, tests and build on every push and pull request. `docker-compose.yml` is out of date and not used.
 
 ## 📚 Additional Documentation
 
