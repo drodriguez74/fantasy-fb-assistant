@@ -7,7 +7,9 @@ from fastapi.testclient import TestClient
 from app.main import app
 
 @pytest.fixture
-def client():
+def client(override_db_dependency):
+    # The isolated test database, not the one in DATABASE_URL: the search
+    # route reads the players table, and CI has no real database.
     return TestClient(app)
 
 def test_get_players(client):
